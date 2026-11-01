@@ -21,7 +21,9 @@
 - **元データにない事実を書かない。** 原稿に出る数字・日付・地名は、すべて元データの値、またはコードで機械的に計算した値(合計、順位、前年比など)であること。
 - **原因・責任・被害の推測を書かない。** 元データに書かれていることだけを述べる。
 - **単位が確認できていない列の絶対値は読み上げない。** 相対表現(順位、前年比、割合)だけを使う(§10の「単位」欄を参照)。
-- **LLMを行ごとに呼ばない。** LLMを使うのは、データ種別ごとに1回(パーツの案づくり)と、クラスタ名・要約の生成だけ。実行時(ユーザーが見ている最中)には生成しない。
+- **LLMを行ごとに呼ばない。** LLMを使うのは、データ種別ごとに1回(テンプレートの案づくり)と、クラスタ名・要約の生成だけ。実行時(ユーザーが見ている最中)には生成しない。
+- **決定モデル(Jev系)には、文章も数字も作らせない。** あらかじめ並べた選択肢から「選ぶ」だけ。値の埋め込みは、すべてエンジンが元データから行う。決定モデルが失敗・低確信度のときは、ルールに戻す(§8.3a)。
+- **ベクトル計算はRustで行う。** Next.js(TypeScript)では、好みのベクトルの更新、近傍検索、地図上の位置の計算をしない(§7)。Next.js は、Cookie・検証・整形だけを担当する。
 - **個人を特定する情報を原稿に出さない。** 氏名、詳細な住所、負傷の部位など(§15)。
 - **外部サービスは差し替え可能にする。** 埋め込み、音声、判断モデルはインターフェースの後ろに置く(§0.4)。
 - 動くものを先に作る。まず事故データだけで、取り込みから画面表示までを通す(§13)。
@@ -43,8 +45,8 @@
 | --- | --- | --- | --- |
 | 埋め込み | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`) | ローカルの `multilingual-e5-large`(1024次元) | `EMBED_PROVIDER=azure\|local` |
 | 音声(TTS) | `none`(字幕のみ。最初はこれで通す) | `azure`(Azure AI Speech)、`voicevox` | `TTS_PROVIDER=none\|azure\|voicevox` |
-| 曖昧な判断(分類) | `rules`(ルールだけ) | `jev_local`、`jev_api`、`azure_openai` | `CLASSIFIER_PROVIDER=rules\|...` |
-| LLM(パーツ案、クラスタ名) | Azure OpenAI のチャットモデル | なし(クラスタ名は機械的な名前にフォールバック) | `LLM_PROVIDER=azure\|none` |
+| 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `jev_local`(Jev-Style 2B など。失敗・低確信度のときは `rules`) | `jev_api`(TypeSafe Jev)、`azure_openai`(構造化出力) | `DECIDER_PROVIDER=rules\|jev_local\|jev_api\|azure_openai` |
+| LLM(テンプレート案、クラスタ名) | Azure OpenAI のチャットモデル | なし(クラスタ名は機械的な名前にフォールバック) | `LLM_PROVIDER=azure\|none` |
 
 `TTS_PROVIDER=none` のときの字幕のタイミングは、1秒あたり6.5文字で見積もる。
 
@@ -88,16 +90,17 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 | D4 | 対象データ | 届いた14ファイル全部。残り6種類(計画書型)は、後から列定義を足して追加できる設計にする |
 | D5 | 入力 | 閲覧時間といいね。ログインなし、匿名ID(Cookie) |
 | D6 | 好みの表示 | 画面の右側(PC)、シート(スマホ)。要件であり、MVPに含める |
-| D7 | フロント・API | Next.js(TypeScript, App Router)。APIはRoute Handlers |
+| D7 | 画面・BFF | Next.js(TypeScript, App Router)。画面と、BFF(Cookie、入力の検証、シーンJSONの取得・整形)。**ベクトル計算はしない** |
 | D8 | ホスティング | Azure Container Apps |
 | D9 | IaC | Terraform(`azurerm` プロバイダー) |
 | D10 | DB | Azure Database for PostgreSQL(Flexible Server) + pgvector |
 | D11 | 配信 | Azure Blob Storage + CDN(Front Door)。音声とシーンJSONの置き場 |
-| D12 | 原稿生成 | 列定義 + 文章パーツ(YAML) + 共通エンジン(Python)。行ごとにLLMを呼ばない |
+| D12 | 原稿生成 | 列定義 + **完成した台本のテンプレート**(型ごとに数本、YAML) + 共通エンジン(Python)。型の選択は決定モデル、穴埋めはコード。行ごとにLLMを呼ばない |
 | D13 | Databricks | 使わない |
-| D14 | 判断モデル(Jev等) | 今回は使わない(`CLASSIFIER_PROVIDER=rules`)。差し替え点だけ残す |
+| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら `jev_local` に切り替える |
 | D15 | 音声 | 後で決める(VOICEVOXかAzure AI Speech)。最初は `none` で通す |
 | D16 | 地図の背景 | 日本の輪郭をアプリに同梱する(Natural Earthを元にした公開データ。npmの`world-atlas`など) |
+| D17 | ベクトル計算 | **Rustの別サービス(`services/recsys`)**で行う。好みのベクトルの更新、近傍検索、右パネルの値の計算。Next.js(TypeScript)では行わない。Container Apps の内部サービスとして置き、Next.js から内部HTTPで呼ぶ(§6.6) |
 
 ---
 
@@ -166,15 +169,16 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 ## 4. システム構成と技術スタック
 
 ```
-[事前バッチ(手元またはCI)]                    [実行時]
- data/raw/*.csv                                ブラウザ(Next.js UI)
-   │  pipeline/ (Python)                          │  ↑
-   ├─ profile / 取り込み・整形                     │  │ 動画: Blob + CDN(シーンJSON, 音声)
-   ├─ scriptgen(原稿・シーン生成)                  ▼  │
-   ├─ embed(埋め込み)→ project(2D座標)→ cluster  Next.js API (Container Apps)
-   ├─ tts(音声: 任意)                              │  /api/feed /api/view /api/like
-   └─ publish ─┬→ Blob(音声・シーンJSON)           ▼
-               └→ PostgreSQL + pgvector ◄──────── (読み書き)
+[事前バッチ(手元またはCI)]                          [実行時]
+ data/raw/*.csv                                      ブラウザ(Next.js の画面)
+   │  pipeline/ (Python)                                │ ↑
+   ├─ profile / 取り込み・整形                           │ │ 動画: Blob + CDN(シーンJSON, 音声)
+   ├─ scriptgen: 判断 → テンプレート → 穴埋め            ▼ │
+   │    └─ 決定モデル(Jev系)が型を選ぶ              Next.js(BFF: Cookie・検証・整形)
+   ├─ embed(埋め込み)→ 2D座標 → クラスタ                │  /api/feed /api/view /api/like
+   ├─ tts(音声: 任意)                                   ▼  内部HTTP
+   └─ publish ─┬→ Blob(音声・シーンJSON)            recsys(Rust: ベクトル計算)
+               └→ PostgreSQL ◄───────────────────── 読み書き(好み・履歴・動画)
 ```
 
 ### 4.1 技術スタック
@@ -182,7 +186,8 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 | 層 | 採用 |
 | --- | --- |
 | Web | Next.js 15 以降(App Router)、TypeScript、React、Tailwind CSS は使わず素のCSS(モックのCSSを移植) |
-| API | Next.js Route Handlers(Node.js ランタイム)。DBは `pg`、ベクトル型は文字列リテラルで扱う |
+| BFF | Next.js Route Handlers(Node.js ランタイム)。Cookie、入力の検証、シーンJSONの取得・整形だけ。**ベクトル計算はしない**。DBは `pg` |
+| ベクトル計算 | Rust(`services/recsys`)。axum + tokio + sqlx。計算の核は依存なしのライブラリ(`reference/recsys-rs`、`cargo test` が通る) |
 | パイプライン | Python 3.11+、`uv` で管理。`pandas`、`pydantic`、`pyyaml`、`umap-learn`、`scikit-learn`、`openai`(Azure用) |
 | DB | PostgreSQL 16(Flexible Server)、拡張 `vector`(pgvector) |
 | IaC | Terraform(`azurerm` プロバイダー。バージョンを固定する) |
@@ -199,7 +204,8 @@ opendopa/
 ├─ apps/web/                   # Next.js
 │   ├─ app/                    # ページ、api/ 以下にRoute Handlers
 │   ├─ components/             # Feed, Slide, TastePanel, CsvSheet, Map, Comments ...
-│   └─ lib/                    # recommender.ts, db.ts, types.ts
+│   └─ lib/                    # recsys-client.ts(Rustへの内部HTTP), db.ts, types.ts
+├─ services/recsys/            # Rust(ベクトル計算。Cargo。reference/recsys-rs が土台)
 ├─ pipeline/                   # Python
 │   ├─ opendopa_pipeline/      # profile, ingest, scriptgen, embed, project, cluster, tts, publish
 │   └─ tests/
@@ -207,7 +213,7 @@ opendopa/
 │   ├─ accident.yaml  ...
 ├─ packages/shared/            # 共有の型(シーンJSONのスキーマ)
 ├─ data/raw/                   # 元CSV(git管理外。§10のファイル名で置く)
-├─ reference/                  # ui_mock.html, make_scripts_prototype.py, profile.py, profiles.json
+├─ reference/                  # ui_mock.html, make_scripts_templates.py, profile.py, profiles.json, recsys-rs/
 └─ docs/DECISIONS.md           # 決めたことの記録
 ```
 
@@ -239,6 +245,7 @@ CREATE TABLE videos (
   csv_row       jsonb NOT NULL,              -- [[列名, 値], ...] 元データの表示用
   source_ref    text NOT NULL,               -- 例: '行 #12' または 'YEAR=2023 / 事業者名'
   search_text   text NOT NULL,               -- 埋め込みに使った文
+  decisions     jsonb,                       -- 判断モデルの記録(§8.3a)。クライアントには配信しない
   status        text NOT NULL DEFAULT 'ok',  -- 'ok' | 'excluded'
   excluded_why  text,
   created_at    timestamptz NOT NULL DEFAULT now()
@@ -259,7 +266,7 @@ CREATE TABLE embeddings (
   cluster_id int REFERENCES clusters(id),
   model      text NOT NULL
 );
-CREATE INDEX embeddings_hnsw ON embeddings USING hnsw (embedding vector_cosine_ops);
+CREATE INDEX embeddings_hnsw ON embeddings USING hnsw (embedding vector_cosine_ops);  -- 任意(分析用)。recsys(Rust)は使わない(起動時に全件をメモリへ読む)
 
 CREATE TABLE meta (key text PRIMARY KEY, value jsonb NOT NULL);
 -- key='centroid': 全動画の重心ベクトル(好みの初期値)
@@ -309,14 +316,16 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 すべて JSON。匿名IDは Cookie から取る(なければ発行する)。
 
+この章は、ブラウザから見えるAPI(Next.js の BFF)。**ベクトルに関わる処理は、すべて Rust の recsys に任せる**(§6.6)。Next.js は、Cookie と入力の検証を行い、recsys の結果に、シーンJSON・CSV行を付けて返すだけ。
+
 ### 6.1 `GET /api/feed?count=1&includeMap=0`
 
 次の動画を返す。`count` は1〜3。初回は `count=2&includeMap=1`(現在の動画と、先読み1本)。
 
 処理:
-1. 匿名IDを確認し、`u` を取り出す(なければ重心から作る)。
-2. §7.4 の手順で `count` 本を選ぶ。`impressions` に記録する(同じ動画を返さない)。
-3. 更新後の `taste` を含めて返す。
+1. 匿名IDを確認する(Cookie。なければ発行する)。
+2. recsys に `POST /internal/feed` で、選んだ動画ID・理由・更新後の `taste` をもらう(§6.6。選び方は§7.4)。
+3. 動画IDから、シーンJSON・CSV行・出典を `videos` から読み、`taste` と一緒に返す。
 
 レスポンス:
 ```jsonc
@@ -341,7 +350,7 @@ CREATE INDEX ON like_events (anon_id, created_at);
 ```json
 { "viewId": "3b0f...uuid", "videoId": "accident-0001", "watchedSec": 14.3 }
 ```
-処理: `view_events` に保存(`viewId` が重複なら何もしない)。`ratio = min(1, watchedSec / duration_sec)` をサーバーで計算し、`u` を更新する(§7.2)。
+処理: recsys に `POST /internal/view` で渡す。recsys が、保存・視聴率の計算(`ratio = min(1, watchedSec / duration_sec)`)・`u` の更新(§7.2)を行う。
 
 レスポンス: `{ "taste": {...}, "logEntry": {"videoId","headline","reasonLabel","ratio","liked"} }`
 
@@ -351,7 +360,7 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 リクエスト: `{ "videoId": "accident-0001", "liked": true }`(トグルでなく状態を送る。同じ内容を2回送っても二重に足さない)。
 
-処理: `like_events` に追加し、`u` を§7.3の方法で再計算して保存。レスポンス: `{ "taste": {...} }`
+処理: recsys に `POST /internal/like` で渡す。recsys が、`like_events` への追加と、`u` の再計算(§7.3)を行う。
 
 ### 6.4 `taste` オブジェクト
 
@@ -373,9 +382,26 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 ---
 
+### 6.6 内部API(Next.js → recsys)
+
+recsys は、Container Apps の**内部のみ**(外部に公開しない)のサービス。ヘッダー `X-Internal-Token`(環境変数 `INTERNAL_TOKEN`)で認証する。Next.js が、ブラウザからのリクエストを検証したうえで呼ぶ。recsys は、`user_vectors`・`impressions`・`view_events`・`like_events` を読み書きし、`embeddings`・`clusters`・`meta` と、`videos` の `duration_sec`・`status` を読む。
+
+| メソッド・パス | 送る | 返す |
+| --- | --- | --- |
+| `POST /internal/feed` | `{anonId, count, includeMap}` | `{items:[{videoId, reason, reasonLabel}], taste, map?}`(`map` は §6.1 と同じ形) |
+| `POST /internal/view` | `{viewId, anonId, videoId, watchedSec}` | `{taste, logEntry}`(`viewId` が重複なら、何もせず現在の `taste` を返す) |
+| `POST /internal/like` | `{anonId, videoId, liked}` | `{taste}` |
+| `POST /internal/reload` | なし | 動画の索引を、DBから読み直す(公開のあとに呼ぶ) |
+| `GET /healthz` | なし | 200(索引の件数を含む) |
+
+`taste` は §6.4 と同じ形。動画のシーンJSON・CSV行は、recsys は扱わない(IDと理由だけ返す)。
+
+
 ## 7. レコメンドの仕様
 
-### 7.1 定数(既定値。`apps/web/lib/recommender.ts` の先頭にまとめる)
+**実装は Rust(`services/recsys`)。Next.js(TypeScript)では計算しない。** `reference/recsys-rs` が、このアルゴリズムの動くサンプルで、`cargo test` の6件が通る(更新式の表、単位長さの維持、いいねの取り消しで元に戻ること、連続制限、割合の合計100、疑似ユーザーで好みのデータセットが増えること)。これを土台にして、DBと内部HTTP(§6.6)をつなぐ。
+
+### 7.1 定数(既定値。`services/recsys/src/config.rs` にまとめる)
 
 | 名前 | 値 | 意味 |
 | --- | --- | --- |
@@ -425,13 +451,15 @@ function pickNext(anon, u, eventCount, lastDatasets):
   elif random() < EXPLORE:
       類似度が unseen の下位半分から、直前と違うデータセットを優先して一様に選ぶ。reason='adventure'
   else:
-      cand = pgvector で u に近い unseen の上位 TOPK (sim = 1 - cosine_distance)
+      cand = メモリ上の全動画との内積(総当たり)で、u に近い unseen の上位 TOPK(sim = u・v)
       p_i ∝ exp(sim_i / TAU)  で確率的に選ぶ。reason='near'
   同じデータセットが MAX_STREAK 回連続していたら、別のデータセットの候補から選び直す
   最初の1本(impressions が空)は reason='first'。
 ```
 
 `reasonLabel`: first=「最初の1本」、explore_cold=「好みを探し中」、near=「好みに近い」、adventure=「冒険枠」。
+
+起動時に `embeddings` を全件メモリに読み込む(2,100本×1024次元で約8.6MB)。総当たりの内積で、1回の `pick_next` は約1.6ms、`taste_position` は約1.6ms(手元の実測。1スレッド、releaseビルド。`reference/recsys-rs` の `demo`)。pgvectorの近傍検索は使わない。動画を公開したあとは、`POST /internal/reload` で読み直す。
 
 ### 7.5 好みパネルの値の計算
 
@@ -458,6 +486,7 @@ summary = eventCount == 0 ? 'まだ見ていないので、好みはわかりま
 ```
 uv run opendopa profile  --dataset <id>        # 列のプロファイルを出す(reference/profile.py の整理版)
 uv run opendopa generate --dataset <id>        # 選定→原稿→シーン→検証→ out/<id>/scenes.jsonl
+uv run opendopa decide   --dataset <id> --eval datasets/<id>.labels.csv   # 判断モデルの評価(人が付けた正解との一致率)
 uv run opendopa embed                          # 全動画の埋め込み・2D座標・クラスタ
 uv run opendopa tts      --dataset <id>        # 音声(TTS_PROVIDER が none ならスキップ)
 uv run opendopa publish                        # Blob とDBへ書き込む
@@ -470,12 +499,15 @@ uv run opendopa all                            # 上を順に
 2. **クリーニング**: 欠損、外れ値、除外条件(YAMLの `filters`)で行を落とす。落とした行は理由つきで `out/<id>/excluded.csv` に記録。
 3. **集計の追加**: YAMLの `stats` で、順位、前年比、合計などを計算して列に足す(§8.5)。
 4. **選定**: `select`(§8.4)で、動画にする行を絞る。
-5. **原稿**: `parts`(§8.3)を条件で選び、値を埋め込んで並べる。優先度の低いパーツから削り、推定秒数を15〜30秒に収める。
-6. **シーン**: 原稿、大きな数字、地図、コメントをまとめたシーンJSON(§9)にする。
-7. **検証(品質ゲート)**: §8.6。通らない行は `excluded`。
-8. 出力: `out/<id>/scenes.jsonl` と、除外の記録。
+5. **判断**: `decisions`(§8.3a)を行ごとに実行し、どの型のテンプレートにするかを決める(決定モデル)。安全チェックもここで行う。結果は `decisions` に記録する。
+6. **原稿**: `template_groups`(§8.3)から、選ばれた型の中で、埋められて長さに収まるテンプレートを選び、穴に値を入れる(§8.3.1)。
+7. **シーン**: 原稿、大きな数字、地図、コメントをまとめたシーンJSON(§9)にする。
+8. **検証(品質ゲート)**: §8.6。通らない行は `excluded`。
+9. 出力: `out/<id>/scenes.jsonl`、`out/<id>/decisions_report.json`、除外の記録。
 
-### 8.3 列定義YAMLのスキーマ
+### 8.3 列定義YAMLのスキーマ(テンプレート方式)
+
+方針: 台本は**完成した文章のテンプレート**(穴あき)を、データセットごと・型(グループ)ごとに、人があらかじめ用意しておく。行ごとに、①どの型か(決定モデルが選ぶ)、②その型の中のどのテンプレートか(ルールで決める)を決めて、穴に値を入れる。LLMは行ごとに呼ばない。
 
 ```yaml
 id: accident                       # データセットID(英数字)
@@ -488,49 +520,166 @@ grain: row                         # row=1行1本 / group=グループ集計で1
 rename: {}                         # 列名の置き換え
 null_values: ["", "不明"]          # 欠損として扱う値
 zero_is_null: []                   # 0を欠損とみなす列
-columns:                           # 列の役割(使う列だけ書く)
-  OCCURRENCE_DATE:   {role: datetime, fmt: "ymdhm"}          # 2022/12/6 11:20
-  OCCURRENCE_LOCATION: {role: place, strip_parenthesis: true, pref_regex: true}
-  OPERATOR:          {role: category}
-  INCIDENT_SUMMARY:  {role: free_text, use: verbatim, split: sentence}
-  CASUALTIES_SUMMARY: {role: flag, none_value: "なし"}
-  AIRCRAFT_DAMAGE_SUMMARY: {role: short_text}
-  RECURRENCE_PREVENTION_MEASURES: {role: free_text, use: first_sentence}
-  REMARKS:           {role: classify, rules: [{contains: "事故に該当", value: 事故}, {else: 重大インシデント}]}
 filters: [{col: INCIDENT_SUMMARY, not_null: true}]
-derived:                           # 計算で作る値
-  kind: {from: REMARKS, op: classify}
-  pref: {from: OCCURRENCE_LOCATION, op: extract_pref}
+
+derived:                           # 穴に入れる値を作る(すべてコードで計算。LLMは使わない)
+  date:   {from: OCCURRENCE_DATE, op: format_datetime, fmt: ymdhm}      # 2022年12月6日11時20分
+  place:  {from: OCCURRENCE_LOCATION, op: strip_parenthesis}
+  pref:   {from: OCCURRENCE_LOCATION, op: extract_pref}
+  kind:   {from: REMARKS, op: classify, rules: [{contains: "事故に該当", value: 事故}, {else: 重大インシデント}]}
+  summary_1: {from: INCIDENT_SUMMARY, op: sentence, n: 1}              # 元の文をそのまま使う
+  summary_2: {from: INCIDENT_SUMMARY, op: sentence, n: 2}
+  casualty_sentence: {from: CASUALTIES_SUMMARY, op: map, map: {"なし": "人的被害は、報告にありません。"}, else: "負傷者の報告があります。"}
+  measure_first: {from: RECURRENCE_PREVENTION_MEASURES, op: sentence, n: 1}
 stats:                             # 集計(§8.5)
   - {name: pref_seq, op: seq_in_group, group: pref, order: OCCURRENCE_DATE}   # 「その県で◯件目」
 select: {cap: 194, order_by: No., diversify_by: null}
-big_number:                        # 大きな数字
+big_number:
   primary:  {text: "{pref}で{pref_seq}件目", unit: "", label: "報告された事故等", when: "pref != null"}
   fallback: {text: "第{No.}号", unit: "", label: "報告の番号"}
-parts:                             # 原稿のパーツ(§8.3.1)
-  - {id: intro, priority: 0, text: "{OCCURRENCE_DATE:ymdhm}、{place}で、無人航空機の{kind}が報告されました。"}
-  - {id: summary, priority: 0, repeat: summary_sentences, max_high_priority: 2, low_priority: 3}
-  - {id: casualty_none, priority: 1, when: "CASUALTIES_SUMMARY == 'なし'", text: "人的被害は、報告にありません。"}
-  - {id: casualty_some, priority: 1, when: "CASUALTIES_SUMMARY != 'なし'", text: "負傷者の報告があります。"}
-  - {id: damage, priority: 2, when: "AIRCRAFT_DAMAGE_SUMMARY != null", text: "機体の被害は、{AIRCRAFT_DAMAGE_SUMMARY}と記載されています。"}
-  - {id: operator, priority: 4, text: "{OPERATOR}による飛行でした。"}
-  - {id: measures, priority: 5, when: "RECURRENCE_PREVENTION_MEASURES != null", text: "再発防止策として、報告にはこう書かれています。{measure_first}"}
-  - {id: closing, priority: 6, text: "原因の推測は含みません。"}
+
+template_groups:                   # 型ごとの、完成したテンプレート
+  - id: object_damage
+    label: "物件(車両・建物など)に接触・衝突した"       # 決定モデルに見せる、選択肢の説明
+    templates:
+      - id: object_damage_std
+        lines:
+          - "{date}、{place}で、無人航空機が物件に接触・衝突する事故が報告されました。"
+          - "{summary_1}"
+          - {text: "{summary_2}", optional: true}
+          - "{casualty_sentence}"
+          - {text: "機体の被害は、{AIRCRAFT_DAMAGE_SUMMARY}と記載されています。", optional: true}
+          - {text: "再発防止策として、報告にはこう書かれています。{measure_first}", optional: true}
+      - id: object_damage_short
+        short: true                # 長さが収まらないときの短い版
+        lines:
+          - "{date}、{place}で、無人航空機が物件に接触・衝突する事故が報告されました。"
+          - "{summary_1}"
+          - "{casualty_sentence}"
+  - id: injury
+    label: "人が負傷した"
+    templates: [ ... ]             # 同じ形(導入文は「人の負傷が報告されました」)
+  - id: loss_of_control
+    label: "制御不能・墜落・落下した"
+    templates: [ ... ]
+  - id: other
+    label: "上のどれでもない"
+    templates: [ ... ]             # 導入文は「無人航空機の{kind}が報告されました」
+
+template_select: {decision: template}   # どの型にするかは、決定モデルが選ぶ(§8.3a)
+
+decisions: [ ... ]                 # §8.3a
+fallback_rules: { ... }            # §8.3a(決定モデルが使えないときの代わり)
 comments:
   pool_calm: ["気をつけたい", "無事でよかった", "安全第一"]
-  pool_light: []
-  rule: "casualty_some -> none; else calm"
-embed_text: "事故等報告 {pref} {kind} {summary_first_sentence}"
+  rule: "casualty_sentence == '負傷者の報告があります。' -> none; else calm"
+embed_text: "事故等報告 {pref} {kind} {summary_1}"
 ```
 
-**YAMLの式(`when`)** は、安全な小さな式言語(列名、`==`, `!=`, `>`, `<`, `and`, `or`, `null`)だけを許す。`eval` は使わない。
+**式(`when`、`filters`、`fallback_rules` の `if`)** は、安全な小さな式言語だけを許す(列名、`==`、`!=`、`>`、`<`、`and`、`or`、`null`、`contains(列, [語, ...])`)。`eval` は使わない。
 
-#### 8.3.1 パーツの規則
+#### 8.3.1 テンプレートの規則
 
-- 優先度(`priority`)が小さいほど必ず残す。`0` は削らない。
-- 推定秒数が30秒を超えたら、優先度の大きいパーツから順に削る。0のパーツだけで30秒を超える場合は、`summary` の文を2文までに切る。それでも超える行は除外(`too_long`)。
-- 15秒に満たない場合は、優先度の低いパーツも残す(削らない)。それでも15秒に満たなければ、最後の字幕を表示したまま、動画の長さ(`durationSec`)を15秒にする。
-- 穴埋めは `{列名}` または `{派生名}`。**列定義に存在しない名前は、読み込み時にエラー**にする。
+- **穴(`{名前}`)** には、列名、または `derived` の名前だけを使える。**列定義にない名前は、読み込み時にエラー**にする。
+- **必須の行と任意の行**: 文字列の行は必須。`{text: ..., optional: true}` の行は任意。
+  - 必須の行の穴が1つでも空なら、そのテンプレートは、その行の**候補から外す**。
+  - 任意の行の穴が空なら、その行だけを省く。
+- **各型に、最低限の穴だけで埋まるテンプレート**(短い版 `short: true`)を、必ず1つ以上置く。1つの型に2〜3本(標準・短い版・言い回し違い)、1データセットで4〜6型が目安。
+- **長さ(15〜30秒)**: テンプレートは、標準的な値で収まる長さに書く。埋めたあと、推定秒数を測り、次の順に直す。
+  1. 30秒を超えたら、任意の行を後ろから省く。
+  2. それでも超えたら、同じ型の短い版を使う。
+  3. それでも超えたら、その行を `too_long` で除外する(理由を記録)。
+  - 15秒に満たなければ、最後の字幕を表示したまま、動画の長さ(`durationSec`)を15秒にする。
+- **型の中のテンプレートの選び方**: 埋められて長さに収まるものを、定義の順に試す。言い回しの違いを使いたいときは、同じ条件のテンプレートを複数置き、行のハッシュで選ぶ。
+- 数字の表記は §8.5 の `fmt` に従う。値を埋めたあとの文は、必ず元データか計算から来た値だけになる。
+
+### 8.3a 判断ポイント(決定モデル)
+
+**方針**: 決定モデル(Jev系)は、**どの型のテンプレートを使うか**を「選ぶ」だけ。文章や数字は作らない。選ばれた型の中のテンプレートの選択(§8.3.1)と、穴埋めは、すべてエンジンが行う。これにより、LLMを行ごとに呼ぶ場合に比べて、費用と時間が小さく、数字が変わらない。
+
+#### 判断の種類(Jevの3つの形に合わせる)
+
+| kind | 答え | このアプリでの使いどころ |
+| --- | --- | --- |
+| `choice` | 選択肢から1つ(確率の分布と確信度つき) | **どの型(テンプレート群)にするか**(主な用途) |
+| `noul` | はい/いいえの確率 | 個人情報があるか、広告の言い回しか、推測を含むか(安全チェック) |
+| `score` | 順序のある基準での点数 | 任意。動画にする行の選別(ニュース性)など |
+
+#### YAMLの書き方
+
+```yaml
+decisions:
+  - id: template                         # 型を選ぶ(主役)
+    kind: choice
+    question: "この事故等報告の概要は、次のどの型に一番近いですか。"
+    state: [INCIDENT_SUMMARY, CASUALTIES_SUMMARY]   # 判断モデルに渡す列(これだけ)
+    options_from: template_groups        # 各型の label を選択肢にする(その行で埋められる型だけ)
+    min_confidence: 0.55
+    fallback: {rule: keyword, default: other}   # 低確信度・失敗のときの代わり
+
+  - id: pii                              # 安全チェック
+    kind: noul
+    question: "この文章に、個人を特定できる記述(氏名・番地・電話番号など)がありますか。"
+    state: [INCIDENT_SUMMARY]
+    exclude_if_probability_above: 0.5    # 超えたら、その行を除外(品質ゲート)
+    fallback: {rule: regex_pii}
+
+fallback_rules:                          # 決定モデルが使えないとき(`rules` プロバイダー)の代わり
+  keyword:
+    - {if: "CASUALTIES_SUMMARY != 'なし' or contains(INCIDENT_SUMMARY, ['負傷'])", then: injury}
+    - {if: "contains(INCIDENT_SUMMARY, ['不能', '制御'])", then: loss_of_control}
+    - {if: "contains(INCIDENT_SUMMARY, ['車両', '建物', '物件', '衝突', '接触'])", then: object_damage}
+    - {else: other}
+```
+
+- 選択肢は、`options_from` の型のうち、**その行で、少なくとも1つのテンプレートが埋められるもの**だけにする(決定モデルが、埋められない型を選ぶことはない)。
+- 選択肢の `label` は、判断モデルへの質問に出す日本語。`id` はコード用。
+- 型の数は、4〜6つに抑える(小さなモデルは、選択肢が多いと精度が落ちる)。
+- ルールの `keyword` は粗い。実測(事故194行、`reference/make_scripts_templates.py`)では、「接触」が146行に出るため、ほとんどが `object_damage` に入ってしまう(123行)。「プロペラが停止し、屋根に落下した」のような文が、`loss_of_control` に入らない。**ここが、決定モデルで精度を上げたい部分**。
+
+#### 実行(Decider のインターフェース)
+
+```python
+class Decider(Protocol):
+    def decide(self, kind, state: dict, question: str,
+               options: list[Option] | None = None, rubric: list[str] | None = None) -> Decision: ...
+
+@dataclass
+class Decision:
+    choice: str | None             # choice のとき
+    distribution: dict[str, float] # 各選択肢の確率
+    score: float | None            # score のとき(期待値)
+    probability: float | None      # noul のとき(はいの確率)
+    confidence: float              # 分布の集中の度合い(0〜1)
+    provider: str                  # 'jev_local' など
+    used_fallback: bool            # フォールバックしたか
+```
+
+- **フォールバック**: 確信度が `min_confidence` 未満、またはエラー・タイムアウトのときは、YAMLの `fallback`(`fallback_rules` か既定の選択肢)を使い、`used_fallback=True` で記録する。決定モデルが動かなくても、パイプラインは止まらない。
+- **キャッシュ**: `(provider, 質問, state, 選択肢)` のハッシュで結果を `out/<id>/decisions.cache.jsonl` に保存し、再実行で再計算しない。
+- **バッチ処理**: 同じ質問は、まとめて推論する。タイムアウトは1問あたり30秒。
+- **記録**: 全判断(ID、選択、分布、確信度、provider、フォールバックの有無)を `videos.decisions`(jsonb)に保存する。クライアントには配信しない。データセットごとに、フォールバックの割合を `decisions_report.json` に出す。
+- **入力は最小限**: 判断モデルに渡すのは、YAMLの `state` で指定した列だけ。ほかの列(個人に関わるものを含む)は渡さない。
+
+#### プロバイダー
+
+| 名前 | 内容 |
+| --- | --- |
+| `rules` | ルール(`fallback_rules`、正規表現)。全体を通すまでの既定。判断モデルが使えないときの代わり |
+| `jev_local` | ローカルで動かす、Jevふうの判断モデル。候補は、Hugging Face の `chaoliangUNSW/Jev-Style-2B-Decision-v3`(約1.9B、Apache-2.0、`jev-style` パッケージでローカルAPIとして起動できる。Apple Siliconは `jev-style[mlx]`)と、AWSの Strands Decider 2B。実装時に、モデルカードの手順とライセンスを確認する(提供元はTypeSafe AIとは別の組織) |
+| `jev_api` | TypeSafe Jev(ホスト型のAPI。`TYPESAFE_API_KEY`)。費用・利用条件は要確認 |
+| `azure_openai` | Azure OpenAI の構造化出力で、同じ質問に答えさせる(確率は、複数回の試行の割合などで近似してよい) |
+
+**日本語の精度は未検証**。必ず §14.2b の評価を通してから、既定にする。
+
+#### 処理量の見積もり
+
+動画約2,100本 × 1本あたり1〜2問(型の選択と、安全チェック) ≈ 2,000〜4,000問。ローカルの2Bモデルで、1問あたりの時間は、機械によって大きく変わる。`decide` コマンドで実測し、`docs/DECISIONS.md` に記録する(キャッシュがあるので、再実行は速い)。
+
+#### 事故データでの試作の結果(`rules`、`reference/make_scripts_templates.py`)
+
+事故194行のうち、191行を生成(概要が空の1行と、概要だけで30秒に収まらない2行は除外)。数字の不一致は0。推定秒数は、最小19.5、中央26.0、最大30.0。型の内訳は、`object_damage` 123、`loss_of_control` 29、`injury` 29、`other` 10。標準のテンプレートで収まり、短い版は使われなかった。
+
 
 ### 8.4 選定(`select`)
 
@@ -580,6 +729,7 @@ select:
 | 個人情報 | 氏名らしい文字列、番号らしい文字列(電話・メール・番地)が含まれない(§15) |
 | 禁止表現 | 「原因は」「責任は」「〜のせい」など、推測を示す言い回しが含まれない |
 | 重複 | 同じ原稿の動画が重複しない |
+| 判断 | フォールバックした判断の割合を記録する。1つのデータセットで30%を超えたら警告(`decisions_report.json`)。`pii`(noul)の確率が上限を超えた行は除外 |
 
 実行結果として、データセットごとに「生成件数、除外件数と理由の内訳、推定秒数の最小・中央・最大」を標準出力とJSONに残す。
 
@@ -680,13 +830,14 @@ select:
 ### 10.1 `accident`(事故等報告) — 実装済みの試作あり
 
 - **grain/kind**: 1件=1本 / `event`。
-- **試作**: `reference/make_scripts_prototype.py`。これと同じ傾向の出力(193行生成、No.20は概要が空で除外、種別は事故140・重大インシデント53、数字の不一致0)を再現できること。試作の推定秒数は19〜33秒で、2行が30秒をわずかに超える。本番のエンジンは、削る処理(§8.3.1)で30秒に収め、収まらない行は理由つきで除外する。
+- **試作**: `reference/make_scripts_templates.py`(テンプレート方式、判断は `rules`)。事故194行のうち、191行を生成(概要が空の1行と、概要だけで30秒に収まらない2行を除外)、数字の不一致0、推定19.5〜30秒。型の内訳は、`object_damage` 123、`loss_of_control` 29、`injury` 29、`other` 10。これと同じ傾向を再現できること(型の割合は、決定モデルで変わる)。
 - **列**: `No.`, `OCCURRENCE_DATE`(`2022/12/6 11:20`), `OCCURRENCE_LOCATION`(都道府県+市区町村。海外の1件は長い文)、`OPERATOR`(事業者123/個人58/行政機関11/大学1/学校1)、`MODEL_OR_MANUFACTURER`, `INCIDENT_SUMMARY`(最長165字)、`CASUALTIES_SUMMARY`(なし165。他は負傷の内容)、`AIRCRAFT_DAMAGE_SUMMARY`(全損34、プロペラの破損22、なし17など)、`RECURRENCE_PREVENTION_MEASURES`(最長327字。4件は空)、`REMARKS`(事故/重大インシデントの定型文)。
 - **処理**: `REMARKS` の文に「事故に該当」があれば `事故`、なければ `重大インシデント`。都道府県は先頭の `...都道府県` を正規表現で取る(194行中3行は取れない。そのときは大きな数字を「第◯号」にする)。
 - **大きな数字**: 「◯◯県で◯件目」(日付順の通し番号)。取れなければ「第◯号」。
 - **コメント**: 負傷者あり→なし。それ以外は落ち着いたコメントのみ(§3.5)。
 - **個人情報**: 負傷の部位は読まない。「負傷者の報告があります」にとどめる(§15)。
 - **YAML**: §8.3の例のとおり。
+- **判断ポイント**: §8.3a の例のとおり(`template`、`pii`)。評価用の正解は `datasets/accident.labels.csv`(人が50行に付ける: `No.`, `template`)。
 
 ### 10.2 `flightplan`(無人航空機飛行計画, GeoJSON)
 
@@ -704,9 +855,10 @@ select:
 - **選定**: `cap=150`。`PREFECTURE` でばらして選ぶ。`STRONG_POINTS` が記入のある物件を優先(点数に加点)。
 - **kind**: `event`(「今日の物件」)。
 - **大きな数字**: 価格(`AMOUNT/RENT` を「◯万円」「◯億円」。賃貸は「月◯万円」)。
-- **原稿のパーツ(例)**: 「今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。」「価格は{price}です。」「築{age}年、{LAYOUT}、延べ面積{OCCUPATION_AREA}…」(**面積の単位が確認できるまでは、面積と敷地の数字を読み上げない**。順位や比較だけに使う)。
+- **テンプレートの例**: 「今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。」「価格は{price}です。」「築{age}年、{LAYOUT}」。**面積と敷地の数字は、単位が確認できるまで読み上げない**(順位や比較だけに使う)。
 - **`STRONG_POINTS` の扱い**: 不動産会社の屋号、広告の言い回し(例: ハウスメーカー名、「♪」、「！」の連続)が混ざる。使う場合は、①ブランド名らしい固有名詞を含む文は除外 ②記号(♪、♡、★)を取り除く ③最初の1文だけ、40字以内。使えなければ、その文のパーツを出さない。
 - **個人情報**: 住所は市区町村までで足りる。番地・電話番号らしい文字列を含む自由記述は除外。
+- **型(テンプレート群)の例**: 物件の特徴で、「自然・静か」「駅・生活利便」「広さ・庭」「店舗・事業」「その他」の5つ。決定モデル(choice)が、`STRONG_POINTS` と物件種別から型を選ぶ(確信度が低ければ「その他」)。`stronger_ad`(noul): 「強み」の文に、広告・屋号の言い回しが含まれるか → 確率が0.5を超えたら、その文を使わない。
 
 ### 10.4 `akiya_sold`(空き家バンク: 成約物件)
 
@@ -807,20 +959,23 @@ select:
 4. 人が確認して直し、`datasets/<id>.yaml` に置く。
 5. `generate` を実行し、品質ゲートの結果を見る。
 
-計画書型は自由記述が多いと予想される。使い方は、①概要の文をそのまま字幕に使う(元データの文なので、事実が変わらない) ②施策の種類など、分類が要る場合は、`CLASSIFIER_PROVIDER`(最初は`rules`、足りなければJevなど)で行う。
+計画書型は自由記述が多いと予想される。使い方は、①概要の文をそのまま字幕に使う(元データの文なので、事実が変わらない) ②施策の種類など、分類が要る場合は、`DECIDER_PROVIDER`(最初は`rules`、足りなければJev系の判断モデル。§8.3a)で行う。
 
-### 8.9(補足)パーツ案を作らせるLLMプロンプトの要点
+### 8.9(補足)テンプレート案を作らせるLLMプロンプトの要点
 
 LLMに渡す: データセットのプロファイル(列名、型、欠損率、種類数、最長文字数、上位の値)、サンプル10行、YAMLスキーマ(§8.3)、禁止事項。指示の要点:
 - 値にあることだけを述べる。原因・責任・被害の推測は書かない。
 - 穴埋めは、列定義にある列名の `{}` だけを使う。
 - ニュース番組風の、落ち着いた語り口。
 - 出力はYAMLだけ。
+- 型(グループ)ごとに、完成した文章のテンプレートを、標準・短い版・言い回し違いで書く。1行は、読み上げて5〜8秒に収める。
 LLMの出力は、列名が列定義に存在するかを機械で検査してから、人が確認する。**LLMが書くのは「ひな型」だけで、数字は必ずエンジンが入れる。**
 
 ---
 
 ## 11. 埋め込み・地図・クラスタ(`embed` コマンド)
+
+実行時のベクトル計算は Rust(§7)。オフラインの処理(埋め込み、UMAP、KMeans)は、ライブラリの都合で Python(パイプライン)のまま(U11)。
 
 ### 11.1 検索用の文(`search_text`)
 
@@ -853,6 +1008,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 | Log Analytics + Application Insights | ログと監視 |
 | Container Registry | Webコンテナの置き場 |
 | Container Apps Environment + Container App | Next.js(`web`)。最小レプリカ1、スケールアウトは最大3 |
+| Container App(recsys) | Rust の `recsys`。**内部のみ**(外部に公開しない)。最小レプリカ1(起動時に全動画をメモリへ読み込む) |
 | PostgreSQL Flexible Server | DB。拡張 `vector` を許可する(`azure.extensions` に `VECTOR`) |
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
@@ -876,6 +1032,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 | ログ、監視 | `azurerm_log_analytics_workspace`, `azurerm_application_insights` |
 | コンテナレジストリ | `azurerm_container_registry` |
 | Container Apps の環境とアプリ | `azurerm_container_app_environment`, `azurerm_container_app` |
+| recsys のアプリ | `azurerm_container_app`(ingress は `external_enabled = false`) |
 | PostgreSQL | `azurerm_postgresql_flexible_server`, `azurerm_postgresql_flexible_server_database`, `azurerm_postgresql_flexible_server_configuration`(`azure.extensions` に `VECTOR` を許可) |
 | Blob と配信 | `azurerm_storage_account`, `azurerm_storage_container`, `azurerm_cdn_frontdoor_profile` ほか |
 | Azure OpenAI | `azurerm_cognitive_account`(kind: `OpenAI`)、`azurerm_cognitive_deployment`(埋め込みとチャット) |
@@ -893,8 +1050,9 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL接続文字列 |
 | `MEDIA_BASE_URL` | CDNのベースURL |
+| `RECSYS_URL`, `INTERNAL_TOKEN` | Next.js から recsys への内部HTTP(URLと共有トークン) |
 | `EMBED_PROVIDER`, `EMBED_DIM` | §0.4 |
-| `TTS_PROVIDER`, `LLM_PROVIDER`, `CLASSIFIER_PROVIDER` | §0.4 |
+| `TTS_PROVIDER`, `LLM_PROVIDER`, `DECIDER_PROVIDER` |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBED_DEPLOYMENT`, `AZURE_OPENAI_CHAT_DEPLOYMENT` | Azure OpenAI |
 | `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | Azure AI Speech |
 | `STORAGE_CONNECTION_STRING` | Blob への書き込み(パイプラインの `publish`) |
@@ -915,12 +1073,15 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | # | タスク | 受け入れ条件 |
 | --- | --- | --- |
 | M0 | リポジトリの雛形、Terraform、空のNext.jsをContainer Appsにデプロイ | `make infra-apply` と `make deploy` でURLが開く。DBに接続できる(`/api/health` が200) |
-| M1 | パイプラインの核(`profile`, `generate`)を `accident` で動かす | 試作と同じ傾向(193行前後を生成、No.20は除外、数字の不一致0)。すべての行が推定15〜30秒に収まる(収まらない行は理由つきで除外) |
-| M2 | DBのマイグレーション、`embed`、`publish`(ローカル) | `videos` と `embeddings` に193本が入る。`clusters` が作られる |
+| M1 | パイプラインの核(`profile`, `generate`)を `accident` で動かす | 試作と同じ傾向(191行前後を生成、No.20は除外、数字の不一致0)。すべての行が推定15〜30秒に収まる(収まらない行は理由つきで除外) |
+| M1b | 判断モデルの土台(`Decider` のインターフェース、`rules` の実装、YAMLの `decisions`、キャッシュ、記録)を、事故データに入れる | `rules` で動き、`decisions` が記録される。判断モデルを足してもコードが変わらない |
+| M2 | DBのマイグレーション、`embed`、`publish`(ローカル) | `videos` と `embeddings` に191本前後が入る。`clusters` が作られる |
 | M3 | Webのフィード(モックのUIを移植)。まずはDB直読みのダミーAPIで | モックと同じ見た目と操作。字幕、カウントアップ、コメント、一時停止、キーボード操作 |
-| M4 | `GET /api/feed`、`POST /api/view`、`POST /api/like`、レコメンダー(§7) | 疑似ユーザー(§14.2)のテストが通る。API仕様どおりの形で返る |
+| M4a | `services/recsys`(Rust): `reference/recsys-rs` を土台に、DBの読み書きと内部HTTP(§6.6)をつなぐ | `cargo test` が通る。内部APIが仕様どおり。2,100本×1024次元で、`pick_next` が数ms以内 |
+| M4b | Next.js のBFF(`/api/feed` `/api/view` `/api/like`)と、recsys のクライアント | 仕様どおりのJSON。疑似ユーザーのテスト(§14.2)が通る |
 | M5 | 好みパネル(地図、割合、要約、視聴の記録)とAPIの連携、元データのシート | モックと同じ見た目。操作で黄色い点が動く |
 | M6 | 残り13データセットの列定義YAML(§10)を、1つずつ追加 | 各データで `generate` が品質ゲートを通る本数が出る。数字の不一致0 |
+| M6b | `jev_local` を足し、事故50行で評価する(§14.2b) | 一致率80%以上なら `DECIDER_PROVIDER=jev_local` を既定にする。未満なら `rules` のまま、結果を記録 |
 | M7 | 地図の部品(航路、範囲、点)。日本の輪郭の同梱 | `naiko_route`, `flightplan`, `rental_result` の動画に地図が出る |
 | M8 | 音声(`TTS_PROVIDER`)。まず `none` のまま完成させ、余裕があれば追加 | 音声ありのときは字幕と音声が同期する |
 | M9 | 仕上げ: 監視、デモの流れ、READMEとデモ手順 | §14.3 の受け入れ基準を満たす |
@@ -942,17 +1103,25 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 ### 14.1 テスト
 
 - パイプライン: 事故の試作との照合テスト、品質ゲートの単体テスト、YAMLの式のテスト、数字の表記(`fmt`)のテスト。
-- Web: `recommender.ts` の単体テスト(更新式、いいね、取り消しの再生、候補の選択)。
+- recsys(Rust): `cargo test`(更新式、いいねと取り消しの再生、候補の選択、連続制限、割合の合計100)。Web(BFF): recsys のモックを使った、契約テスト。
 - API: 仕様どおりのJSONが返ること、`viewId` の重複を無視すること、不正な値が400になること。
 
 ### 14.2 疑似ユーザー(レコメンドの検証)
 
-`pipeline/tests/simulate.py`(またはWebのテスト)で、次を行う。
+`services/recsys` の `cargo test`(疑似ユーザー。`reference/recsys-rs` に雛形がある)で、次を行う。
 - ユーザーA: 「鉄道」のデータセットの動画だけ、最後まで見る(視聴率1.0)。他はすぐ飛ばす(0.05)。
 - ユーザーB: 「空き家」に、いいねを押す。他は普通(0.5)。
 - 各ユーザー100本ぶん動かし、**何本目から、好みのデータセットの動画が配信の過半数を超えるか**を測る。
 - 合格の目安: 20本以内に過半数を超えること。冒険枠(約18%)は、好み以外の動画が混ざることを確認する。
 - 係数(§7.1)は、この結果で調整する。
+
+### 14.2b 判断モデルの評価
+
+- `datasets/accident.labels.csv`: 人(あなた)が事故50行に、`template`(物件の損壊 / 人の負傷 / 制御不能・墜落・落下 / その他)の正解を付ける。`rules` で下書きを作って、人が直すと速い。
+- `uv run opendopa decide --dataset accident --eval datasets/accident.labels.csv` で、`rules` と `jev_local`(と、あれば `jev_api`)の一致率、フォールバックの割合、1問あたりの時間を出す。
+- 合格: `jev_local` の一致率が80%以上、かつフォールバックが30%以下。合格しなければ `rules` を既定のままにする。
+- 結果は `docs/DECISIONS.md` に記録する。
+
 
 ### 14.3 受け入れ基準(完成の定義)
 
@@ -995,7 +1164,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | # | 項目 | 既定値 | 差し替えるときに変えるもの |
 | --- | --- | --- | --- |
 | U1 | 音声 | `TTS_PROVIDER=none`(字幕のみ) | `TTS_PROVIDER`。VOICEVOXかAzure AI Speech。声と速度、読み辞書 |
-| U2 | 判断モデル(Jev等) | 使わない(`rules`) | `CLASSIFIER_PROVIDER`。計画書型データの分類で必要になったら |
+| U2 | 判断モデル(Jev系)の採用 | `DECIDER_PROVIDER=rules` で全体を通す。事故50行の評価で一致率80%以上なら `jev_local` を既定にする | `DECIDER_PROVIDER`。評価の結果を `docs/DECISIONS.md` に記録 |
 | U3 | 埋め込み | `EMBED_PROVIDER=azure`(使えなければ `local`) | Azure OpenAIの利用可否(サブスクはあるが、OpenAI・Speechは未確認) |
 | U4 | 単位の確認 | §10で「要確認」とした列は、絶対値を読み上げない | 仕様書で単位を確認できたら、YAMLの `unit_verified: true` にして解禁 |
 | U5 | 残り6種類のデータ | 後から追加(§10.15) | データと仕様書が届いたら、YAMLを足すだけ |
@@ -1004,35 +1173,4 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | U8 | クラスタ数 | 12 | `embed` の引数 |
 | U9 | 日本の輪郭データ | `world-atlas`(Natural Earth由来)を同梱 | 詳細な行政区画が必要になったら |
 | U10 | Azureの地域とモデル名 | Japan East、モデル名は実装時に確認 | `infra/main.parameters.json` |
-
----
-
-## 付録A: プロファイル要約(届いた14ファイルの事実)
-
-全列の詳細は `reference/profiles.json`(`reference/profile.py` の出力)を参照。
-
-| データ | 行数 | 年・期間 | 主な欠損・癖 |
-| --- | --- | --- | --- |
-| accident | 194 | 2022/12〜2025/3 | 概要が空1件(No.20)、再発防止策が空4件、海外の1件は場所が長文 |
-| flightplan | 100(サンプル) | 予定日時は2026年 | 属性66個、Polygon |
-| akiya_reg | 32,173 | - | 金額0・欠損・極端値、築年の欠損多、強み文は61%に記入 |
-| akiya_sold | 16,978 | 成約日は2026/3頃(欠損あり) | 成約日の欠損、金額の外れ値 |
-| rental_result | 1,050 | FISCAL_YEAR=2025が884行 | 距離の欠損多、年度が混在、和暦の期間文字列 |
-| rental_fleet | 2,564 | - | 列の意味が曖昧(営業所単位と支局合計の混在) |
-| naiko_route | 47,510 | 2017〜2023が主 | 港の緯度経度の欠損、2013〜2016に外れ値1行ずつ |
-| naiko_ship | 2,710 | - | 事業者はランク区分のみ、住所の欠損多、0が欠損を意味する列 |
-| rail_traffic1 | 4,022 | 2012〜2023 | 事業者397、年によって数が変わる |
-| rail_traffic2 | 3,988 | 2012〜2023 | 単位が不明な列が多い |
-| rail_km | 4,215 | 2012〜2023 | 54列 |
-| rail_pl | 2,773 | 2012〜2023 | 94列、事業者264 |
-| rail_income | 2,523 | 2012〜2023 | 事業者242、会社単位 |
-| rail_bs | 2,525 | 2012〜2023 | 78列、単位が列名にない |
-
-## 付録B: `reference/` の中身
-
-| ファイル | 内容 |
-| --- | --- |
-| `ui_mock.html` | UIの正解(モック。単体で開ける) |
-| `make_scripts_prototype.py` | 事故データの原稿生成の試作(§10.1の再現の元) |
-| `profile.py` | プロファイラの試作(§8.1 `profile` の元) |
-| `profiles.json` | 14ファイルの列プロファイル(列ごとの欠損率、種類数、最長、役割の推定、上位の値) |
+| U11 | オフラインのベクトル処理(埋め込み、UMAP、KMeans) | Python のまま(実行時の計算だけをRustにする) | Rustにしたい場合は指示する(UMAPのRust実装は成熟度が低いので、先に評価する) |
