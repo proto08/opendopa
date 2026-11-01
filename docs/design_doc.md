@@ -816,7 +816,6 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 
 | # | 項目 | 既定値 | 差し替えるときに変えるもの |
 | --- | --- | --- | --- |
-| U3 | 埋め込み | `EMBED_PROVIDER=azure`(使えなければ `local` = `multilingual-e5-large`) | Azure OpenAIの利用可否(サブスクはあるが、OpenAI・Speechは未確認) |
 | U4 | 単位の確認 | §10で「要確認」とした列は、絶対値を読み上げない | 仕様書で単位を確認できたら、YAMLの `unit_verified: true` にして解禁 |
 | U5 | 残り6種類のデータ | 後から追加(§10.15) | データと仕様書が届いたら、YAMLを足すだけ |
 | U6 | レコメンドの係数 | §7.1の値 | 疑似ユーザーのテスト(§14.2)で調整 |
