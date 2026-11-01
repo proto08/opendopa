@@ -626,7 +626,7 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 
 ## 11. 埋め込み・地図・クラスタ(`embed` コマンド)
 
-実行時のベクトル計算は Rust(§7)。オフラインの処理(埋め込み、UMAP、KMeans)は、ライブラリの都合で Python(パイプライン)のまま(U11)。
+実行時のベクトル計算は Rust(§7)。オフラインの処理(埋め込み、UMAP、KMeans)は、ライブラリの都合で Python(パイプライン)のままにする(決定)。
 
 ### 11.1 検索用の文(`search_text`)
 
@@ -668,7 +668,7 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 | Azure AI Speech | `TTS_PROVIDER=azure` のとき(VOICEVOX採用のため、既定では不要) |
 | Key Vault(任意) | 接続文字列とキー |
 
-地域は、日本の東(Japan East)を優先。サービスが使えない地域は、次の候補を選んでよい(記録する)。
+地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。
 
 ### 12.2 Terraform の構成
 
@@ -822,7 +822,5 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | U7 | 動画の上限 | 1データセット150本 | `select.cap` |
 | U8 | クラスタ数 | 12 | `embed` の引数 |
 | U9 | 日本の輪郭データ | `world-atlas`(Natural Earth由来)を同梱 | 詳細な行政区画が必要になったら |
-| U10 | Azureの地域とモデル名 | Japan East、モデル名は実装時に確認 | `infra/main.parameters.json` |
-| U11 | オフラインのベクトル処理(埋め込み、UMAP、KMeans) | Python のまま(実行時の計算だけをRustにする) | Rustにしたい場合は指示する(UMAPのRust実装は成熟度が低いので、先に評価する) |
 
 ---
