@@ -158,7 +158,7 @@ class Decision:
     score: float | None            # score のとき(期待値)
     probability: float | None      # noul のとき(はいの確率)
     confidence: float              # 分布の集中の度合い(0〜1)
-    provider: str                  # 'jev_local' など
+    provider: str                  # 'strands_azure' など
     used_fallback: bool            # フォールバックしたか
 ```
 
@@ -173,7 +173,8 @@ class Decision:
 | 名前 | 内容 |
 | --- | --- |
 | `rules` | ルール(`fallback_rules`、正規表現)。全体を通すまでの既定。判断モデルが使えないときの代わり |
-| `jev_local` | ローカルで動かす、Jevふうの判断モデル。候補は、Hugging Face の `chaoliangUNSW/Jev-Style-2B-Decision-v3`(約1.9B、Apache-2.0、`jev-style` パッケージでローカルAPIとして起動できる。Apple Siliconは `jev-style[mlx]`)と、AWSの Strands Decider 2B。実装時に、モデルカードの手順とライセンスを確認する(提供元はTypeSafe AIとは別の組織) |
+| `strands_azure` | **採用**。AWSの Strands Decider 2B を、Azure上(GPU付きContainer Apps か Azure ML)で動かし、内部APIとして呼ぶ。評価(§14.2b)に合格したら既定にする。モデルの入手元・ライセンスは実装時に確認する |
+| `jev_local` | ローカルで動かす、Jevふうの判断モデル。候補は、Hugging Face の `chaoliangUNSW/Jev-Style-2B-Decision-v3`(約1.9B、Apache-2.0、`jev-style` パッケージでローカルAPIとして起動できる。Apple Siliconは `jev-style[mlx]`)。実装時に、モデルカードの手順とライセンスを確認する(提供元はTypeSafe AIとは別の組織) |
 | `jev_api` | TypeSafe Jev(ホスト型のAPI。`TYPESAFE_API_KEY`)。費用・利用条件は要確認 |
 | `azure_openai` | Azure OpenAI の構造化出力で、同じ質問に答えさせる(確率は、複数回の試行の割合などで近似してよい) |
 

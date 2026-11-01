@@ -44,9 +44,11 @@
 | 部品 | 既定の実装 | 代わりの実装 | 環境変数 |
 | --- | --- | --- | --- |
 | 埋め込み | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`) | ローカルの `multilingual-e5-large`(1024次元) | `EMBED_PROVIDER=azure\|local` |
-| 音声(TTS) | `none`(字幕のみ。最初はこれで通す) | `azure`(Azure AI Speech)、`voicevox` | `TTS_PROVIDER=none\|azure\|voicevox` |
-| 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `jev_local`(Jev-Style 2B など。失敗・低確信度のときは `rules`) | `jev_api`(TypeSafe Jev)、`azure_openai`(構造化出力) | `DECIDER_PROVIDER=rules\|jev_local\|jev_api\|azure_openai` |
+| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | `azure`(Azure AI Speech) | `TTS_PROVIDER=none\|azure\|voicevox` |
+| 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `strands_azure`(Azure上で動かす Strands Decider 2B。失敗・低確信度のときは `rules`) | `jev_local`、`jev_api`(TypeSafe Jev)、`azure_openai`(構造化出力) | `DECIDER_PROVIDER=rules\|strands_azure\|jev_local\|jev_api\|azure_openai` |
 | LLM(テンプレート案、クラスタ名) | Azure OpenAI のチャットモデル | なし(クラスタ名は機械的な名前にフォールバック) | `LLM_PROVIDER=azure\|none` |
+
+ローカルの埋め込み(`EMBED_PROVIDER=local`)は `intfloat/multilingual-e5-large`(1024次元)に決定。入力の先頭に、動画の本文には `passage: `、検索文には `query: ` を付け、正規化したベクトルを保存する。Azure と次元(1024)が同じなので、DBの列は共通。ただし、モデルが違うため、**ベクトルを混ぜない**(切り替えたら全動画を埋め込み直す)。
 
 `TTS_PROVIDER=none` のときの字幕のタイミングは、1秒あたり6.5文字で見積もる。
 
@@ -97,8 +99,8 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 | D11 | 配信 | Azure Blob Storage + CDN(Front Door)。音声とシーンJSONの置き場 |
 | D12 | 原稿生成 | 列定義 + **完成した台本のテンプレート**(型ごとに数本、YAML) + 共通エンジン(Python)。型の選択は決定モデル、穴埋めはコード。行ごとにLLMを呼ばない |
 | D13 | Databricks | 使わない |
-| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら `jev_local` に切り替える |
-| D15 | 音声 | 後で決める(VOICEVOXかAzure AI Speech)。最初は `none` で通す |
+| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら、Azure上で動かす Strands Decider 2B(`strands_azure`)に切り替える。配備先(GPU付きContainer Apps か Azure ML)とモデルの入手元・ライセンスは実装時に確認し、評価の結果は `docs/DECISIONS.md` に記録する |
+| D15 | 音声 | **VOICEVOX**。最初は `none` で通し、あとから `voicevox` に切り替える。声(キャラクター)・速度・読み辞書は実装時に決める |
 | D16 | 地図の背景 | 日本の輪郭をアプリに同梱する(Natural Earthを元にした公開データ。npmの`world-atlas`など) |
 | D17 | ベクトル計算 | **Rustの別サービス(`services/recsys`)**。**状態を持たない計算サービス**で、Next.js から、イベントの履歴などを受け取り、好みの位置・割合と、次の動画を返す。DBには書き込まない(起動時に、動画の埋め込みを読み取りのみ)。Container Apps の内部サービス(§6.6) |
 
@@ -662,7 +664,8 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
 | Azure OpenAI | 埋め込み、チャットのデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認 |
-| Azure AI Speech | `TTS_PROVIDER=azure` のとき |
+| 判断モデルの配備先(GPU付きContainer Apps、またはAzure ML) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。**内部のみ** |
+| Azure AI Speech | `TTS_PROVIDER=azure` のとき(VOICEVOX採用のため、既定では不要) |
 | Key Vault(任意) | 接続文字列とキー |
 
 地域は、日本の東(Japan East)を優先。サービスが使えない地域は、次の候補を選んでよい(記録する)。
@@ -731,7 +734,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | M4b | Next.js のBFF(`/api/feed` `/api/view` `/api/like`): DBの読み書き、recsys の呼び出し、シーンJSONの整形 | 仕様どおりのJSON。疑似ユーザーのテスト(§14.2)が通る |
 | M5 | 好みパネル(地図、割合、要約、視聴の記録)とAPIの連携、元データのシート | モックと同じ見た目。操作で黄色い点が動く |
 | M6 | 残り13データセットの列定義YAML(§10)を、1つずつ追加 | 各データで `generate` が品質ゲートを通る本数が出る。数字の不一致0 |
-| M6b | `jev_local` を足し、事故50行で評価する(§14.2b) | 一致率80%以上なら `DECIDER_PROVIDER=jev_local` を既定にする。未満なら `rules` のまま、結果を記録 |
+| M6b | `strands_azure` を足し(モデルをAzureに配備)、事故50行で評価する(§14.2b) | 一致率80%以上なら `DECIDER_PROVIDER=strands_azure` を既定にする。未満なら `rules` のまま、結果を記録 |
 | M7 | 地図の部品(航路、範囲、点)。日本の輪郭の同梱 | `naiko_route`, `flightplan`, `rental_result` の動画に地図が出る |
 | M8 | 音声(`TTS_PROVIDER`)。まず `none` のまま完成させ、余裕があれば追加 | 音声ありのときは字幕と音声が同期する |
 | M9 | 仕上げ: 監視、デモの流れ、READMEとデモ手順 | §14.3 の受け入れ基準を満たす |
@@ -768,8 +771,8 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 ### 14.2b 判断モデルの評価
 
 - `datasets/accident.labels.csv`: 人(あなた)が事故50行に、`template`(物件の損壊 / 人の負傷 / 制御不能・墜落・落下 / その他)の正解を付ける。`rules` で下書きを作って、人が直すと速い。
-- `uv run opendopa decide --dataset accident --eval datasets/accident.labels.csv` で、`rules` と `jev_local`(と、あれば `jev_api`)の一致率、フォールバックの割合、1問あたりの時間を出す。
-- 合格: `jev_local` の一致率が80%以上、かつフォールバックが30%以下。合格しなければ `rules` を既定のままにする。
+- `uv run opendopa decide --dataset accident --eval datasets/accident.labels.csv` で、`rules` と `strands_azure`(と、あれば `jev_api`)の一致率、フォールバックの割合、1問あたりの時間を出す。
+- 合格: `strands_azure` の一致率が80%以上、かつフォールバックが30%以下。合格しなければ `rules` を既定のままにする。
 - 結果は `docs/DECISIONS.md` に記録する。
 
 
@@ -813,9 +816,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 
 | # | 項目 | 既定値 | 差し替えるときに変えるもの |
 | --- | --- | --- | --- |
-| U1 | 音声 | `TTS_PROVIDER=none`(字幕のみ) | `TTS_PROVIDER`。VOICEVOXかAzure AI Speech。声と速度、読み辞書 |
-| U2 | 判断モデル(Jev系)の採用 | `DECIDER_PROVIDER=rules` で全体を通す。事故50行の評価で一致率80%以上なら `jev_local` を既定にする | `DECIDER_PROVIDER`。評価の結果を `docs/DECISIONS.md` に記録 |
-| U3 | 埋め込み | `EMBED_PROVIDER=azure`(使えなければ `local`) | Azure OpenAIの利用可否(サブスクはあるが、OpenAI・Speechは未確認) |
+| U3 | 埋め込み | `EMBED_PROVIDER=azure`(使えなければ `local` = `multilingual-e5-large`) | Azure OpenAIの利用可否(サブスクはあるが、OpenAI・Speechは未確認) |
 | U4 | 単位の確認 | §10で「要確認」とした列は、絶対値を読み上げない | 仕様書で単位を確認できたら、YAMLの `unit_verified: true` にして解禁 |
 | U5 | 残り6種類のデータ | 後から追加(§10.15) | データと仕様書が届いたら、YAMLを足すだけ |
 | U6 | レコメンドの係数 | §7.1の値 | 疑似ユーザーのテスト(§14.2)で調整 |
