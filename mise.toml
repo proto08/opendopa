@@ -1,0 +1,95 @@
+# OpenDopa のツール・環境変数・タスク(ADR-0012 A3, A8, A9)
+# 使い方: `mise install` → `mise run setup` → `mise run dev`。タスクの一覧は `mise tasks`。
+
+[tools]
+node = "26.13.0"
+pnpm = "12.16.1"
+python = "3.13.18"
+uv = "0.13.6"
+rust = { version = "1.99.1", components = "clippy,rustfmt" }
+dbmate = "2.37.0"
+lefthook = "2.2.2"
+
+[env]
+# ルートの .env.local を全アプリに渡す(なければ .env.example をコピーする: `mise run setup`)
+_.file = ".env.local"
+
+# ---- セットアップ ----
+
+[tasks.setup]
+description = "初回のセットアップ(.env.local の作成、依存のインストール、git hook の登録)"
+run = [
+  "test -f .env.local || cp .env.example .env.local",
+  "pnpm install",
+  "uv sync --project pipeline",
+  "cargo fetch --manifest-path services/recsys/Cargo.toml",
+  "lefthook install",
+]
+
+# ---- 起動 ----
+
+[tasks.dev]
+description = "web と recsys をまとめて起動する"
+depends = ["web", "recsys"]
+
+[tasks.web]
+description = "web(Next.js)を起動する(http://localhost:3000)"
+dir = "apps/web"
+run = "pnpm dev"
+
+[tasks.recsys]
+description = "recsys(Rust)を起動する(http://localhost:8080)"
+dir = "services/recsys"
+run = "cargo run -p recsys-server"
+
+# ---- 型の生成 ----
+
+[tasks.gen-types]
+description = "packages/shared/schema の JSON Schema から TS の型と pydantic のモデルを生成する"
+run = [
+  "pnpm --filter @opendopa/shared gen",
+  "uv run --project pipeline python ../packages/shared/scripts/gen_pydantic.py",
+]
+
+# ---- 整形・lint・テスト ----
+
+[tasks.fmt]
+description = "全言語の整形"
+run = [
+  "pnpm --filter web exec eslint --fix .",
+  "uv run --project pipeline ruff format .",
+  "uv run --project pipeline ruff check --fix .",
+  "cargo fmt --manifest-path services/recsys/Cargo.toml --all",
+]
+
+[tasks.lint]
+description = "全言語の lint(CI と同じ)"
+depends = ["lint:*"]
+
+[tasks."lint:web"]
+dir = "apps/web"
+run = "pnpm lint"
+
+[tasks."lint:pipeline"]
+dir = "pipeline"
+run = ["uv run ruff format --check .", "uv run ruff check ."]
+
+[tasks."lint:recsys"]
+dir = "services/recsys"
+run = ["cargo fmt --all --check", "cargo clippy --all-targets -- -D warnings"]
+
+[tasks.test]
+description = "全言語のテスト"
+depends = ["test:*"]
+
+[tasks."test:web"]
+dir = "apps/web"
+run = "pnpm test"
+
+[tasks."test:pipeline"]
+dir = "pipeline"
+run = "uv run pytest"
+
+[tasks."test:recsys"]
+dir = "services/recsys"
+run = "cargo test"
