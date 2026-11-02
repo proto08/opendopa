@@ -45,11 +45,16 @@ run = "cargo run -p recsys-server"
 # ---- 型の生成 ----
 
 [tasks.gen-types]
-description = "packages/shared/schema の JSON Schema から TS の型と pydantic のモデルを生成する"
+description = "packages/shared/schema の JSON Schema から TS の型と pydantic のモデルを生成する(ADR-0012 A2, A13)"
 run = [
   "pnpm --filter @opendopa/shared gen",
-  "uv run --project pipeline python ../packages/shared/scripts/gen_pydantic.py",
+  "cd pipeline && uv run datamodel-codegen --input ../packages/shared/schema/scene.schema.json --input-file-type jsonschema --output opendopa_pipeline/generated/scene.py --output-model-type pydantic_v2.BaseModel --target-python-version 3.13 --use-annotated --use-standard-collections --use-union-operator --field-constraints --disable-timestamp --use-schema-description --use-field-description --formatters ruff-format",
 ]
+
+[tasks."gen-types:check"]
+description = "生成した型がスキーマと一致しているかを確かめる(CI 用)"
+depends = ["gen-types"]
+run = "git diff --exit-code -- packages/shared/src/generated pipeline/opendopa_pipeline/generated"
 
 # ---- 整形・lint・テスト ----
 

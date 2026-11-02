@@ -1,0 +1,216 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://opendopa.local/schema/scene.schema.json",
+  "title": "Scene",
+  "description": "1本の動画の描画データ(設計書 §9)。pipeline が出力し、web が描画する。",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "videoId",
+    "datasetId",
+    "kind",
+    "categoryName",
+    "wmChar",
+    "color",
+    "headline",
+    "bigNumber",
+    "lines",
+    "durationSec",
+    "map",
+    "sparkline",
+    "chips",
+    "comments",
+    "source",
+    "numbers"
+  ],
+  "properties": {
+    "videoId": { "type": "string", "description": "例: accident-0001" },
+    "datasetId": { "type": "string", "description": "例: accident" },
+    "kind": { "$ref": "#/$defs/Kind" },
+    "categoryName": { "type": "string", "description": "テロップに出すカテゴリ名" },
+    "wmChar": { "type": "string", "minLength": 1, "maxLength": 1, "description": "背景の透かし1文字" },
+    "color": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" },
+    "headline": { "type": "string", "maxLength": 40, "description": "テロップの見出し(40字以内)" },
+    "bigNumber": { "$ref": "#/$defs/BigNumber" },
+    "lines": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Line" },
+      "description": "字幕と読み上げの単位"
+    },
+    "durationSec": {
+      "type": "number",
+      "minimum": 15,
+      "maximum": 30,
+      "description": "lines の合計"
+    },
+    "map": {
+      "oneOf": [{ "$ref": "#/$defs/SceneMap" }, { "type": "null" }],
+      "description": "§9.1。地図がなければ null"
+    },
+    "sparkline": {
+      "oneOf": [
+        { "type": "array", "maxItems": 12, "items": { "$ref": "#/$defs/SparkPoint" } },
+        { "type": "null" }
+      ],
+      "description": "12点以内。なければ null"
+    },
+    "chips": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "特徴の小さなラベル(例: 夜間、目視外)"
+    },
+    "comments": { "type": "array", "items": { "$ref": "#/$defs/FlowComment" } },
+    "source": { "$ref": "#/$defs/Source" },
+    "numbers": {
+      "type": "array",
+      "items": {},
+      "description": "検証用の記録(配信時は不要。DB には残す)。形は M1 で決める"
+    }
+  },
+  "$defs": {
+    "Kind": { "type": "string", "enum": ["event", "stat", "geo"] },
+    "BigNumber": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "text", "unit", "label", "countUp"],
+      "properties": {
+        "value": {
+          "oneOf": [{ "type": "number" }, { "type": "string" }],
+          "description": "countUp が true で数のとき、カウントアップする"
+        },
+        "text": { "type": "string" },
+        "unit": { "type": "string" },
+        "label": { "type": "string" },
+        "countUp": { "type": "boolean" }
+      }
+    },
+    "Line": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["text", "audio", "durationSec"],
+      "properties": {
+        "text": { "type": "string" },
+        "speak": { "type": "string", "description": "TTS 用(辞書適用後)。なければ text を使う" },
+        "audio": {
+          "oneOf": [{ "$ref": "#/$defs/Audio" }, { "type": "null" }],
+          "description": "なければ null"
+        },
+        "durationSec": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "音声がなければ文字数/6.5 の見積もり"
+        }
+      }
+    },
+    "Audio": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "durationSec"],
+      "properties": {
+        "url": { "type": "string" },
+        "durationSec": { "type": "number", "exclusiveMinimum": 0 }
+      }
+    },
+    "SparkPoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number" },
+        "y": { "type": "number" }
+      }
+    },
+    "FlowComment": {
+      "description": "流れるコメント",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["t", "text", "style"],
+      "properties": {
+        "t": { "type": "number", "minimum": 0, "description": "動画内の秒" },
+        "text": { "type": "string" },
+        "style": { "type": "string", "enum": ["normal", "yellow"] }
+      }
+    },
+    "Source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["datasetName", "ref"],
+      "properties": {
+        "datasetName": { "type": "string" },
+        "ref": { "type": "string", "description": "例: 行 #1、YEAR=2023 / 事業者名" }
+      }
+    },
+    "Place": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "lat", "lon"],
+      "properties": {
+        "name": { "type": "string" },
+        "lat": { "type": "number" },
+        "lon": { "type": "number" }
+      }
+    },
+    "SceneMap": {
+      "oneOf": [
+        { "$ref": "#/$defs/RouteMap" },
+        { "$ref": "#/$defs/PolygonMap" },
+        { "$ref": "#/$defs/PointsMap" }
+      ]
+    },
+    "RouteMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "from", "to"],
+      "properties": {
+        "type": { "const": "route" },
+        "from": { "$ref": "#/$defs/Place" },
+        "to": { "$ref": "#/$defs/Place" }
+      }
+    },
+    "PolygonMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "rings"],
+      "properties": {
+        "type": { "const": "polygon" },
+        "rings": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": { "type": "number" },
+              "minItems": 2,
+              "maxItems": 2,
+              "description": "[lon, lat]"
+            }
+          }
+        },
+        "markers": { "type": "array", "items": { "$ref": "#/$defs/Place" } }
+      }
+    },
+    "PointsMap": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "points"],
+      "properties": {
+        "type": { "const": "points" },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "lat", "lon"],
+            "properties": {
+              "name": { "type": "string" },
+              "lat": { "type": "number" },
+              "lon": { "type": "number" },
+              "size": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
