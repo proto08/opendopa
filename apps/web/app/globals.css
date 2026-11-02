@@ -1,0 +1,11 @@
+/* モックの CSS は M3 で移植する(設計書 §4.1: Tailwind は使わず素の CSS) */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, sans-serif;
+}
