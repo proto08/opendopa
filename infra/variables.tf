@@ -35,6 +35,11 @@ variable "registry_sku" {
   description = "Container Registry の SKU"
   type        = string
   default     = "Basic"
+
+  validation {
+    condition     = contains(["Basic", "Standard", "Premium"], var.registry_sku)
+    error_message = "registry_sku は Basic / Standard / Premium のいずれかにする。"
+  }
 }
 
 variable "log_retention_days" {
