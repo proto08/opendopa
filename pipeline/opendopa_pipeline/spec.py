@@ -248,11 +248,7 @@ class DatasetDef(_Model):
         errors = []
         type_ids = {g.id for g in self.template_groups}
         decision_ids = {d.id for d in self.decisions}
-        if (
-            self.template_select
-            and self.decisions
-            and self.template_select.decision not in decision_ids
-        ):
+        if self.template_select and self.template_select.decision not in decision_ids:
             errors.append(
                 f"template_select.decision: 判断 {self.template_select.decision!r} が"
                 " decisions にありません"
