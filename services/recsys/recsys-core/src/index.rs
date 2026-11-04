@@ -34,7 +34,17 @@ pub struct Index {
 
 impl Index {
     /// 同じ ID の動画があれば、後ろのものを無視する。
+    /// 全動画とクラスタの重心は、同じ次元でなければならない(開発中は `debug_assert` で確かめる)。
     pub fn new(videos: Vec<Video>, clusters: Vec<Cluster>) -> Self {
+        let dim = videos
+            .first()
+            .map(|v| v.vector.len())
+            .or_else(|| clusters.first().map(|c| c.centroid.len()));
+        debug_assert!(
+            videos.iter().all(|v| Some(v.vector.len()) == dim)
+                && clusters.iter().all(|c| Some(c.centroid.len()) == dim),
+            "埋め込みの次元がそろっていない"
+        );
         let mut by_id = HashMap::with_capacity(videos.len());
         let mut kept = Vec::with_capacity(videos.len());
         for v in videos {
@@ -68,5 +78,41 @@ impl Index {
 
     pub fn is_empty(&self) -> bool {
         self.videos.is_empty()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn video(id: &str, x: f32) -> Video {
+        Video {
+            id: id.into(),
+            dataset_id: "d".into(),
+            vector: vec![1.0, 0.0],
+            x,
+            y: 0.0,
+        }
+    }
+
+    #[test]
+    fn duplicate_id_keeps_first() {
+        let idx = Index::new(
+            vec![video("a", 1.0), video("b", 2.0), video("a", 3.0)],
+            vec![],
+        );
+        assert_eq!(idx.len(), 2);
+        assert_eq!(idx.video("a").unwrap().x, 1.0);
+    }
+
+    #[test]
+    fn videos_keep_given_order() {
+        let idx = Index::new(
+            vec![video("c", 0.0), video("a", 0.0), video("b", 0.0)],
+            vec![],
+        );
+        let ids: Vec<&str> = idx.videos().iter().map(|v| v.id.as_str()).collect();
+        assert_eq!(ids, ["c", "a", "b"]);
+        assert!(idx.video("zzz").is_none());
     }
 }
