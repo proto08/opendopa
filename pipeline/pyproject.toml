@@ -1,0 +1,39 @@
+[project]
+name = "opendopa-pipeline"
+version = "0.1.0"
+description = "OpenDopa のコンテンツ生成パイプライン(Batch。設計書 §8)"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "pydantic>=2.14.2",
+    "typer>=0.27.3",
+]
+
+[project.scripts]
+opendopa = "opendopa_pipeline.cli:app"
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+# 設計書 §4.2 の配置(pipeline/opendopa_pipeline/)に合わせ、src/ を使わない
+module-root = ""
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# 生成したコード(mise run gen-types)は lint しない
+extend-exclude = ["opendopa_pipeline/generated"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[dependency-groups]
+dev = [
+    "datamodel-code-generator>=0.87.0",
+    "pytest>=9.2.0",
+    "ruff>=0.17.3",
+]
