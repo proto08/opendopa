@@ -99,7 +99,7 @@ cd pipeline && uv run opendopa --help
 | コマンド | 内容 |
 | --- | --- |
 | `mise tasks` | タスクの一覧 |
-| `mise run lint` | 全言語の lint(CI と同じ) |
+| `mise run lint` | 全言語の lint(CI と同じ内容。CI は #14 で追加予定) |
 | `mise run test` | 全言語のテスト |
 | `mise run fmt` | 全言語の整形 |
 | `mise run gen-types` | `packages/shared/schema` から TS の型と pydantic のモデルを生成する |
