@@ -10,6 +10,7 @@
 | ADR | 題 | Issue |
 | --- | --- | --- |
 | [ADR-0012](adr/0012-repo-scaffold.md) | リポジトリの雛形(ツール、言語の境界、ハーネス) | #12 |
+| [ADR-0030](adr/0030-pipeline-ingest-stats.md) | パイプライン: 取り込み・クリーニング・derived・stats・fmt | #30 |
 
 ## 小さな決定
 
@@ -31,3 +32,8 @@
 - 2026-11-04: サンプルの置き場を `packages/shared/examples/` から `fixtures/` に変え、`accident-0001.json`(`map: null`)と `map-route` / `map-polygon` / `map-points` の4本にした。理由: #28 の指定。テストが4本すべての検証を通ることを確かめる。`@opendopa/shared/fixtures/*` で web からも読める。
 - 2026-11-04: `packages/shared` に `tsconfig.json` と `typecheck`(`tsc --noEmit`)を足し、`mise run lint` の `lint:shared` に入れた。eslint は足さない。理由: vitest は型を検査せず、shared の型エラーが lint・テストをすり抜けていた(実際に `@types/node` 不足が見つかった)。eslint は規則を決める必要があり、CI(#14)で扱う方が自然。
 - 2026-11-04: `mise run test` に `test:shared`(ajv の検証テスト)を足した。理由: 言語の境目のテストを CI と同じ入口で流すため。
+- 2026-11-04: pipeline に pandas を使う。理由: イシュー #30 のテストが「小さな DataFrame」で書かれており、グループごとの集計(stats)が書きやすいため。
+- 2026-11-04: CSV はすべて文字列で読み、欠損以外がすべて数の形の列だけ数値にする。先頭が 0 の符号(`01100` など)は文字列のまま。理由: 行政区域コードの 0 を落とさないため(ADR-0030)。
+- 2026-11-04: `extract_pref` は、47 都道府県の名前を列挙して先頭一致で取る(`...県` の正規表現にしない)。理由: 3 文字の県や「北海道」、海外の長い文を誤って取らないため。事故データの「194 行中 3 行は取れない」を満たす想定(データがあるときのテストで確認)。
+- 2026-11-04: `sentence` は `。` `！` `？`(と直後の閉じ括弧)で切り、元の文字を変えない。`map`・`classify` の `else` に当たるのは、元の値が欠損でない行だけ(`classify` だけは欠損も `else`)。理由: 欠損の行に「負傷者の報告があります」のような文を作らないため。
+- 2026-11-04: stat の `fmt:` を書くと `<name>_text` の列を作り、穴で使える(`DatasetDef.defined_names` に含める)。derived の数字の表記は `op: format` で行い、`numbers` には残さない(元の列の値が行にあるため、照合は元の行の値で行える)。理由: 原稿の数字をすべて `fmt` に通すため。
