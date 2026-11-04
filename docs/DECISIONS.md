@@ -21,6 +21,10 @@
 - 2026-11-02: web の `/api/health` は `connection()` を呼んで、リクエストのたびに実行する。理由: Next.js 16 の Cache Components では、条件次第で `GET` の Route Handler がビルド時に事前生成されるため。
 - 2026-11-04: Terraform の `terraform.tfvars`・`backend.hcl`・`tfplan`・state は .gitignore に入れ、`.terraform.lock.hcl` はコミットする。理由: 秘密・環境差分を入れず、プロバイダーのハッシュは全員で揃えるため(ADR-0016)。
 - 2026-11-04: bootstrap.sh のロール割り当ては、既存確認のうえ失敗時は止め、container create は反映待ちとして最大12回リトライする。TFSTATE_SUFFIX は4〜7文字(接頭辞17文字+24文字上限)。理由: レビュー指摘で失敗の握りつぶしと文言の不一致を解消(ADR-0016)。実機未確認。
+- 2026-11-04: CI は `.github/workflows/ci.yml` の1ファイルにし、変更の検出(dorny/paths-filter)→ 部分ごとのジョブ → 結果をまとめる `ci-ok` の形にする。必須チェックには `ci-ok` だけを指定する。理由: パスフィルタでスキップされたジョブを個別に必須にすると PR が止まるため(Issue #14)。
+- 2026-11-04: CI のツールは `jdx/mise-action` で `mise.toml` のバージョンを使い、ジョブごとに必要なものだけ入れる。キャッシュは pnpm のストアと uv が `actions/cache`、cargo が `Swatinem/rust-cache`。理由: ローカルと CI のバージョンを一致させ、不要な Rust などを入れる時間を省く。
+- 2026-11-04: Issue の列挙に加えて、web の `pnpm typecheck`、pipeline の ruff、`gen-types:check` も CI で検査する。理由: CLAUDE.md の完了条件と設計書 §12.4(生成した型の差分の検査)に合わせるため。イメージのビルドとデプロイは対象外(検証のみ)。
+- 2026-11-04: CI の `concurrency` は PR のときだけ古い実行を止め(`cancel-in-progress: ${{ github.event_name == 'pull_request' }}`)、main への push では止めない。理由: 連続マージ時に、先のマージ commit の検証が途中で消えるのを避けるため(PR #68 のレビュー対応)。
 - 2026-11-04: シーンJSONの検証は、TS が ajv(`ajv/dist/2020`)、Python が jsonschema(Draft 2020-12)で、どちらも `packages/shared/schema/scene.schema.json` を直接読む。pipeline のパスは `packages/shared` をリポジトリ内の相対位置で解決する。理由: 契約は JSON Schema が正(ADR-0012 A2)で、どちらの言語も同じファイルを読めば、フィクスチャの合否が一致する。生成した pydantic モデルは型として使い、検証の判定には使わない。
 - 2026-11-04: サンプルの置き場を `packages/shared/examples/` から `fixtures/` に変え、`accident-0001.json`(`map: null`)と `map-route` / `map-polygon` / `map-points` の4本にした。理由: #28 の指定。テストが4本すべての検証を通ることを確かめる。`@opendopa/shared/fixtures/*` で web からも読める。
 - 2026-11-04: `packages/shared` に `tsconfig.json` と `typecheck`(`tsc --noEmit`)を足し、`mise run lint` の `lint:shared` に入れた。eslint は足さない。理由: vitest は型を検査せず、shared の型エラーが lint・テストをすり抜けていた(実際に `@types/node` 不足が見つかった)。eslint は規則を決める必要があり、CI(#14)で扱う方が自然。
