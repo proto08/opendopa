@@ -1,0 +1,178 @@
+# CI(検証のみ)。設計書 §12.4。決めたことは docs/DECISIONS.md。
+# PR と main への push で動く。変更のあった部分だけ走らせる。シークレットは使わない。
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同じ PR で新しい push があったら、古い実行を止める(main への push は止めない)
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # mise.toml を信頼する(CI の確認プロンプトを避ける)
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+
+jobs:
+  # どの部分が変わったかを調べる
+  changes:
+    name: 変更の検出
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      pipeline: ${{ steps.filter.outputs.pipeline }}
+      recsys: ${{ steps.filter.outputs.recsys }}
+      types: ${{ steps.filter.outputs.types }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'packages/shared/**'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - 'pnpm-workspace.yaml'
+              - 'mise.toml'
+              - '.github/workflows/ci.yml'
+            pipeline:
+              - 'pipeline/**'
+              - 'packages/shared/schema/**'
+              - 'datasets/**'
+              - 'mise.toml'
+              - '.github/workflows/ci.yml'
+            recsys:
+              - 'services/recsys/**'
+              - 'mise.toml'
+              - '.github/workflows/ci.yml'
+            types:
+              - 'packages/shared/**'
+              - 'pipeline/pyproject.toml'
+              - 'pipeline/uv.lock'
+              - 'pipeline/opendopa_pipeline/generated/**'
+              - 'pnpm-lock.yaml'
+              - 'mise.toml'
+              - '.github/workflows/ci.yml'
+
+  web:
+    name: Web・shared(lint・型・テスト)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # mise.toml のバージョンで、必要なツールだけ入れる(ツールのキャッシュ込み)
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: node pnpm
+      - name: pnpm のストアを取得する場所
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: pnpm-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint && pnpm test
+        working-directory: apps/web
+      - run: pnpm typecheck
+        working-directory: apps/web
+      # packages/shared(型検査と ajv の検証テスト)。mise run lint:shared / test:shared と同じ
+      - run: pnpm typecheck && pnpm test
+        working-directory: packages/shared
+
+  pipeline:
+    name: パイプライン(ruff・pytest)
+    needs: changes
+    if: needs.changes.outputs.pipeline == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: python uv
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/uv
+          key: uv-${{ runner.os }}-${{ hashFiles('pipeline/uv.lock') }}
+          restore-keys: uv-${{ runner.os }}-
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - run: uv run ruff format --check . && uv run ruff check .
+        working-directory: pipeline
+      - run: uv run pytest
+        working-directory: pipeline
+
+  recsys:
+    name: recsys(fmt・clippy・test)
+    needs: changes
+    if: needs.changes.outputs.recsys == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: rust
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: services/recsys
+      - run: cargo fmt --all --check
+        working-directory: services/recsys
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: services/recsys
+      - run: cargo test
+        working-directory: services/recsys
+
+  # 生成した型(TS・pydantic)が、JSON Schema と一致しているか
+  types:
+    name: 生成した型の差分
+    needs: changes
+    if: needs.changes.outputs.types == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # rust は入れない。gen-types 系のタスクが rust を使うようになったら、ここに足す
+      - uses: jdx/mise-action@v2
+        with:
+          install_args: node pnpm python uv
+      - name: pnpm のストアを取得する場所
+        id: pnpm-store
+        run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.pnpm-store.outputs.path }}
+            ~/.cache/uv
+          key: types-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml', 'pipeline/uv.lock') }}
+          restore-keys: types-${{ runner.os }}-
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --frozen
+        working-directory: pipeline
+      - run: mise run gen-types:check
+
+  # 必須チェックにはこのジョブだけを指定する。
+  # 走らなかった(スキップされた)ジョブは成功として扱い、失敗・キャンセルがあれば落とす。
+  ci-ok:
+    name: CI(必須チェック)
+    needs: [changes, web, pipeline, recsys, types]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: 結果を確かめる
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "結果: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) exit 1 ;;
+          esac
