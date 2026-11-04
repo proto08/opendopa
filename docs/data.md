@@ -24,6 +24,10 @@ wm_char: 機                        # 背景の透かし1文字
 color: "#FF7A59"                   # 地図の点の色
 files: [data/raw/accident/02_jikojyouhou.csv]
 grain: row                         # row=1行1本 / group=グループ集計で1本(§8.5)
+# grain: group のときだけ。group_by の列で集計して1グループ=1行にする。
+# aggregate は 列名: sum|mean|min|max|first|count。集計後の列は group_by と aggregate の列、元の行数 n_rows
+# group_by: [PREFECTURE_NAME]
+# aggregate: {TOTAL_VEHICLE_COUNT: sum, TOTAL_RENTAL_TIMES: sum, TOTAL_RENTAL_FEES: sum}
 rename: {}                         # 列名の置き換え
 null_values: ["", "不明"]          # 欠損として扱う値
 zero_is_null: []                   # 0を欠損とみなす列
@@ -219,12 +223,30 @@ select:
 
 出力した数値は、「計算に使った元の列、操作、値、表示形」の記録(`numbers` リスト)としてシーンに残す。検証は、この記録を元データから再計算して照合する。
 
+#### 各 op の引数と出力(実装: `pipeline/opendopa_pipeline/stats.py`)
+
+`group` / `group_by` は列名(または列名のリスト)。欠損の値・欠損のグループの行は、結果も欠損にする。
+`fmt:` を付けると、`<name>_text` の列に表示形(下の `fmt`)の文字列も作る(穴では `{<name>_text}`)。
+
+| op | 引数 | 出力の列 |
+| --- | --- | --- |
+| `rank_in_group` | `value`、`group`(省略で全体)、`order`(`desc` 既定 / `asc`) | `<name>`(順位。同順位は同じ順位で、次は飛ぶ)、`<name>_n`(順位をつけた行数) |
+| `yoy_diff` / `yoy_ratio` | `value`、`group_by`(主体)、`year` | 前年(`year - 1`)の同じ主体の行との差 / 変化率(%。(今年 - 前年) ÷ 前年の絶対値)。前年の行がない・前年が 0(率)なら欠損 |
+| `share_of_total` | `value`、`group`(省略で全体) | 0〜100(%)。合計が 0 以下なら欠損 |
+| `sum_by` / `mean_by` / `count_by` | `group`、`value`(`count_by` は省略可。省略で行数、あれば欠損でない行数) | 集計値(全部欠損なら `sum_by` / `mean_by` は欠損) |
+| `series` | `value`、`group_by`、`order`、`max_points`(最大12) | その行の `order` 以前の `value` を時系列に並べた配列(最大12点) |
+| `seq_in_group` | `group`、`order` | 1 始まりの通し番号。`order` は日付の文字列も日付順。同じ値は元の行の順、欠損は最後 |
+| `is_first_time` | `value`、`group_by`、`order`、`condition`(`positive` 既定=黒字 / `negative`=赤字) | 真偽。グループの最初の行は偽 |
+| `per` | `num`、`den`、`scale`(省略で 1) | `num ÷ den × scale`。分母が 0 なら欠損 |
+
 #### 数字の日本語表記(`fmt`)
 
 - 円・千円: 1万以上は「○万」、1億以上は「○億」、1兆以上は「○兆」(小数は1桁まで、丸めたら「約」を付ける)。例: 2,008,428,041千円 → 「約2兆84億円」ではなく「約2兆円」。**丸めは原稿を作る側の表現として許可するが、元の値から再計算して誤差0.5%以内**であること。
 - 日付: `2022年12月6日11時20分`(分が0なら「11時」)。
 - パーセント: 小数1桁まで。
 - 順位: 「○位」。件数: 「○件」。
+- 実装は `pipeline/opendopa_pipeline/fmt.py`。`fmt:` に書ける名前は `yen`(円)、`sen_yen`(千円の列)、`percent`、`rank`、`count`。derived では `op: format` で使う。
+- 1桁の丸めで誤差が0.5%を超えるときは、「1億400万円」のように下の単位まで書く(1.04億を「約1億円」とはしない)。
 
 ### 8.6 品質ゲート(通らない行は `excluded` にして理由を記録)
 
