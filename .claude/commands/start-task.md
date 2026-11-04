@@ -9,6 +9,16 @@ argument-hint: "[イシュー番号]"
 
 以下の手順を順に実行する。
 
+## 00. main の最新化(最初に必ず実行)
+
+他の手順より前に、メインの作業ディレクトリで main を最新にする。コマンド定義(`.claude/commands/`)も main に含まれるため、これで常に最新の手順で動く。
+
+- `git status --porcelain` と `git branch --show-current` を確認する。
+- 現在のブランチが main で、未コミットの変更がなければ `git pull --ff-only origin main` を実行する。
+- 現在のブランチが main 以外、または未コミットの変更がある場合は、`git checkout` / `git switch` をせず、`git fetch origin` だけを行い、main を更新できなかった旨を伝える(以降の worktree は `origin/main` を起点にするので問題ない)。
+- `--ff-only` で失敗した場合(ローカルの main が分岐している等)は、無理に merge / reset せず、その旨を伝える。
+- pull で `.claude/commands/` の内容が変わった場合は、このコマンドの定義を読み直し、最新の内容に従って以降を実行する。
+
 ## 0. レビュー待ちPRの確認
 
 タスクに着手する前に、他の人が作成したレビュー待ちのPRがないかを確認する。
