@@ -1,0 +1,23 @@
+# ローカル開発用の DB(PostgreSQL 16 + pgvector)。起動は `mise run db-up`(ADR-0013)。
+services:
+  db:
+    image: pgvector/pgvector:0.8.1-pg16
+    environment:
+      POSTGRES_USER: opendopa
+      POSTGRES_PASSWORD: opendopa
+      POSTGRES_DB: opendopa
+    ports:
+      # ローカルの PostgreSQL と衝突しないよう、127.0.0.1 にだけ公開する
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # 初回の起動時だけ実行される(読み取り専用ロールの作成)
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U opendopa -d opendopa"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  db-data:
