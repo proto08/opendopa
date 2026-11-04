@@ -1,0 +1,80 @@
+{
+  "videoId": "naiko-0001",
+  "datasetId": "naiko_route",
+  "kind": "stat",
+  "categoryName": "ドローン事故",
+  "wmChar": "機",
+  "color": "#FF7A59",
+  "headline": "山梨県で無人航空機が事故",
+  "bigNumber": {
+    "value": 1,
+    "text": "山梨県で1件目",
+    "unit": "",
+    "label": "報告された事故等",
+    "countUp": false
+  },
+  "lines": [
+    {
+      "text": "2022年12月6日11時20分、山梨県北杜市で、無人航空機の事故が報告されました。",
+      "audio": null,
+      "durationSec": 12.4
+    },
+    {
+      "text": "夜間の目視外飛行中の出来事でした。",
+      "audio": null,
+      "durationSec": 12.4
+    }
+  ],
+  "durationSec": 24.8,
+  "map": {
+    "type": "route",
+    "from": {
+      "name": "東京",
+      "lat": 35.68,
+      "lon": 139.77
+    },
+    "to": {
+      "name": "那覇",
+      "lat": 26.21,
+      "lon": 127.68
+    }
+  },
+  "sparkline": [
+    {
+      "x": 2019,
+      "y": 100
+    },
+    {
+      "x": 2020,
+      "y": 103
+    },
+    {
+      "x": 2021,
+      "y": 106
+    },
+    {
+      "x": 2022,
+      "y": 109
+    },
+    {
+      "x": 2023,
+      "y": 112
+    }
+  ],
+  "chips": [
+    "夜間",
+    "目視外"
+  ],
+  "comments": [
+    {
+      "t": 3.2,
+      "text": "気をつけたい",
+      "style": "normal"
+    }
+  ],
+  "source": {
+    "datasetName": "無人航空機の事故等報告",
+    "ref": "行 #1"
+  },
+  "numbers": []
+}
