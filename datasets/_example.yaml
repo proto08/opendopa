@@ -1,0 +1,77 @@
+# 最小の正しい例(pipeline のテストで使う。実データではない)。書き方は docs/data.md §8.3
+id: example
+label: 例
+source_name: 例のデータ
+wm_char: 例
+color: "#FF7A59"
+files: [data/raw/example/example.csv]
+grain: row
+rename: {}
+null_values: ["", "不明"]
+zero_is_null: []
+filters: [{col: SUMMARY, not_null: true}]
+
+derived:
+  place: {from: LOCATION, op: strip_parenthesis}
+  summary_1: {from: SUMMARY, op: sentence, n: 1}
+stats:
+  - {name: place_seq, op: seq_in_group, group: place, order: OCCURRENCE_DATE}
+
+select: {cap: 10, order_by: No., diversify_by: null}
+big_number:
+  primary: {text: "{place}で{place_seq}件目", label: "報告された件数", when: "place != null"}
+  fallback: {text: "第{No.}号", label: "報告の番号"}
+
+template_groups:
+  - id: injury
+    label: "人が負傷した"
+    templates:
+      - id: injury_std
+        lines:
+          - "{place}で、人の負傷が報告されました。"
+          - "{summary_1}"
+          - {text: "{REMARKS}", optional: true}
+      - id: injury_short
+        short: true
+        lines: ["{place}で、人の負傷が報告されました。"]
+  - id: loss_of_control
+    label: "制御不能・墜落・落下した"
+    templates:
+      - id: loss_of_control_short
+        short: true
+        lines: ["{place}で、制御不能が報告されました。", "{summary_1}"]
+  - id: object_damage
+    label: "物件に接触・衝突した"
+    templates:
+      - id: object_damage_short
+        short: true
+        lines: ["{place}で、物件への接触・衝突が報告されました。", "{summary_1}"]
+  - id: other
+    label: "上のどれでもない"
+    templates:
+      - id: other_short
+        short: true
+        lines: ["{place}で、報告がありました。", "{summary_1}"]
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この報告の概要は、次のどの型に一番近いですか。"
+    state: [SUMMARY]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: keyword, default: other}
+
+fallback_rules:
+  keyword:
+    - {if: "contains(SUMMARY, ['負傷'])", then: injury}
+    - {if: "contains(SUMMARY, ['不能', '制御'])", then: loss_of_control}
+    - {if: "contains(SUMMARY, ['車両', '建物', '衝突'])", then: object_damage}
+    - {else: other}
+
+comments:
+  pool_calm: ["気をつけたい", "安全第一"]
+embed_text: "例 {place} {summary_1}"
+required: [SUMMARY]
