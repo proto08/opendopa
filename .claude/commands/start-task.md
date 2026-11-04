@@ -9,6 +9,23 @@ argument-hint: "[イシュー番号]"
 
 以下の手順を順に実行する。
 
+## 0. レビュー待ちPRの確認
+
+タスクに着手する前に、他の人が作成したレビュー待ちのPRがないかを確認する。
+
+- `gh api user --jq .login` で自分のログイン名を取得する。
+- `gh pr list --state open --json number,title,author,headRefName,isDraft,reviewDecision,reviews,updatedAt` でオープンなPRを取得し、次の条件で絞り込む。
+  - 作成者が自分ではない。
+  - ドラフトではない(`isDraft` が false)。
+  - 自分が既にレビュー済みで、その後に更新がない、というものは除く(`reviews` の自分の投稿日時と `updatedAt` で判断する)。
+- 該当PRがある場合:
+  - 番号・タイトル・作成者・ブランチ・更新日時・レビュー状況をMarkdownテーブルで表示する。
+  - `/pr-review <番号>` でのレビューを提案し、ユーザーの回答を待つ。
+    - レビューする → `/pr-review` の手順に従う(完了後、タスク着手に進むかユーザーに確認する)。
+    - 後回しにする・不要 → そのまま手順1へ進む。
+  - ユーザーの許可なしにレビューを開始したり、コメントを投稿したりしない。
+- 該当PRがなければ、何も言わずに手順1へ進む。
+
 ## 1. 対象イシューの特定
 
 - `gh issue list --state open --json number,title,author,labels,updatedAt` でオープンなイシューを取得する。
