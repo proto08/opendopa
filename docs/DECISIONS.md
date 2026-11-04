@@ -20,3 +20,4 @@
 - 2026-11-02: pipeline は設計書 §4.2 の配置(`pipeline/opendopa_pipeline/`)に合わせ、`src/` を使わない(uv_build の `module-root = ""`)。
 - 2026-11-02: web の `/api/health` は `connection()` を呼んで、リクエストのたびに実行する。理由: Next.js 16 の Cache Components では、条件次第で `GET` の Route Handler がビルド時に事前生成されるため。
 - 2026-11-04: Terraform の `terraform.tfvars`・`backend.hcl`・`tfplan`・state は .gitignore に入れ、`.terraform.lock.hcl` はコミットする。理由: 秘密・環境差分を入れず、プロバイダーのハッシュは全員で揃えるため(ADR-0016)。
+- 2026-11-04: bootstrap.sh のロール割り当ては、既存確認のうえ失敗時は止め、container create は反映待ちとして最大12回リトライする。TFSTATE_SUFFIX は4〜7文字(接頭辞17文字+24文字上限)。理由: レビュー指摘で失敗の握りつぶしと文言の不一致を解消(ADR-0016)。実機未確認。
