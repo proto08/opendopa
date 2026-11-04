@@ -99,7 +99,7 @@ cd pipeline && uv run opendopa --help
 | コマンド | 内容 |
 | --- | --- |
 | `mise tasks` | タスクの一覧 |
-| `mise run lint` | 全言語の lint(CI と同じ内容。CI は #14 で追加予定) |
+| `mise run lint` | 全言語の lint(CI と同じ内容。`.github/workflows/ci.yml` が同じ内容を実行する) |
 | `mise run test` | 全言語のテスト |
 | `mise run fmt` | 全言語の整形 |
 | `mise run gen-types` | `packages/shared/schema` から TS の型と pydantic のモデルを生成する |
@@ -107,6 +107,31 @@ cd pipeline && uv run opendopa --help
 - 環境変数は、ルートの `.env.local` に書きます。mise が自動で読み込み、すべてのアプリに渡します。どんな変数があるかは `.env.example` を見てください
 - commit すると、lefthook が変更したファイルを整形します
 - シーンJSONの形を変えるときは、`packages/shared/schema/*.json` を直してから `mise run gen-types` を実行します。生成されたファイルは手で編集しません
+
+## CI
+
+PR と `main` への push で、GitHub Actions(`.github/workflows/ci.yml`)が検証を行います。シークレットは使いません。
+
+| ジョブ | 内容 | 走る条件(変更があったとき) |
+| --- | --- | --- |
+| `web` | `pnpm lint && pnpm test`、`pnpm typecheck` | `apps/web`、`packages/shared`、pnpm の設定 |
+| `pipeline` | `ruff format --check`、`ruff check`、`uv run pytest` | `pipeline`、`packages/shared/schema`、`datasets` |
+| `recsys` | `cargo fmt --check`、`cargo clippy`、`cargo test` | `services/recsys` |
+| `types` | 生成した型が JSON Schema と一致しているか(`mise run gen-types:check`) | `packages/shared`、`pipeline` の依存 |
+| `ci-ok` | 上のジョブの結果をまとめる(常に走る) | 常に |
+
+`mise.toml` と `ci.yml` を変えたときは、すべてのジョブが走ります。ツールのバージョンは `mise.toml` が正で、キャッシュは pnpm のストア、uv、cargo(`target/`)に効いています。
+
+### 必須チェックの設定手順
+
+リポジトリの管理者が一度だけ設定します。
+
+1. GitHub のリポジトリで **Settings → Rules → Rulesets**(または **Settings → Branches → Branch protection rules**)を開く
+2. `main` を対象に、新しいルールを作る
+3. **Require status checks to pass** を有効にし、チェックに **`CI(必須チェック)`**(ジョブ `ci-ok`)だけを追加する
+4. 必要なら **Require a pull request before merging** も有効にして保存する
+
+`web` などのジョブを個別に必須にしないでください。パスフィルタでスキップされたジョブは必須チェックを満たせず、PR が止まるおそれがあります。`ci-ok` は、スキップを成功として扱い、失敗・キャンセルだけを落とします。なお、チェックを追加できるのは、一度 PR で走ったあとです。
 
 ## ドキュメント
 
