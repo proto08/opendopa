@@ -7,10 +7,10 @@ on:
   push:
     branches: [main]
 
-# 同じ PR / ブランチで新しい push があったら、古い実行を止める
+# 同じ PR で新しい push があったら、古い実行を止める(main への push は止めない)
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -138,6 +138,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      # rust は入れない。gen-types 系のタスクが rust を使うようになったら、ここに足す
       - uses: jdx/mise-action@v2
         with:
           install_args: node pnpm python uv
