@@ -97,6 +97,23 @@ def test_fallback_rule_must_point_to_existing_type(tmp_path: Path) -> None:
         load_dataset(write(tmp_path, mutate))
 
 
+def test_template_select_must_point_to_existing_decision(tmp_path: Path) -> None:
+    def mutate(d: dict) -> None:
+        d["template_select"] = {"decision": "nothing"}
+
+    with pytest.raises(DatasetError, match="template_select.decision"):
+        load_dataset(write(tmp_path, mutate))
+
+
+def test_template_select_without_decisions_fails(tmp_path: Path) -> None:
+    def mutate(d: dict) -> None:
+        d["decisions"] = []
+        d["template_select"] = {"decision": "template"}
+
+    with pytest.raises(DatasetError, match="template_select.decision"):
+        load_dataset(write(tmp_path, mutate))
+
+
 @pytest.mark.parametrize("keep", [3, 7])
 def test_type_count_outside_4_to_6_warns(tmp_path: Path, keep: int) -> None:
     def mutate(d: dict) -> None:
