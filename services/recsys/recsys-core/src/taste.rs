@@ -35,6 +35,8 @@ pub fn normalize(v: &[f32]) -> Option<Vec<f32>> {
 
 /// `u = normalize(u + a * (v - u))`。結果がゼロベクトルになるときは `u` を変えない。
 fn step(u: &[f32], v: &[f32], a: f32) -> Vec<f32> {
+    // 次元の食い違いは zip が黙って切り詰めるので、開発中に気づけるようにする。
+    debug_assert_eq!(u.len(), v.len(), "u と v の次元が違う");
     let moved: Vec<f32> = u.iter().zip(v).map(|(u, v)| u + a * (v - u)).collect();
     normalize(&moved).unwrap_or_else(|| u.to_vec())
 }
@@ -245,10 +247,16 @@ mod tests {
     #[test]
     fn zero_vector_is_guarded() {
         assert_eq!(normalize(&[0.0, 0.0]), None);
-        // u と v が正反対で a=1 だとゼロになる → u を変えない
-        assert_eq!(step(&[1.0, 0.0], &[1.0, 0.0], 0.0), vec![1.0, 0.0]);
+        // u と v が正反対で a=0.5 だと u + a*(v-u) がゼロになる → u を変えない
         let u = step(&[1.0, 0.0], &[-1.0, 0.0], 0.5);
         assert_eq!(u, vec![1.0, 0.0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "次元が違う")]
+    #[cfg(debug_assertions)]
+    fn step_rejects_dimension_mismatch() {
+        step(&[1.0, 0.0], &[1.0, 0.0, 0.0], 0.5);
     }
 
     #[test]
