@@ -181,6 +181,19 @@ def test_second_run_uses_cache(tmp_path: Path) -> None:
     assert (tmp_path / "decisions.cache.jsonl").exists()
 
 
+def test_truncated_cache_line_is_skipped(tmp_path: Path) -> None:
+    ds = make_dataset(tmp_path)
+    m = Mock()
+    engine(ds, m, tmp_path).run_row(row(), all_types)
+    cache = tmp_path / "decisions.cache.jsonl"
+    # 追記中に落ちて、最終行が途中で切れた状態にする
+    cache.write_text(cache.read_text(encoding="utf-8") + '{"key": "abc", "decis', encoding="utf-8")
+    m2 = Mock()
+    out = engine(ds, m2, tmp_path).run_row(row(), all_types)
+    assert m2.calls == []  # 壊れていない行は使われる
+    assert out["template"]["choice"] == "injury"
+
+
 def test_same_input_in_one_run_is_called_once(tmp_path: Path) -> None:
     ds = make_dataset(tmp_path)
     m = Mock()
