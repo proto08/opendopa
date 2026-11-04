@@ -13,11 +13,14 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(8080);
+    // 内部 API の認証トークン。ないまま起動すると誰でも叩けるので、起動を止める
+    let token = std::env::var("INTERNAL_TOKEN").unwrap_or_default();
+    assert!(!token.is_empty(), "INTERNAL_TOKEN is not set");
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let listener = tokio::net::TcpListener::bind(addr).await.expect("bind");
     tracing::info!(%addr, "recsys listening");
-    axum::serve(listener, recsys_server::app())
+    axum::serve(listener, recsys_server::app(token))
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
