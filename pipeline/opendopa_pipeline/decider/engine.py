@@ -212,9 +212,14 @@ class DecisionEngine:
 
     def _load_cache(self, path: Path) -> None:
         for line in path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
+            if not line.strip():
+                continue
+            try:
                 e = json.loads(line)
                 self._cache[e["key"]] = Decision.from_dict(e["decision"])
+            except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+                # 追記中に落ちて途切れた行は読み飛ばす(キャッシュは作り直せるので止めない)
+                continue
 
     def _store(self, key: str, dec: Decision) -> None:
         # 成功した結果だけを入れる(フォールバックの判定は毎回かけ直すので、しきい値を変えられる)
