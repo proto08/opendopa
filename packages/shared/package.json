@@ -11,10 +11,13 @@
   },
   "scripts": {
     "gen": "json2ts --input 'schema/*.schema.json' --output src/generated/ --additionalProperties false --unreachableDefinitions --ignoreMinAndMaxItems",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
   "devDependencies": {
     "json-schema-to-typescript": "^16.0.0",
+    "@types/node": "^26",
+    "typescript": "^5",
     "vitest": "^5.1.0"
   },
   "dependencies": {
