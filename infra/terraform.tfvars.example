@@ -1,0 +1,5 @@
+# コピーして terraform.tfvars を作る(terraform.tfvars はコミットしない)
+env_name = "dev"
+# subscription_id = "00000000-0000-0000-0000-000000000000"
+# Container Registry の名前が他と衝突したときに足す
+# name_suffix = "team"
