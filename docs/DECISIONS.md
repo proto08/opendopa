@@ -22,6 +22,10 @@
 - 2026-11-04: いいねは、動画ごとに「最後の `like` の位置」で 1 回だけ適用し、そこが `liked=false` なら適用しない。それ以前の `like` は無視。理由: 設計書 §7.3「最後のイベントが liked=true のときだけ有効」を、再生の順序(その後の view の影響)も含めて一意にするため(#39)。
 - 2026-11-04: 索引にない `videoId` や `ratio` が数でないイベントは無視し、`replay_with_report` が `skipped` に理由を返す(警告は呼び出し側の recsys-server が出す)。ゼロベクトルになる更新は `u` を変えない。理由: recsys-core にログ用の依存を足さないため(#39)。
 - 2026-11-04: `Index::new` は同じ ID の動画を、先のものを残して後ろを無視する(重複をエラーにしない)。埋め込みの次元がそろっていないことは `debug_assert` で検出する(`step` も同様)。理由: 索引は DB から読むだけで、重複や次元違いは読み込み側(#41)の不具合なので、起動を止めずに開発中に気づければ足りる(#39 のレビュー対応)。
+- 2026-11-04: CI は `.github/workflows/ci.yml` の1ファイルにし、変更の検出(dorny/paths-filter)→ 部分ごとのジョブ → 結果をまとめる `ci-ok` の形にする。必須チェックには `ci-ok` だけを指定する。理由: パスフィルタでスキップされたジョブを個別に必須にすると PR が止まるため(Issue #14)。
+- 2026-11-04: CI のツールは `jdx/mise-action` で `mise.toml` のバージョンを使い、ジョブごとに必要なものだけ入れる。キャッシュは pnpm のストアと uv が `actions/cache`、cargo が `Swatinem/rust-cache`。理由: ローカルと CI のバージョンを一致させ、不要な Rust などを入れる時間を省く。
+- 2026-11-04: Issue の列挙に加えて、web の `pnpm typecheck`、pipeline の ruff、`gen-types:check` も CI で検査する。理由: CLAUDE.md の完了条件と設計書 §12.4(生成した型の差分の検査)に合わせるため。イメージのビルドとデプロイは対象外(検証のみ)。
+- 2026-11-04: CI の `concurrency` は PR のときだけ古い実行を止め(`cancel-in-progress: ${{ github.event_name == 'pull_request' }}`)、main への push では止めない。理由: 連続マージ時に、先のマージ commit の検証が途中で消えるのを避けるため(PR #68 のレビュー対応)。
 - 2026-11-04: シーンJSONの検証は、TS が ajv(`ajv/dist/2020`)、Python が jsonschema(Draft 2020-12)で、どちらも `packages/shared/schema/scene.schema.json` を直接読む。pipeline のパスは `packages/shared` をリポジトリ内の相対位置で解決する。理由: 契約は JSON Schema が正(ADR-0012 A2)で、どちらの言語も同じファイルを読めば、フィクスチャの合否が一致する。生成した pydantic モデルは型として使い、検証の判定には使わない。
 - 2026-11-04: サンプルの置き場を `packages/shared/examples/` から `fixtures/` に変え、`accident-0001.json`(`map: null`)と `map-route` / `map-polygon` / `map-points` の4本にした。理由: #28 の指定。テストが4本すべての検証を通ることを確かめる。`@opendopa/shared/fixtures/*` で web からも読める。
 - 2026-11-04: `packages/shared` に `tsconfig.json` と `typecheck`(`tsc --noEmit`)を足し、`mise run lint` の `lint:shared` に入れた。eslint は足さない。理由: vitest は型を検査せず、shared の型エラーが lint・テストをすり抜けていた(実際に `@types/node` 不足が見つかった)。eslint は規則を決める必要があり、CI(#14)で扱う方が自然。
