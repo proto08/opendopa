@@ -32,7 +32,7 @@
 | --- | --- |
 | `mise run setup` | 初回のセットアップ |
 | `mise run dev` | web(:3000)と recsys(:8080)を起動 |
-| `mise run lint` / `mise run test` | 全言語の lint / テスト(CI と同じ) |
+| `mise run lint` / `mise run test` | 全言語の lint / テスト(CI と同じ内容。CI は #14 で追加予定) |
 | `mise run fmt` | 全言語の整形 |
 | `mise run gen-types` | JSON Schema から TS の型と pydantic のモデルを生成 |
 | `mise exec -- uv run opendopa --help` | pipeline の CLI |

@@ -1,4 +1,4 @@
-# commit 前の軽いチェック(ADR-0012 A17)。重いチェック(clippy、テスト、型の差分)は CI に任せる。
+# commit 前の軽いチェック(ADR-0012 A17)。重いチェック(clippy、テスト、型の差分)は CI(#14 で追加予定)に任せる。
 # 登録: `mise run setup`(中で `lefthook install` を実行する)
 pre-commit:
   parallel: true
