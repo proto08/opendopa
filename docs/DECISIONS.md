@@ -10,6 +10,7 @@
 | ADR | 題 | Issue |
 | --- | --- | --- |
 | [ADR-0012](adr/0012-repo-scaffold.md) | リポジトリの雛形(ツール、言語の境界、ハーネス) | #12 |
+| [ADR-0013](adr/0013-docker-compose-and-migrations.md) | 環境構築(docker-compose と DB マイグレーション) | #13 |
 
 ## 小さな決定
 
@@ -18,3 +19,6 @@
 - 2026-11-02: シーンJSONの型名は、JS・DOM の標準の型と重ならないように `SceneMap`(地図)、`FlowComment`(流れるコメント)とする。`numbers`(検証用の記録)の形は M1 で決めるまで任意の配列にしておく。
 - 2026-11-02: pipeline は設計書 §4.2 の配置(`pipeline/opendopa_pipeline/`)に合わせ、`src/` を使わない(uv_build の `module-root = ""`)。
 - 2026-11-02: web の `/api/health` は `connection()` を呼んで、リクエストのたびに実行する。理由: Next.js 16 の Cache Components では、条件次第で `GET` の Route Handler がビルド時に事前生成されるため。
+- 2026-11-04: `db/migrations` には、拡張(`vector`)、設計書 §5 の全テーブル、recsys ロールへの権限付与の3本を置く。理由: 受け入れ条件の「recsys 用の読み取り専用ロール」を確かめるにはテーブルが要り、§5 は確定しているため(ADR-0013 A2, A3)。
+- 2026-11-04: `docker-compose.yml` の DB は `127.0.0.1` にだけ公開する。理由: ローカル用の弱いパスワードを、同じネットワークの他の端末に見せないため。
+- 2026-11-04: 設計書・Issue の `make db-up` / `make dev` は `mise run db-up` / `mise run dev` と読み替える(ADR-0012 A9)。
