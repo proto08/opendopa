@@ -48,6 +48,8 @@ class Stat(BaseModel):
 
     name: str
     op: str
+    # 指定すると、`<name>_text` の列に、この表示形(fmt.py の FORMATTERS)の文字列も作る
+    fmt: str | None = None
 
 
 class Select(_Model):
@@ -139,6 +141,10 @@ class DatasetDef(_Model):
     color: str = Field(pattern=r"^#[0-9A-Fa-f]{6}$")
     files: list[str]
     grain: Literal["row", "group"]
+    # grain: group のとき、group_by の列で集計して 1 グループ = 1 行にする。
+    # aggregate は 列名 → sum / mean / min / max / first / count
+    group_by: list[str] = []
+    aggregate: dict[str, Literal["sum", "mean", "min", "max", "first", "count"]] = {}
     rename: dict[str, str] = {}
     null_values: list[str] = []
     zero_is_null: list[str] = []
@@ -182,6 +188,11 @@ class DatasetDef(_Model):
                 stacklevel=2,
             )
 
+        if self.grain == "group" and not self.group_by:
+            errors.append("grain: group には group_by が必要です")
+        if self.grain == "row" and (self.group_by or self.aggregate):
+            errors.append("group_by / aggregate は grain: group のときだけ使えます")
+
         for name in self.derived:
             if not name.isidentifier():
                 errors.append(f"derived: 名前 {name!r} は英数字と _ だけにしてください")
@@ -198,7 +209,8 @@ class DatasetDef(_Model):
 
     def defined_names(self) -> set[str]:
         """`derived` と `stats` で作る名前(列名以外に、穴・式で使える名前)。"""
-        return set(self.derived) | {s.name for s in self.stats}
+        names = set(self.derived) | {s.name for s in self.stats}
+        return names | {f"{s.name}_text" for s in self.stats if s.fmt}
 
     def exprs(self) -> list[tuple[str, str]]:
         """YAML 中の式を、(場所, 式) の一覧で返す。"""
@@ -285,6 +297,8 @@ def validate_against_columns(dataset: DatasetDef, columns: list[str] | set[str])
     未定義の名前があれば、ファイルパス・場所つきの `DatasetError`。
     """
     known = set(columns) | dataset.defined_names()
+    if dataset.grain == "group":
+        known.add("n_rows")  # グループ集計で足す、元の行数の列
     errors = []
 
     for where, hole in dataset.holes():
@@ -299,6 +313,11 @@ def validate_against_columns(dataset: DatasetDef, columns: list[str] | set[str])
     for name, d in dataset.derived.items():
         if d.from_ is not None and d.from_ not in cols:
             errors.append(f"derived.{name}.from: 列 {d.from_!r} がありません")
+    # grain: group の集計は、derived を作った後・stats の前に行う
+    after_derive = cols | set(dataset.derived)
+    for col in [*dataset.group_by, *dataset.aggregate]:
+        if col not in after_derive:
+            errors.append(f"group_by / aggregate: 列 {col!r} がありません")
     for col in dataset.required:
         if col not in known:
             errors.append(f"required: {col!r} は、列にも derived / stats にもありません")
