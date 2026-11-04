@@ -104,6 +104,8 @@ DB のタスクは次のとおりです。
 | `mise run db-new 名前` | マイグレーションのファイルを作る(`db/migrations/`) |
 | `mise run db-psql` | psql でつなぐ |
 
+recsys 用のロール(`db/init/01-roles.sql`)は、ボリュームを最初に作るときにしか作られません。ロールを足す前に作ったボリュームを使っている場合は、`mise run db-reset` で作り直してください。
+
 ### pipeline(Batch)
 
 ```bash
