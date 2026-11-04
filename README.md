@@ -23,7 +23,7 @@ https://topaz.dev/projects/rf23wuwzyssmxsjj
 
 - macOS
 - [Homebrew](https://brew.sh/)
-- Docker(DB の起動に使う。#13 で追加予定)
+- Docker(DB の起動に使う。Docker Desktop など、`docker compose` が使えるもの)
 
 Node・pnpm・Python・uv・Rust・dbmate・lefthook は、すべて mise で入れます。個別にインストールする必要はありません。
 
@@ -73,6 +73,14 @@ mise doctor
 
 ## 起動
 
+先に DB を起動します(初回はイメージの取得に少し時間がかかります)。
+
+```bash
+mise run db-up
+```
+
+PostgreSQL 16 + pgvector を Docker で起動し、`db/migrations` のマイグレーションを流します。続けて、web と recsys を起動します。
+
 ```bash
 mise run dev
 ```
@@ -81,10 +89,22 @@ web と recsys がまとめて起動します。個別に起動するときは `
 
 | サービス | URL | 確認用のエンドポイント |
 | --- | --- | --- |
-| web | http://localhost:3000 | `GET /api/health`(DB に接続できれば 200、できなければ 503) |
-| recsys | http://localhost:8080 | `GET /healthz` |
+| web | http://localhost:3000 | `GET /api/health`(DB に接続できれば 200、できなければ 503)、`GET /api/health/recsys`(web から recsys に内部 HTTP でつながれば 200) |
+| recsys | http://localhost:8080 | `GET /healthz`、`GET /internal/ping`(ヘッダー `X-Internal-Token` が必要) |
+| DB | localhost:5432 | `mise run db-check`(pgvector と、recsys 用の読み取り専用ロールの確認) |
 
-DB(PostgreSQL + pgvector)の起動とマイグレーションは #13 で追加予定です。それまでは `/api/health` は 503 を返します。
+DB のタスクは次のとおりです。
+
+| コマンド | 内容 |
+| --- | --- |
+| `mise run db-up` | DB を起動し、マイグレーションを流す |
+| `mise run db-down` | DB を止める(データは残る) |
+| `mise run db-reset` | データを消して作り直す |
+| `mise run db-migrate` | 未適用のマイグレーションを流す |
+| `mise run db-new 名前` | マイグレーションのファイルを作る(`db/migrations/`) |
+| `mise run db-psql` | psql でつなぐ |
+
+recsys 用のロール(`db/init/01-roles.sql`)は、ボリュームを最初に作るときにしか作られません。ロールを足す前に作ったボリュームを使っている場合は、`mise run db-reset` で作り直してください。
 
 ### pipeline(Batch)
 
