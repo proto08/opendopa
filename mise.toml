@@ -91,6 +91,10 @@ depends = ["test:*"]
 dir = "apps/web"
 run = "pnpm test"
 
+[tasks."test:shared"]
+dir = "packages/shared"
+run = "pnpm test"
+
 [tasks."test:pipeline"]
 dir = "pipeline"
 run = "uv run pytest"
