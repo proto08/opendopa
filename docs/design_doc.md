@@ -2,7 +2,7 @@
 
 版: v1.0 / 作成: 2026-11-01 / 対象: 2026-11-07〜08 のハッカソンで動くものを完成させる
 
-この文書は、読み手(AIの実装エージェント)が、人に質問せずに最後まで作り切れることを目的に書いた**設計書**。CSVの列に関わる部分(列定義YAML、テンプレート、データセット別の定義)は、別文書 `OPENDOPA_DATA.md` にある。両方を読むこと。判断に迷ったら、この文書の「既定値」を採用し、`docs/DECISIONS.md` に1行で記録して先に進むこと。
+この文書は、読み手(AIの実装エージェント)が、人に質問せずに最後まで作り切れることを目的に書いた**設計書**。CSVの列に関わる部分(列定義YAML、テンプレート、データセット別の定義)は、別文書 `docs/data.md` にある。両方を読むこと。判断に迷ったら、この文書の「既定値」を採用し、`docs/DECISIONS.md` に1行で記録して先に進むこと。Issue 単位で決めた大きな判断は `docs/adr/` にある(`docs/DECISIONS.md` の先頭が索引)。
 
 ---
 
@@ -12,7 +12,7 @@
 
 1. §1〜§3: 何を作るか(ゴール、決定事項、画面)
 2. §4〜§7: 構成、データモデル、API、レコメンド
-3. §8〜§9: コンテンツ生成の契約(原稿、シーン)。CSVの列に関わる部分(§8.3〜§8.6、§8.9、§10)は、`OPENDOPA_DATA.md`
+3. §8〜§9: コンテンツ生成の契約(原稿、シーン)。CSVの列に関わる部分(§8.3〜§8.6、§8.9、§10)は、`docs/data.md`
 4. §11〜§13: 埋め込み、インフラ、タスク順序
 5. §14〜§16: 受け入れ基準、安全、未決(既定値あり)
 
@@ -199,33 +199,44 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 | --- | --- |
 | Web | Next.js 15 以降(App Router)、TypeScript、React、Tailwind CSS は使わず素のCSS(モックのCSSを移植) |
 | BFF | Next.js Route Handlers(Node.js ランタイム)。Cookie、入力の検証、**DBの読み書きのすべて**(`pg`)、シーンJSONの整形。**ベクトル計算はしない** |
-| ベクトル計算 | Rust(`services/recsys`)。axum + tokio。状態を持たず、DBに書き込まない(起動時に、埋め込みを読み取りのみ。sqlx)。計算の核は、依存のないライブラリとして書く |
-| パイプライン | Python 3.11+、`uv` で管理。`pandas`、`pydantic`、`pyyaml`、`umap-learn`、`scikit-learn`、`openai`(Azure用) |
-| DB | PostgreSQL 16(Flexible Server)、拡張 `vector`(pgvector) |
+| ベクトル計算 | Rust(`services/recsys`)。axum + tokio。状態を持たず、DBに書き込まない(起動時に、埋め込みを読み取りのみ。sqlx)。Cargo workspace で、計算の核(`recsys-core`。axum・sqlx に依存しない)と、HTTP・DB の読み込み(`recsys-server`)の2つの crate に分ける |
+| パイプライン | Python 3.13、`uv` で管理。CLI は Typer。`pandas`、`pydantic`、`pyyaml`、`umap-learn`、`scikit-learn`、`openai`(Azure用) |
+| DB | PostgreSQL 16(Flexible Server)、拡張 `vector`(pgvector)。マイグレーションは `db/migrations/*.sql` を dbmate で実行 |
 | IaC | Terraform(`azurerm` プロバイダー。バージョンを固定する) |
 | CI/CD | GitHub Actions(Terraform と、コンテナのビルド・デプロイ) |
 | 監視 | Application Insights |
-| パッケージ管理 | pnpm(Web)、uv(Python) |
+| パッケージ管理 | pnpm(Web。workspace)、uv(Python)、Cargo(Rust) |
+| ツールの管理 | mise(言語とツールのバージョン、環境変数、開発用のタスク)。commit 前のチェックは lefthook |
+| lint・テスト | Rust: `cargo fmt`・`cargo clippy`・`cargo test`、Python: ruff・pytest、TS: ESLint・Vitest |
 
 ### 4.2 リポジトリ構成
 
 ```
 opendopa/
-├─ Makefile                    # make infra-plan / infra-apply / deploy などの入口
+├─ mise.toml                   # バージョン、環境変数(.env.local を読む)、タスク(mise run dev / infra-apply / deploy などの入口)
+├─ lefthook.yml                # commit 前の軽いチェック
+├─ .env.example                # 環境変数の一覧(§12.3)。実際の値は .env.local(git管理外)
+├─ CLAUDE.md                   # 実装エージェント向けの案内
+├─ .claude/                    # Claude Code の設定(settings.json、hooks)
 ├─ infra/                      # Terraform(main.tf, variables.tf, outputs.tf, modules/*)
 ├─ apps/web/                   # Next.js
 │   ├─ app/                    # ページ、api/ 以下にRoute Handlers
 │   ├─ components/             # Feed, Slide, TastePanel, CsvSheet, Map, Comments ...
 │   └─ lib/                    # recsys-client.ts(Rustへの内部HTTP), db.ts, types.ts
-├─ services/recsys/            # Rust(ベクトル計算。Cargo。状態を持たない)
+├─ services/recsys/            # Rust(ベクトル計算。Cargo workspace。状態を持たない)
+│   ├─ recsys-core/            # 計算の核(axum・sqlx に依存しない)
+│   └─ recsys-server/          # 内部HTTP(axum)と、起動時のDBの読み込み(sqlx)
 ├─ pipeline/                   # Python
 │   ├─ opendopa_pipeline/      # profile, ingest, scriptgen, embed, project, cluster, tts, publish
 │   └─ tests/
 ├─ datasets/                   # データセット別の列定義YAML(§10)
 │   ├─ accident.yaml  ...
-├─ packages/shared/            # 共有の型(シーンJSONのスキーマ)
+├─ packages/shared/            # 共有の型。schema/*.json(JSON Schema)が正で、TS の型と pydantic のモデルはここから生成する
+├─ db/migrations/              # DBのマイグレーション(素のSQL。dbmate)
 ├─ data/raw/                   # 元CSV(git管理外。§10のファイル名で置く)
-└─ docs/DECISIONS.md           # 決めたことの記録
+└─ docs/
+    ├─ adr/                    # Issue 単位の決定(ADR)
+    └─ DECISIONS.md            # 小さな決定の記録と、ADR の索引
 ```
 
 ---
@@ -423,7 +434,7 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 
 **実装は Rust(`services/recsys`)。Next.js(TypeScript)では計算しない。** recsys は、状態を持たない計算サービスで(§6.6)、渡された `events` から好みのベクトル `u` を毎回作り直し、次の動画と、右パネルの値を返す。`u` は保存しない。更新式、取り消し、選び方は、この章に書いた規則のとおりに実装する。
 
-### 7.1 定数(既定値。`services/recsys/src/config.rs` にまとめる)
+### 7.1 定数(既定値。`services/recsys/recsys-core/src/config.rs` にまとめる)
 
 | 名前 | 値 | 意味 |
 | --- | --- | --- |
@@ -528,7 +539,7 @@ uv run opendopa all                            # 上を順に
 
 ### 8.3〜8.6 CSVから台本を作る仕組み(列定義YAML、テンプレート、判断ポイント、選定、集計、品質ゲート)
 
-CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.3〜§8.6(と §8.9、§10)にある。本書でも、これらの節番号(§8.3、§8.3a、§8.5、§8.6、§8.9、§10.x)は、そのまま使う。この設計書に書くのは、次の**契約**だけ。
+CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜§8.6(と §8.9、§10)にある。本書でも、これらの節番号(§8.3、§8.3a、§8.5、§8.6、§8.9、§10.x)は、そのまま使う。この設計書に書くのは、次の**契約**だけ。
 
 - 入力: `data/raw/<dataset_id>/` の元ファイル、`datasets/<dataset_id>.yaml`(列定義YAML)。
 - 出力: シーンJSON(§9)を1行1本で並べた `out/<dataset_id>/scenes.jsonl`、除外した行と理由、判断の記録(`decisions_report.json`)。
@@ -549,7 +560,7 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 
 ## 9. シーンJSON(ブラウザが描画するデータ)
 
-`packages/shared` に TypeScript の型と JSON Schema を置く。パイプラインはこの形で出力し、Webはこの形だけを読む。
+`packages/shared/schema/` に JSON Schema を置き、これを正とする。TypeScript の型と pydantic のモデルは、ここから生成する(`mise run gen-types`。生成したファイルは commit する)。パイプラインはこの形で出力し、Webはこの形だけを読む。
 
 ```jsonc
 {
@@ -599,7 +610,7 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 
 ## 10. データセット別の定義
 
-データセット(14ファイル)ごとの、**列の使い方、クリーニング、動画の切り口、注意点**は、別文書 **`OPENDOPA_DATA.md`** に書く。この設計書は、データの中身に依存しない。新しいデータセットは、`OPENDOPA_DATA.md` に節を足し、`datasets/<id>.yaml` を作る。
+データセット(14ファイル)ごとの、**列の使い方、クリーニング、動画の切り口、注意点**は、別文書 **`docs/data.md`** に書く。この設計書は、データの中身に依存しない。新しいデータセットは、`docs/data.md` に節を足し、`datasets/<id>.yaml` を作る。
 
 ### 10.0 一覧
 
@@ -691,9 +702,9 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 | Azure AI Speech | `azurerm_cognitive_account`(kind: `SpeechServices`) |
 | 秘密の値(任意) | `azurerm_key_vault`, `azurerm_key_vault_secret` |
 
-- `CREATE EXTENSION vector;` は、Terraform ではなく、アプリのDBマイグレーションで実行する。
+- `CREATE EXTENSION vector;` は、Terraform ではなく、アプリのDBマイグレーション(`db/migrations/`、dbmate)で実行する。
 - アプリのデプロイは、Terraformとは分ける。`docker build` で作ったイメージをレジストリに送り、`azurerm_container_app` のイメージのタグ(変数 `web_image_tag`)を更新して `terraform apply`、またはCIで `az containerapp update` を使う。どちらを使うかは、`docs/DECISIONS.md` に記録する。
-- 入口は `Makefile`: `make infra-init`, `make infra-plan`, `make infra-apply`, `make deploy`(ビルドからデプロイまで)。
+- 入口は mise のタスク: `mise run infra-init`, `mise run infra-plan`, `mise run infra-apply`, `mise run deploy`(ビルドからデプロイまで)。
 - `terraform output` で、URL、DB接続先、Storageの名前などを取り出せるようにする(秘密の値は `sensitive = true`)。
 
 ### 12.3 環境変数
@@ -715,7 +726,7 @@ CSVの列に関わるこの部分は、別文書 **`OPENDOPA_DATA.md`** の §8.
 
 ### 12.4 CI/CD
 
-GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run pytest`(パイプライン)、イメージのビルドとデプロイ。インフラの変更は、手動実行のワークフロー(`terraform plan` の結果を確認してから `terraform apply`)。Azureへの認証は、OIDC(フェデレーション資格情報)を使い、長期のシークレットをCIに置かない。
+GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run pytest`(パイプライン)、`cargo fmt --check`・`cargo clippy`・`cargo test`(recsys)、生成した型の差分の検査、イメージのビルドとデプロイ。インフラの変更は、手動実行のワークフロー(`terraform plan` の結果を確認してから `terraform apply`)。Azureへの認証は、OIDC(フェデレーション資格情報)を使い、長期のシークレットをCIに置かない。
 
 ---
 
@@ -725,7 +736,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 
 | # | タスク | 受け入れ条件 |
 | --- | --- | --- |
-| M0 | リポジトリの雛形、Terraform、空のNext.jsをContainer Appsにデプロイ | `make infra-apply` と `make deploy` でURLが開く。DBに接続できる(`/api/health` が200) |
+| M0 | リポジトリの雛形、Terraform、空のNext.jsをContainer Appsにデプロイ | `mise run infra-apply` と `mise run deploy` でURLが開く。DBに接続できる(`/api/health` が200) |
 | M1 | パイプラインの核(`profile`, `generate`)を `accident` で動かす | 試作と同じ傾向(191行前後を生成、No.20は除外、数字の不一致0)。すべての行が推定15〜30秒に収まる(収まらない行は理由つきで除外) |
 | M1b | 判断モデルの土台(`Decider` のインターフェース、`rules` の実装、YAMLの `decisions`、キャッシュ、記録)を、事故データに入れる | `rules` で動き、`decisions` が記録される。判断モデルを足してもコードが変わらない |
 | M2 | DBのマイグレーション、`embed`、`publish`(ローカル) | `videos` と `embeddings` に191本前後が入る。`clusters` が作られる |
@@ -785,7 +796,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 5. 少なくとも5データセット以上で、動画が出る。事故を含む。
 6. 生成された全原稿の、数字の不一致が0件(品質ゲートの結果が証拠)。
 7. 疑似ユーザーのテスト(§14.2)が合格する。
-8. `make infra-apply` と `make deploy` で、ゼロから環境が再現できる。
+8. `mise run infra-apply` と `mise run deploy` で、ゼロから環境が再現できる。
 9. README に、セットアップ、パイプラインの実行方法、デモの手順が書かれている。
 
 ---

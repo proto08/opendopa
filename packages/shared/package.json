@@ -1,0 +1,18 @@
+{
+  "name": "@opendopa/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "pipeline と web の契約(JSON Schema が正。ADR-0012 A2)",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema/*": "./schema/*",
+    "./examples/*": "./examples/*"
+  },
+  "scripts": {
+    "gen": "json2ts --input 'schema/*.schema.json' --output src/generated/ --additionalProperties false --unreachableDefinitions --ignoreMinAndMaxItems"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^16.0.0"
+  }
+}
