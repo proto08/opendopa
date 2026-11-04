@@ -10,6 +10,7 @@
 | ADR | 題 | Issue |
 | --- | --- | --- |
 | [ADR-0012](adr/0012-repo-scaffold.md) | リポジトリの雛形(ツール、言語の境界、ハーネス) | #12 |
+| [ADR-0013](adr/0013-docker-compose-and-migrations.md) | 環境構築(docker-compose と DB マイグレーション) | #13 |
 
 ## 小さな決定
 
@@ -18,6 +19,9 @@
 - 2026-11-02: シーンJSONの型名は、JS・DOM の標準の型と重ならないように `SceneMap`(地図)、`FlowComment`(流れるコメント)とする。`numbers`(検証用の記録)の形は M1 で決めるまで任意の配列にしておく。
 - 2026-11-02: pipeline は設計書 §4.2 の配置(`pipeline/opendopa_pipeline/`)に合わせ、`src/` を使わない(uv_build の `module-root = ""`)。
 - 2026-11-02: web の `/api/health` は `connection()` を呼んで、リクエストのたびに実行する。理由: Next.js 16 の Cache Components では、条件次第で `GET` の Route Handler がビルド時に事前生成されるため。
+- 2026-11-04: `db/migrations` には、拡張(`vector`)、設計書 §5 の全テーブル、recsys ロールへの権限付与の3本を置く。理由: 受け入れ条件の「recsys 用の読み取り専用ロール」を確かめるにはテーブルが要り、§5 は確定しているため(ADR-0013 A2, A3)。
+- 2026-11-04: `docker-compose.yml` の DB は `127.0.0.1` にだけ公開する。理由: ローカル用の弱いパスワードを、同じネットワークの他の端末に見せないため。
+- 2026-11-04: 設計書・Issue の `make db-up` / `make dev` は `mise run db-up` / `mise run dev` と読み替える(ADR-0012 A9)。
 - 2026-11-04: 穴・式の列名の検査は、列名が分かる `validate_against_columns(def, columns)` で行う。`load_dataset` は `derived`/`stats` に無い穴を通し、`columns` を渡したときだけ続けて検査する。理由: 列名は CSV を読むまで分からず、読み込み時に `{foo}` と列名を区別できない(#29 のタスクの分担どおり。イシューのテスト項目「読み込み時エラー」は、`load_dataset(path, columns=...)` で満たす)。
 - 2026-11-04: 列定義 YAML のモデルは、未知のキーをエラーにする(`derived` と `stats` の項目だけ、`op` ごとの引数(#30)のため余分なキーを残す)。理由: キーの打ち間違いを読み込み時に見つけるため。
 - 2026-11-04: 式の比較は、`null` との大小・型違いの大小を偽にし、行にない列は `null` として扱う。型の数が4〜6から外れるときは `UserWarning`(エラーにしない)。理由: 式は実行時に例外を出さず、データの欠損で動画が落ちないようにするため。
