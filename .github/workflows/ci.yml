@@ -64,7 +64,7 @@ jobs:
               - '.github/workflows/ci.yml'
 
   web:
-    name: Web(lint・型・テスト)
+    name: Web・shared(lint・型・テスト)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
@@ -87,6 +87,9 @@ jobs:
         working-directory: apps/web
       - run: pnpm typecheck
         working-directory: apps/web
+      # packages/shared(型検査と ajv の検証テスト)。mise run lint:shared / test:shared と同じ
+      - run: pnpm typecheck && pnpm test
+        working-directory: packages/shared
 
   pipeline:
     name: パイプライン(ruff・pytest)
