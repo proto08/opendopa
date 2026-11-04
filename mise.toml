@@ -75,6 +75,10 @@ depends = ["lint:*"]
 dir = "apps/web"
 run = "pnpm lint"
 
+[tasks."lint:shared"]
+dir = "packages/shared"
+run = "pnpm typecheck"
+
 [tasks."lint:pipeline"]
 dir = "pipeline"
 run = ["uv run ruff format --check .", "uv run ruff check ."]
@@ -89,6 +93,10 @@ depends = ["test:*"]
 
 [tasks."test:web"]
 dir = "apps/web"
+run = "pnpm test"
+
+[tasks."test:shared"]
+dir = "packages/shared"
 run = "pnpm test"
 
 [tasks."test:pipeline"]
