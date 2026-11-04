@@ -21,6 +21,11 @@
 - 2026-11-02: web の `/api/health` は `connection()` を呼んで、リクエストのたびに実行する。理由: Next.js 16 の Cache Components では、条件次第で `GET` の Route Handler がビルド時に事前生成されるため。
 - 2026-11-04: Terraform の `terraform.tfvars`・`backend.hcl`・`tfplan`・state は .gitignore に入れ、`.terraform.lock.hcl` はコミットする。理由: 秘密・環境差分を入れず、プロバイダーのハッシュは全員で揃えるため(ADR-0016)。
 - 2026-11-04: bootstrap.sh のロール割り当ては、既存確認のうえ失敗時は止め、container create は反映待ちとして最大12回リトライする。TFSTATE_SUFFIX は4〜7文字(接頭辞17文字+24文字上限)。理由: レビュー指摘で失敗の握りつぶしと文言の不一致を解消(ADR-0016)。実機未確認。
+- 2026-11-04: 穴・式の列名の検査は、列名が分かる `validate_against_columns(def, columns)` で行う。`load_dataset` は `derived`/`stats` に無い穴を通し、`columns` を渡したときだけ続けて検査する。理由: 列名は CSV を読むまで分からず、読み込み時に `{foo}` と列名を区別できない(#29 のタスクの分担どおり。イシューのテスト項目「読み込み時エラー」は、`load_dataset(path, columns=...)` で満たす)。
+- 2026-11-04: 列定義 YAML のモデルは、未知のキーをエラーにする(`derived` と `stats` の項目だけ、`op` ごとの引数(#30)のため余分なキーを残す)。理由: キーの打ち間違いを読み込み時に見つけるため。
+- 2026-11-04: 式の比較は、`null` との大小・型違いの大小を偽にし、行にない列は `null` として扱う。型の数が4〜6から外れるときは `UserWarning`(エラーにしない)。理由: 式は実行時に例外を出さず、データの欠損で動画が落ちないようにするため。
+- 2026-11-04: 式の列名は `\w+` に限る。`No.` のようにドットを含む列は式に書けないので、`rename` で置き換える(穴 `{No.}` には使える)。理由: `a.b`(属性参照)を拒否する仕様のため。
+- 2026-11-04: `template_select.decision` の存在検査は `decisions` が空でも行う(空なら必ずエラー)。一方 `decisions[].fallback.rule` が `fallback_rules` にあるかは検査しない。理由: `regex_pii` のように、`fallback_rules` ではなく正規表現の組み込みルールを指す名前が docs/data.md にあるため(#29 レビュー対応)。
 - 2026-11-04: CI は `.github/workflows/ci.yml` の1ファイルにし、変更の検出(dorny/paths-filter)→ 部分ごとのジョブ → 結果をまとめる `ci-ok` の形にする。必須チェックには `ci-ok` だけを指定する。理由: パスフィルタでスキップされたジョブを個別に必須にすると PR が止まるため(Issue #14)。
 - 2026-11-04: CI のツールは `jdx/mise-action` で `mise.toml` のバージョンを使い、ジョブごとに必要なものだけ入れる。キャッシュは pnpm のストアと uv が `actions/cache`、cargo が `Swatinem/rust-cache`。理由: ローカルと CI のバージョンを一致させ、不要な Rust などを入れる時間を省く。
 - 2026-11-04: Issue の列挙に加えて、web の `pnpm typecheck`、pipeline の ruff、`gen-types:check` も CI で検査する。理由: CLAUDE.md の完了条件と設計書 §12.4(生成した型の差分の検査)に合わせるため。イメージのビルドとデプロイは対象外(検証のみ)。
