@@ -17,5 +17,6 @@ data/raw/<dataset_id>/<ファイル名>
 ## 出力
 
 生成物は `out/<dataset_id>/` に出る(`out/` も git 管理外)。取り込み・クリーニングで
-落とした行は、`out/<dataset_id>/excluded.csv`(列: `row_id`, `reason`)に理由つきで残る。
+落とした行は、`out/<dataset_id>/excluded.csv`(列: `row_id`, `video_id`, `stage`, `reason`, `detail`)に理由つきで残る。
+`stage` は `clean`(取り込み・クリーニング)か `build`(選定以降。品質ゲートを含む)。
 `row_id` は、ヘッダを除いた読み込み順の 1 始まりの番号。
