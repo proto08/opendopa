@@ -1,0 +1,37 @@
+# Dependabot の minor・patch の更新を、CI が通ったら自動でマージする(major は人が見る)。
+# `gh pr merge --auto` は「必須チェックが通ったらマージする」予約をするだけ。
+# 動かすには、リポジトリ側の設定が要る(docs/DECISIONS.md の 2026-11-05 を参照)。
+#   - Settings > General > Allow auto-merge を ON
+#   - main のブランチ保護(ruleset)で、必須チェックに「CI(必須チェック)」を指定
+# 設定がないと、予約に失敗してこのジョブが落ちる(ブランチ保護がないまま即マージされることはない)。
+name: Dependabot auto-merge
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Dependabot のメタデータを取得する
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      # 許可リスト方式: patch と minor だけ。major や、判別できないもの(update-type が空)は対象外。
+      # Terraform は CI で検証していないので対象外。
+      - name: patch・minor の自動マージを予約する
+        if: |
+          (steps.metadata.outputs.update-type == 'version-update:semver-patch' ||
+           steps.metadata.outputs.update-type == 'version-update:semver-minor') &&
+          !startsWith(github.head_ref, 'dependabot/terraform/')
+        run: gh pr merge --auto --merge "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

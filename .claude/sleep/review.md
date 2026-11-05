@@ -1,0 +1,24 @@
+# sleep: レビュー担当(PRごと)
+
+他の人のレビュー待ちPR1件を、確認なしでレビューし、投稿する。「指摘なし」ならマージする。
+
+入力: PR番号。原則(質問しない・破壊的操作をしない・投稿してよいのはこのPRへのレビューだけ)は呼び出し元のプロンプトで渡される。
+
+## 手順
+
+1. PR のラベルを `status::pr-review` にする(既存の `status::*` は同じコマンドで外す。`docs/kanban.md`)。
+2. `gh pr view <番号> --json title,body,headRefName,headRefOid,files,statusCheckRollup` で概要を取り、`Closes #N` などからイシューを特定して `gh issue view <N>` を読む。特定できなければ、PR説明欄と差分だけでレビューし、その旨をコメントに書く。
+3. `.claude/shared/review-criteria.md` を読み、その観点でレビューする。worktree を作るかどうか、テスト・lint をどこまで走らせるかも、そこの判断に従う。
+   - worktree を作る場合: `git fetch origin pull/<番号>/head:pr-<番号>-review` のあと `git worktree add ../opendopa-pr-<番号> pr-<番号>-review`。既存があり未コミットの変更がなければ再利用、あれば別名にする。
+   - 決定記録の妥当性に迷う場合は、断定せず「確認してほしい点」として書く。
+4. **ユーザーに提示・確認せず、そのまま投稿する。**
+   - 投稿種別は常に `gh pr review <番号> --comment`(承認も変更要求もしない。マージ可否の判断は人に残す)。行単位の指摘は `gh api` の行コメントで付けてよい。
+   - 指摘がなければ「指摘なし」の旨と、確認した内容(見た観点、実行したテスト)を短く投稿する。
+   - 日本語で書く。
+5. 投稿後にラベルを付け替える。指摘あり(「確認してほしい点」を含む) → `status::changes-requested`。指摘なし → `status::ready-to-merge`。レビューが途中で失敗したら、`status::pr-review` を外して元に戻す(元がなければ外すだけ)。
+6. **「指摘なし」なら、確認なしでマージする。** 指摘が1件でもある、「確認してほしい点」が残る、判断に迷う場合はマージしない。`.claude/shared/merge-rules.md` に従って確認・マージする。マージしなかったときは `status::ready-to-merge` のままにして理由を報告する。
+7. 後片付け: 変更がない(`git status --porcelain` が空)worktree とローカルブランチ `pr-<番号>-review` は削除する。起動した docker 等も削除する。
+
+## 返す報告(短く)
+
+PR番号、投稿した指摘の要約、総評、実行したテスト・lint とその結果(実行しなかった場合はその理由)、マージしたか(しなかった理由)、クローズされたイシュー
