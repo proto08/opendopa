@@ -77,7 +77,7 @@ jobs:
       - name: pnpm のストアを取得する場所
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: pnpm-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -101,7 +101,7 @@ jobs:
       - uses: jdx/mise-action@v5
         with:
           install_args: python uv
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: ~/.cache/uv
           key: uv-${{ runner.os }}-${{ hashFiles('pipeline/uv.lock') }}
@@ -148,7 +148,7 @@ jobs:
       - name: pnpm のストアを取得する場所
         id: pnpm-store
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ${{ steps.pnpm-store.outputs.path }}
