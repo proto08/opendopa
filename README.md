@@ -99,7 +99,7 @@ web と recsys がまとめて起動します。個別に起動するときは `
 | --- | --- | --- |
 | web | http://localhost:3000 | `GET /api/health`(DB に接続できれば 200、できなければ 503)、`GET /api/health/recsys`(web から recsys に内部 HTTP でつながれば 200) |
 | recsys | http://localhost:8080 | `GET /healthz`、`GET /internal/ping`(ヘッダー `X-Internal-Token` が必要) |
-| DB | localhost:5432 | `mise run db-check`(pgvector と、recsys 用の読み取り専用ロールの確認) |
+| DB | localhost:5432 | `mise run db-psql` でつなげる(pgvector は `\dx`、テーブルは `\dt` で確認) |
 
 起動できたかは、別のターミナルで次のとおり確認します。
 
