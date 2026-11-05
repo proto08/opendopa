@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#MISE description="DB の状態を確かめる(pgvector が入っていること、recsys のロールが読み取り専用であること)"
+set -euo pipefail
+
+psql_app() { docker compose exec -T db psql -v ON_ERROR_STOP=1 -U opendopa -d opendopa -tA "$@"; }
+
+echo "pgvector: $(psql_app -c "SELECT extversion FROM pg_extension WHERE extname = 'vector'")"
+
+# recsys のロールで接続して、SELECT はできて、書き込みはできないことを確かめる
+url="${RECSYS_DATABASE_URL:?RECSYS_DATABASE_URL が未設定です}"
+recsys_psql() { docker compose exec -T db psql -v ON_ERROR_STOP=1 "$url" -tA "$@"; }
+
+recsys_psql -c "SELECT count(*) FROM embeddings" >/dev/null
+echo "recsys: embeddings を SELECT できる"
+if recsys_psql -c "INSERT INTO meta VALUES ('x', '{}')" >/dev/null 2>&1; then
+  echo "recsys: 書き込めてしまう(読み取り専用になっていない)" >&2
+  exit 1
+fi
+echo "recsys: 書き込みは拒否される"

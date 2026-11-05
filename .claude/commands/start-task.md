@@ -103,6 +103,7 @@ argument-hint: "[イシュー番号]"
   `git worktree add -b <ブランチ名> ../opendopa-<イシュー番号> origin/<デフォルトブランチ>`
 - 既に同名のworktree・ブランチがある場合は、内容を確認してから再利用するかユーザーに尋ねる。
 - 以降のファイル編集・テスト実行などはすべてこのworktree内で行う。
+- 状態ラベル(`docs/kanban.md`)を付ける。通常モードはイシューに `status::in-progress`、レビュー対応モードはPRに `status::fixing`(既存の `status::*` は同じコマンドで外す)。
 
 ## 3. 実装
 
@@ -166,7 +167,7 @@ argument-hint: "[イシュー番号]"
 
 ## 5. commit と PR 作成
 
-**レビュー対応モード**: 修正をcommitして既存PRのブランチへ `git push` する(PRは新規作成しない)。commitメッセージは対応した指摘が分かるようにする。その後、レビュー指摘への対応が完了したことをユーザーに通知する(指摘ごとの対応内容、対応しなかった指摘とその理由、self-reviewの結果を含める)。続けて、レビュアーへの対応報告をPRに投稿する。
+**レビュー対応モード**: 修正をcommitして既存PRのブランチへ `git push` する(PRは新規作成しない)。pushしたら `status::fixing` を `status::review-wait` に付け替える(`docs/kanban.md`)。commitメッセージは対応した指摘が分かるようにする。その後、レビュー指摘への対応が完了したことをユーザーに通知する(指摘ごとの対応内容、対応しなかった指摘とその理由、self-reviewの結果を含める)。続けて、レビュアーへの対応報告をPRに投稿する。
 
 - 報告先: 指摘を投稿したレビュアー(`gh pr view <PR番号> --json reviews,comments` と行コメントの投稿者。自分自身とbotは除く)を `@<ログイン名>` 形式でメンションする。
 - 文面: 対応した旨、指摘ごとの対応内容(commitのハッシュを添える)、対応しなかった指摘とその理由、再レビューのお願いを簡潔に書く。
@@ -179,7 +180,7 @@ argument-hint: "[イシュー番号]"
 
 - 変更内容を意味のある単位でcommitする。メッセージは既存の履歴の形式(例: `feat: ...` / `fix: ...`)に揃える。
 - `git push -u origin <ブランチ名>` でpushする。
-- `gh pr create` でPRを作成する。
+- `gh pr create` でPRを作成する。作成したら、イシューの `status::in-progress` を外し、PRに `status::review-wait` を付ける(`docs/kanban.md`)。
   - タイトルはcommitと同じ形式で簡潔に。
   - 説明欄に変更概要、self-reviewの結果、テスト結果を書き、`Closes #<イシュー番号>` を含める。
   - 決定事項を記録した場合は、「決めたこと」の節に要点を箇条書きし、ADRへのリンクを添える。

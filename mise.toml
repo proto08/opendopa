@@ -14,6 +14,9 @@ lefthook = "2.2.2"
 [env]
 # ルートの .env.local を全アプリに渡す(なければ .env.example をコピーする: `mise run setup`)
 _.file = ".env.local"
+# dbmate(ADR-0013 A2)。スキーマの dump はしない(pg_dump が要るため。スキーマは db/migrations が正)
+DBMATE_MIGRATIONS_DIR = "db/migrations"
+DBMATE_NO_DUMP_SCHEMA = "true"
 
 # ---- セットアップ ----
 
@@ -42,6 +45,32 @@ run = "pnpm dev"
 description = "recsys(Rust)を起動する(http://localhost:8080)"
 dir = "services/recsys"
 run = "cargo run -p recsys-server"
+
+# ---- DB(docker-compose の PostgreSQL。ADR-0013) ----
+
+[tasks.db-up]
+description = "DB(PostgreSQL + pgvector)を起動し、マイグレーションを流す"
+run = ["docker compose up -d --wait db", "dbmate up"]
+
+[tasks.db-down]
+description = "DB を止める(データは残る)"
+run = "docker compose down"
+
+[tasks.db-reset]
+description = "DB のデータを消して作り直し、マイグレーションを流す"
+run = ["docker compose down --volumes", "docker compose up -d --wait db", "dbmate up"]
+
+[tasks.db-migrate]
+description = "未適用のマイグレーションを流す(dbmate up)"
+run = "dbmate up"
+
+[tasks.db-new]
+description = "マイグレーションのファイルを作る(例: mise run db-new add_foo)"
+run = "dbmate new"
+
+[tasks.db-psql]
+description = "DB に psql でつなぐ"
+run = "docker compose exec db psql -U opendopa -d opendopa"
 
 # ---- 型の生成 ----
 
