@@ -12,7 +12,7 @@
 
 | ラベル | Project の Status | 対象 | 意味 |
 | --- | --- | --- | --- |
-| `status::in-progress` | In progress | イシュー | 実装中(worktree を作ってから、PR を作るまで) |
+| `status::in-progress` | In Progress | イシュー | 実装中(worktree を作ってから、PR を作るまで) |
 | `status::review-wait` | Review wait | PR | レビュー待ち(PR 作成直後、修正の push 後) |
 | `status::pr-review` | PR review | PR | AI がレビュー中 |
 | `status::changes-requested` | Changes requested | PR | 指摘を投稿済み。作成者の対応待ち |
@@ -63,7 +63,7 @@ AI が落ちると、作業中のラベルが残る。`/sleep` は最初のラ�
 2. Project の組み込みワークフロー「Auto-add to project」で、このリポジトリのイシューとPRを自動追加する
 3. Board を assignee でグループ化する(人ごとの行)
 4. リポジトリ変数 `PROJECT_NUMBER` に、Project の番号を入れる。`Settings → Secrets and variables → Actions → Variables`
-5. リポジトリ Secret `PROJECT_TOKEN` に、Project を更新できるトークンを入れる(`project` 権限を持つ PAT、または GitHub App のトークン)。既定の `GITHUB_TOKEN` では、ユーザー/Organization 所有の Project は更新できない
+5. リポジトリ Secret `PROJECT_TOKEN` に、Project を更新できるトークンを入れる(classic PAT なら `project` と `read:org` の両方のスコープ。`gh project` がオーナーの解決に `read:org` を使うため、`project` だけだと `unknown owner type` で失敗する。または GitHub App のトークン)。既定の `GITHUB_TOKEN` では、ユーザー/Organization 所有の Project は更新できない
 6. ラベルを作る(`gh label create "status::in-progress" --color ...` を各ラベルに)
 
 `PROJECT_NUMBER` と `PROJECT_TOKEN` が未設定の間、ワークフローは何もせず成功で終わる。
