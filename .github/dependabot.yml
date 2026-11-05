@@ -1,0 +1,72 @@
+# Dependabot の設定。決めたことは docs/DECISIONS.md(2026-11-05)。
+# minor・patch は1つのPRにまとめ、CI が通れば自動でマージする(.github/workflows/dependabot-automerge.yml)。
+# major は個別のPRになり、自動ではマージしない(人が見る)。
+version: 2
+
+updates:
+  # web・packages/shared(pnpm のワークスペース。ロックファイルはルート)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # pipeline(uv)
+  - package-ecosystem: "uv"
+    directory: "/pipeline"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # recsys(Cargo のワークスペース)
+  - package-ecosystem: "cargo"
+    directory: "/services/recsys"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+    groups:
+      minor-patch:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "chore(deps)"
+
+  # Terraform のプロバイダー。CI に terraform の検証がないので、PRは作るが自動マージはしない
+  - package-ecosystem: "terraform"
+    directory: "/infra"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    cooldown:
+      default-days: 3
+    commit-message:
+      prefix: "chore(deps)"
