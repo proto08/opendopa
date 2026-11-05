@@ -1,0 +1,99 @@
+# 状態ラベル(status::*)を GitHub Projects の Status 項目に同期する。docs/kanban.md 参照。
+name: Project Status 同期
+
+on:
+  issues:
+    types: [labeled, unlabeled, closed]
+  # コードは checkout しない(Secret を使うため pull_request_target にしている)
+  pull_request_target:
+    types: [labeled, unlabeled, closed]
+
+permissions:
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: project-status-${{ github.event.issue.number || github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    env:
+      REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
+      URL: ${{ github.event.issue.html_url || github.event.pull_request.html_url }}
+      ACTION: ${{ github.event.action }}
+      LABEL: ${{ github.event.label.name }}
+      PROJECT_NUMBER: ${{ vars.PROJECT_NUMBER }}
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      REPO_TOKEN: ${{ github.token }}
+    steps:
+      - name: Status を更新する
+        run: |
+          set -euo pipefail
+
+          if [ -z "${PROJECT_NUMBER:-}" ] || [ -z "${PROJECT_TOKEN:-}" ]; then
+            echo "PROJECT_NUMBER / PROJECT_TOKEN が未設定のためスキップする"
+            exit 0
+          fi
+
+          # いまの状態をリポジトリから取り直す(イベントのペイロードは古いことがある)
+          info=$(GH_TOKEN="$REPO_TOKEN" gh api "repos/$REPO/issues/$NUMBER")
+          state=$(jq -r .state <<<"$info")
+          status_labels=$(jq -r '.labels[].name | select(startswith("status::"))' <<<"$info")
+
+          target=""
+          case "$ACTION" in
+            closed)
+              target="Done"
+              ;;
+            labeled)
+              [ "$state" = "open" ] || exit 0
+              case "$LABEL" in
+                status::in-progress)       target="In progress" ;;
+                status::review-wait)       target="Review wait" ;;
+                status::pr-review)         target="PR review" ;;
+                status::changes-requested) target="Changes requested" ;;
+                status::fixing)            target="Fixing" ;;
+                status::merge-check)       target="Merge check" ;;
+                status::conflict)          target="Conflict" ;;
+                status::ready-to-merge)    target="Ready to merge" ;;
+                *) echo "状態ラベルではないのでスキップする: $LABEL"; exit 0 ;;
+              esac
+              ;;
+            unlabeled)
+              case "$LABEL" in status::*) ;; *) exit 0 ;; esac
+              [ "$state" = "open" ] || exit 0
+              # 付け替え(別の状態ラベルが残っている)なら、labeled 側で処理する
+              [ -z "$status_labels" ] || exit 0
+              target="Todo"
+              ;;
+          esac
+
+          # クローズ・マージ後に、状態ラベルを残さない
+          if [ "$ACTION" = "closed" ]; then
+            while IFS= read -r l; do
+              [ -n "$l" ] || continue
+              enc=$(jq -rn --arg l "$l" '$l|@uri')
+              GH_TOKEN="$REPO_TOKEN" gh api -X DELETE "repos/$REPO/issues/$NUMBER/labels/$enc" >/dev/null
+            done <<<"$status_labels"
+          fi
+
+          export GH_TOKEN="$PROJECT_TOKEN"
+          project_id=$(gh project view "$PROJECT_NUMBER" --owner "$OWNER" --format json --jq .id)
+          fields=$(gh project field-list "$PROJECT_NUMBER" --owner "$OWNER" --format json)
+          field_id=$(jq -r '.fields[] | select(.name=="Status") | .id' <<<"$fields")
+          option_id=$(jq -r --arg n "$target" \
+            '.fields[] | select(.name=="Status") | .options[] | select(.name==$n) | .id' <<<"$fields")
+          if [ -z "$field_id" ] || [ -z "$option_id" ]; then
+            echo "::error::Project の Status に '$target' の選択肢がない(docs/kanban.md のセットアップ参照)"
+            exit 1
+          fi
+
+          # すでに追加済みならその項目の id が返る
+          item_id=$(gh project item-add "$PROJECT_NUMBER" --owner "$OWNER" --url "$URL" --format json --jq .id)
+          gh project item-edit --id "$item_id" --project-id "$project_id" \
+            --field-id "$field_id" --single-select-option-id "$option_id"
+          echo "#$NUMBER → $target"
