@@ -236,7 +236,8 @@ opendopa/
 ├─ data/raw/                   # 元CSV(git管理外。§10のファイル名で置く)
 └─ docs/
     ├─ adr/                    # Issue 単位の決定(ADR)
-    └─ DECISIONS.md            # 小さな決定の記録と、ADR の索引
+    ├─ decisions/              # 小さな決定(1決定1ファイル。一覧は mise run decisions-index)
+    └─ DECISIONS.md            # 2026-11-05 までの小さな決定と、ADR の索引(以降は decisions/)
 ```
 
 ---
