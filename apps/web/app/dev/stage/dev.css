@@ -1,0 +1,21 @@
+.devStage {
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+}
+.devControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--muted);
+}
+.devControls input[type="text"],
+.devControls input:not([type]),
+.devControls select {
+  margin-left: 6px;
+}
