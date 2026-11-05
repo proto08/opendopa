@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+#MISE description="マイグレーションのテスト(空のDBに適用 → 2回流す → 制約・インデックス・recsys ロールの権限を確認)。使い捨てのDBを作って消す"
+set -euo pipefail
+
+# 使い捨てDBで検証する(開発用の opendopa DB には触れない)。事前に `docker compose up -d --wait db` が必要
+tdb="opendopa_migtest"
+admin() { docker compose exec -T db psql -v ON_ERROR_STOP=1 -U opendopa -d postgres -tA "$@"; }
+tpsql() { docker compose exec -T db psql -v ON_ERROR_STOP=1 -U opendopa -d "$tdb" -tA "$@"; }
+rpsql() { docker compose exec -T db psql -v ON_ERROR_STOP=1 "postgres://opendopa_recsys:opendopa_recsys@localhost:5432/$tdb" -tA "$@"; }
+
+admin -c "DROP DATABASE IF EXISTS $tdb" >/dev/null
+admin -c "CREATE DATABASE $tdb" >/dev/null
+trap 'admin -c "DROP DATABASE IF EXISTS $tdb" >/dev/null' EXIT
+
+export DATABASE_URL="postgres://opendopa:opendopa@localhost:5432/$tdb?sslmode=disable"
+dbmate up >/dev/null
+dbmate up >/dev/null # 2回目: 何も起きず壊れない
+echo "ok: 空のDBに適用でき、2回流しても壊れない"
+
+fail() { echo "NG: $*" >&2; exit 1; }
+expect_fail() { # <説明> <実行する関数> <SQL>
+  if "$2" -c "$3" >/dev/null 2>&1; then fail "$1(失敗するはずが通った)"; fi
+  echo "ok: $1"
+}
+
+# テーブル・インデックスがある
+tables=$(tpsql -c "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname='public' AND tablename <> 'schema_migrations'")
+want="clusters,datasets,embeddings,impressions,like_events,meta,videos,view_events"
+[ "$tables" = "$want" ] || fail "テーブルが違う: $tables"
+for idx in embeddings_hnsw view_events_anon_id_created_at_idx like_events_anon_id_created_at_idx; do
+  [ "$(tpsql -c "SELECT count(*) FROM pg_indexes WHERE indexname='$idx'")" = 1 ] || fail "インデックス $idx がない"
+done
+[ "$(tpsql -c "SELECT count(*) FROM pg_tables WHERE tablename ~* '(taste|preference|user_vec)'")" = 0 ] || fail "好みのベクトルのテーブルがある"
+echo "ok: すべてのテーブル・インデックスがある"
+
+# 制約
+vec=$(printf '0,%.0s' $(seq 1 1023))0
+tpsql >/dev/null <<SQL
+INSERT INTO datasets VALUES ('d','D','src','D','#000000');
+INSERT INTO videos (id,dataset_id,kind,category_name,headline,duration_sec,scene,csv_row,source_ref,search_text)
+  VALUES ('v1','d','event','c','h',15,'{}','[]','r','s');
+INSERT INTO clusters VALUES (1,'c','#000000','[$vec]',0.5,0.5);
+INSERT INTO embeddings VALUES ('v1','[$vec]',0.1,0.2,1,'m');
+INSERT INTO impressions (anon_id,video_id,reason) VALUES ('a','v1','first');
+INSERT INTO view_events (view_id,anon_id,video_id,watched_sec,ratio) VALUES ('x','a','v1',1,0.1);
+SQL
+expect_fail "impressions の (anon_id, video_id) 重複は失敗" tpsql "INSERT INTO impressions (anon_id,video_id,reason) VALUES ('a','v1','near')"
+expect_fail "view_events の view_id 重複は失敗" tpsql "INSERT INTO view_events (view_id,anon_id,video_id,watched_sec,ratio) VALUES ('x','b','v1',1,0.1)"
+expect_fail "存在しない video_id は外部キーで失敗" tpsql "INSERT INTO like_events (anon_id,video_id,liked) VALUES ('a','nope',true)"
+expect_fail "次元の違うベクトル(3次元)は失敗" tpsql "INSERT INTO clusters VALUES (2,'c','#000000','[1,2,3]',0,0)"
+
+# recsys の読み取り専用ロール
+rpsql -c "SELECT count(*) FROM embeddings" >/dev/null
+rpsql -c "SELECT count(*) FROM clusters" >/dev/null
+rpsql -c "SELECT count(*) FROM meta" >/dev/null
+rpsql -c "SELECT id, dataset_id, status FROM videos" >/dev/null
+echo "ok: recsys は embeddings・clusters・meta・videos(id, dataset_id, status)を SELECT できる"
+expect_fail "recsys は videos.scene を読めない" rpsql "SELECT scene FROM videos"
+expect_fail "recsys は videos.csv_row を読めない" rpsql "SELECT csv_row FROM videos"
+expect_fail "recsys は impressions を読めない" rpsql "SELECT * FROM impressions"
+expect_fail "recsys は INSERT できない" rpsql "INSERT INTO meta VALUES ('x','{}')"
+expect_fail "recsys は UPDATE できない" rpsql "UPDATE clusters SET name='z'"
+expect_fail "recsys は DELETE できない" rpsql "DELETE FROM embeddings"
+echo "db-test: 全部通った"
