@@ -21,7 +21,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       REPO: ${{ github.repository }}
-      OWNER: ${{ github.repository_owner }}
+      # トークンの持ち主(ユーザー所有の Project)。Organization 所有にするときは github.repository_owner に戻す
+      OWNER: "@me"
       NUMBER: ${{ github.event.issue.number || github.event.pull_request.number }}
       URL: ${{ github.event.issue.html_url || github.event.pull_request.html_url }}
       ACTION: ${{ github.event.action }}
