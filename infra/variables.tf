@@ -53,3 +53,43 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "postgres_admin_login" {
+  description = "PostgreSQL の管理者ログイン名"
+  type        = string
+  default     = "opendopa_admin"
+}
+
+variable "postgres_admin_password" {
+  description = "PostgreSQL の管理者パスワード。tfvars に書かず、環境変数 TF_VAR_postgres_admin_password で渡す"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.postgres_admin_password) >= 16
+    error_message = "postgres_admin_password は 16 文字以上にする。"
+  }
+}
+
+variable "postgres_sku_name" {
+  description = "PostgreSQL Flexible Server の SKU(既定は最小のバースト可能)"
+  type        = string
+  default     = "B_Standard_B1ms"
+}
+
+variable "cors_allowed_origins" {
+  description = "Blob の CORS で許可するオリジン。web の URL が決まったら絞る"
+  type        = list(string)
+  default     = ["*"]
+}
+
+variable "tts_provider" {
+  description = "TTS_PROVIDER(none / voicevox / azure)。azure のときだけ Azure AI Speech を作る"
+  type        = string
+  default     = "none"
+
+  validation {
+    condition     = contains(["none", "voicevox", "azure"], var.tts_provider)
+    error_message = "tts_provider は none / voicevox / azure のいずれかにする。"
+  }
+}
