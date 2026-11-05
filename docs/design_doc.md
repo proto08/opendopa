@@ -707,7 +707,7 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | 秘密の値(任意) | `azurerm_key_vault`, `azurerm_key_vault_secret` |
 
 - `CREATE EXTENSION vector;` は、Terraform ではなく、アプリのDBマイグレーション(`db/migrations/`、dbmate)で実行する。
-- アプリのデプロイは、Terraformとは分ける。`docker build` で作ったイメージをレジストリに送り、`azurerm_container_app` のイメージのタグ(変数 `web_image_tag`)を更新して `terraform apply`、またはCIで `az containerapp update` を使う。どちらを使うかは、`docs/DECISIONS.md` に記録する。
+- アプリのデプロイは、Terraformとは分ける。`docker build` で作ったイメージをレジストリに送り、`az containerapp update` でイメージを差し替える(`make deploy` / `mise run deploy`。決定は ADR-0018 A1)。Terraform は初回だけプレースホルダーのイメージでアプリを作り、以後のイメージの差分は無視する。
 - 入口は mise のタスク: `mise run infra-init`, `mise run infra-plan`, `mise run infra-apply`, `mise run deploy`(ビルドからデプロイまで)。
 - `terraform output` で、URL、DB接続先、Storageの名前などを取り出せるようにする(秘密の値は `sensitive = true`)。
 

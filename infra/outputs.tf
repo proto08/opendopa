@@ -98,3 +98,23 @@ output "azure_speech_key" {
   value       = one(module.speech[*].primary_access_key)
   sensitive   = true
 }
+
+output "web_url" {
+  description = "web の URL。/api/health が 200 なら DB に繋がっている"
+  value       = module.containerapp.web_url
+}
+
+output "web_app_name" {
+  description = "web の Container App 名(make deploy が使う)"
+  value       = module.containerapp.web_name
+}
+
+output "recsys_app_name" {
+  description = "recsys の Container App 名(make deploy が使う)"
+  value       = module.containerapp.recsys_name
+}
+
+output "recsys_internal_url" {
+  description = "RECSYS_URL に設定される値(環境の中からだけ届く)"
+  value       = module.containerapp.recsys_internal_url
+}

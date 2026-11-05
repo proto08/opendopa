@@ -8,3 +8,6 @@ env_name = "dev"
 #   export TF_VAR_postgres_admin_password='...'
 # TTS_PROVIDER=azure にするときだけ Speech を作る
 # tts_provider = "azure"
+# 内部 HTTP の共有トークン(16 文字以上)。recsys 用の読み取り専用 DB 接続は、ロールを作ったあとに渡す
+#   export TF_VAR_internal_token='...'
+#   export TF_VAR_recsys_database_url='postgres://opendopa_recsys:...@<host>:5432/opendopa?sslmode=require'
