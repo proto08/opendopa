@@ -5,3 +5,5 @@
 //! 純粋な計算のためのものに限る(axum・sqlx・tokio などは recsys-server 側に置く)。
 
 pub mod config;
+pub mod index;
+pub mod taste;
