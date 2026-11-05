@@ -3,7 +3,9 @@
 設計書(`docs/design_doc.md`)の既定値から外れた判断や、実装中に決めたことを記録する。
 
 - Issue 単位で決めた大きな判断は、`docs/adr/NNNN-*.md`(NNNN は Issue 番号)に、理由とともに書く。
-- 実装中に決めた小さなことは、下の「小さな決定」に1行で書く(日付、決定、理由)。
+- 実装中に決めた小さなことは、`docs/decisions/` に1決定1ファイルで書く(形式は [docs/decisions/README.md](decisions/README.md))。複数のPRが同じ行を足して衝突するのを避けるため。
+- ADR と小さな決定の一覧は、`mise run decisions-index` で出す(索引は生成物でコミットしない)。
+- 下の「ADR の一覧」と「小さな決定」は、2026-11-05 までの分。以降はここに足さない。
 
 ## ADR の一覧
 

@@ -6,7 +6,7 @@
 
 - `docs/design_doc.md`: 設計書。§0.2「実装の約束」は必ず守る
 - `docs/data.md`: CSV の列定義・テンプレート・データセット別の定義(pipeline を触るとき)
-- `docs/adr/`: Issue 単位で決めたこと。`docs/DECISIONS.md` の先頭が索引
+- `docs/adr/`: Issue 単位で決めたこと。`docs/decisions/`: 小さな決定(1決定1ファイル)。一覧は `mise run decisions-index`(`docs/DECISIONS.md` は 2026-11-05 までの分)
 - `apps/web/AGENTS.md`: Next.js は学習データと違う版(16.4)。web を触る前に読む
 
 ## 構成と境界
@@ -33,6 +33,7 @@
 | `mise run setup` | 初回のセットアップ |
 | `mise run dev` | web(:3000)と recsys(:8080)を起動 |
 | `mise run lint` / `mise run test` | 全言語の lint / テスト(CI と同じ内容。CI は #14 で追加予定) |
+| `mise run decisions-index` | ADR と小さな決定の索引を出す |
 | `mise run fmt` | 全言語の整形 |
 | `mise run gen-types` | JSON Schema から TS の型と pydantic のモデルを生成 |
 | `mise exec -- uv run opendopa --help` | pipeline の CLI |
@@ -41,7 +42,7 @@
 
 ## 決めたことの記録
 
-- 設計書の既定値から外れた判断や、実装中に決めた小さなことは、`docs/DECISIONS.md` の「小さな決定」に1行で書く(日付、決定、理由)
+- 設計書の既定値から外れた判断や、実装中に決めた小さなことは、`docs/decisions/YYYY-MM-DD-<slug>.md` に1決定1ファイルで書く(日付、決定、理由。形式は `docs/decisions/README.md`)。`docs/DECISIONS.md` には足さない(衝突するため)
 - Issue 単位の大きな決定は `docs/adr/NNNN-*.md`(NNNN は Issue 番号)
 
 ## 書き方
