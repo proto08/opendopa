@@ -103,6 +103,10 @@ run = "make infra-apply"
 
 # ---- 整形・lint・テスト ----
 
+[tasks.decisions-index]
+description = "ADR と小さな決定(docs/decisions/)の索引を出す"
+run = "python scripts/decisions_index.py"
+
 [tasks.fmt]
 description = "全言語の整形"
 run = [
