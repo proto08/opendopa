@@ -12,7 +12,7 @@
 
 | ラベル | Project の Status | 対象 | 意味 |
 | --- | --- | --- | --- |
-| `status::in-progress` | In progress | イシュー | 実装中(worktree を作ってから、PR を作るまで) |
+| `status::in-progress` | In Progress | イシュー | 実装中(worktree を作ってから、PR を作るまで) |
 | `status::review-wait` | Review wait | PR | レビュー待ち(PR 作成直後、修正の push 後) |
 | `status::pr-review` | PR review | PR | AI がレビュー中 |
 | `status::changes-requested` | Changes requested | PR | 指摘を投稿済み。作成者の対応待ち |
