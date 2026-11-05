@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+#MISE description="recsys の DB 統合テスト(使い捨てDBに migrate・シードして、読み取り専用ロールで索引を読む)。事前に `docker compose up -d --wait db` が必要"
+set -euo pipefail
+
+tdb="opendopa_recsystest"
+admin() { docker compose exec -T db psql -v ON_ERROR_STOP=1 -U opendopa -d postgres -tA "$@"; }
+tpsql() { docker compose exec -T db psql -v ON_ERROR_STOP=1 -U opendopa -d "$tdb" -tA "$@"; }
+
+admin -c "DROP DATABASE IF EXISTS $tdb" >/dev/null
+admin -c "CREATE DATABASE $tdb" >/dev/null
+trap 'admin -c "DROP DATABASE IF EXISTS $tdb" >/dev/null' EXIT
+
+DATABASE_URL="postgres://opendopa:opendopa@localhost:5432/$tdb?sslmode=disable" dbmate up >/dev/null
+
+vec=$(printf '0,%.0s' $(seq 1 1023))1
+tpsql >/dev/null <<SQL
+INSERT INTO datasets VALUES ('d','D','src','D','#000000');
+INSERT INTO videos (id,dataset_id,kind,category_name,headline,duration_sec,scene,csv_row,source_ref,search_text,status)
+  VALUES ('v1','d','event','c','h',15,'{}','[]','r','s','ok'), ('v2','d','event','c','h',15,'{}','[]','r','s','excluded');
+INSERT INTO clusters VALUES (1,'c','#000000','[$vec]',0.5,0.5);
+INSERT INTO embeddings VALUES ('v1','[$vec]',0.1,0.2,1,'m'), ('v2','[$vec]',0.3,0.4,1,'m');
+SQL
+
+RECSYS_TEST_DATABASE_URL="postgres://opendopa_recsys:opendopa_recsys@localhost:5432/$tdb" \
+  cargo test --manifest-path services/recsys/Cargo.toml -p recsys-server --test db
