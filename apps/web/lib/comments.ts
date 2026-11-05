@@ -36,8 +36,8 @@ export type ActiveComment = {
 /**
  * 累計の再生秒 `playedSec` に画面にいるコメント。
  * 出す時刻は動画内の `t`(ループしても同じ時刻)。レーンが全部埋まっていたら、その回は出さない。
- * 過去の出し入れを先頭から再現するが、MAX_DURATION_SEC より前のものはもう消えているので、
- * それより後に出るものだけをたどる(周回数が増えても軽い)。
+ * レーンは前のコメントが流れ終わるまで占有が連鎖するので、窓を切ると途中でレーンが変わる。
+ * そのため、動画の先頭(周回 0)から出し入れを再現する(コメントは 1 周数十件で、軽い)。
  */
 export function activeComments(
   comments: readonly FlowComment[],
@@ -50,16 +50,14 @@ export function activeComments(
     .filter(({ c }) => c.t < totalSec)
     .sort((a, b) => a.c.t - b.c.t || a.i - b.i);
 
-  const from = Math.max(playedSec - MAX_DURATION_SEC, 0);
-  const firstLoop = Math.floor(from / totalSec);
   const lastLoop = Math.floor(playedSec / totalSec);
   const busyUntil: number[] = Array(LANE_COUNT).fill(-Infinity);
   const active: ActiveComment[] = [];
 
-  for (let loop = firstLoop; loop <= lastLoop; loop++) {
+  for (let loop = 0; loop <= lastLoop; loop++) {
     for (const { c, i } of sorted) {
       const start = loop * totalSec + c.t;
-      if (start < from || start > playedSec) continue;
+      if (start > playedSec) continue;
       const lane = assignLane(busyUntil, start);
       if (lane === null) continue;
       const duration = commentDuration(c);

@@ -75,6 +75,20 @@ describe("activeComments", () => {
     expect(activeComments(list, 20, 6)).toEqual(activeComments(list, 20, 6));
   });
 
+  it("再生秒を進めても、画面にいるコメントのレーンは変わらない", () => {
+    // 流れる時間が長く、レーンの占有が連鎖する密なコメント列
+    const list = Array.from({ length: 30 }, (_, i) => c(i * 0.6, `コメント${i}`));
+    const laneOf = new Map<string, number>();
+    for (let t = 0; t <= 90; t += 0.1) {
+      for (const a of activeComments(list, 20, t)) {
+        const prev = laneOf.get(a.key);
+        if (prev !== undefined) expect(a.lane).toBe(prev);
+        laneOf.set(a.key, a.lane);
+      }
+    }
+    expect(laneOf.size).toBeGreaterThan(0);
+  });
+
   it("再生秒が進むと位置が進む", () => {
     const list = [c(3)];
     const a = activeComments(list, 20, 5)[0].progress;
