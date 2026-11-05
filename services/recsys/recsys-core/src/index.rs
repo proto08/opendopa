@@ -1,6 +1,6 @@
 //! 動画とクラスタの索引(インメモリ)。DB からの読み込みは recsys-server 側(#41)。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 /// 索引に載せる動画 1 本。
 #[derive(Debug, Clone, PartialEq)]
@@ -23,6 +23,18 @@ pub struct Cluster {
     pub cx: f32,
     pub cy: f32,
 }
+
+/// 索引が空で、選択も位置の計算もできない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EmptyIndex;
+
+impl fmt::Display for EmptyIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "動画の索引が空です")
+    }
+}
+
+impl std::error::Error for EmptyIndex {}
 
 /// 動画 ID から引ける索引。`videos()` は渡された順を保つ。
 #[derive(Debug, Clone, Default)]
