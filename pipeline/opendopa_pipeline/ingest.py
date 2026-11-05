@@ -90,6 +90,16 @@ def normalize(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
     return out
 
 
+def load_path(path: Path) -> pd.DataFrame:
+    """拡張子に合うローダで 1 ファイルを読む(整形はしない)。"""
+    loader = _LOADERS.get(path.suffix.lower())
+    if loader is None:
+        raise IngestError(f"{path}: 拡張子 {path.suffix!r} のローダがありません")
+    if not path.exists():
+        raise IngestError(f"{path}: ファイルがありません(data/README.md を参照)")
+    return loader(path)
+
+
 def load_frame(dataset: DatasetDef, root: Path | str = ".") -> pd.DataFrame:
     """`files` を読み、結合して、`rename`・`null_values`・`zero_is_null` を適用する。
 
@@ -97,15 +107,7 @@ def load_frame(dataset: DatasetDef, root: Path | str = ".") -> pd.DataFrame:
     複数のファイルは、同じ列を持つものとして縦に結合する。
     """
     root = Path(root)
-    frames = []
-    for name in dataset.files:
-        path = root / name
-        loader = _LOADERS.get(path.suffix.lower())
-        if loader is None:
-            raise IngestError(f"{name}: 拡張子 {path.suffix!r} のローダがありません")
-        if not path.exists():
-            raise IngestError(f"{name}: ファイルがありません(data/README.md を参照)")
-        frames.append(loader(path))
+    frames = [load_path(root / name) for name in dataset.files]
     if not frames:
         raise IngestError("files が空です")
     return normalize(pd.concat(frames, ignore_index=True), dataset)

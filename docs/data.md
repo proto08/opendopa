@@ -87,6 +87,25 @@ comments:
 embed_text: "事故等報告 {pref} {kind} {summary_1}"
 ```
 
+シーンの組み立て(#33)のための、省略できるキー(実装: `pipeline/opendopa_pipeline/scene.py`, `build.py`):
+
+```yaml
+kind: event                        # event | stat | geo。省略は grain: row → event、group → stat
+headline: "{pref}で無人航空機が事故"  # 穴を含む文(40字以内)。省略、または穴が空なら、先頭の字幕の最初の文
+chips: ["{pref}", "{REMARKS}"]     # 特徴のラベル。穴が空のものは省く
+sparkline: trend                   # op: series の stat の名前(12点以内)
+map:                               # 地点は 名前(穴を含む文)と 緯度・経度の列。type は route か points
+  type: points
+  points: [{name: "{place}", lat: LAT, lon: LON}]
+hide: [PHONE]                      # videos.jsonl の csv_row に出さない列(個人に関わる列。§15.2)
+comments:
+  pool_calm: ["気をつけたい"]       # pool_<名前>。なければ既定(calm / light)
+  rule: "casualty_sentence == '負傷者の報告があります。' -> none; else calm"   # `式 -> プール; ...; else プール`
+select:
+  score:                           # 式は 列 / abs(列) / rank_desc(列) / rank_asc(列)。weight は省略で 1
+    - {expr: "abs(yoy_ratio)", weight: 1.0}
+```
+
 **式(`when`、`filters`、`fallback_rules` の `if`)** は、安全な小さな式言語だけを許す(列名、`==`、`!=`、`>`、`<`、`and`、`or`、`null`、`contains(列, [語, ...])`)。`eval` は使わない。
 
 #### 8.3.1 テンプレートの規則
@@ -123,7 +142,7 @@ decisions:
   - id: template                         # 型を選ぶ(主役)
     kind: choice
     question: "この事故等報告の概要は、次のどの型に一番近いですか。"
-    state: [INCIDENT_SUMMARY, CASUALTIES_SUMMARY]   # 判断モデルに渡す列(これだけ)
+    state: [INCIDENT_SUMMARY, casualty_sentence]   # 判断モデルに渡す列(これだけ)。負傷の内容(CASUALTIES_SUMMARY)は渡さず、定型文にしたものを渡す
     options_from: template_groups        # 各型の label を選択肢にする(その行で埋められる型だけ)
     min_confidence: 0.55
     fallback: {rule: keyword, default: other}   # 低確信度・失敗のときの代わり
@@ -137,7 +156,7 @@ decisions:
 
 fallback_rules:                          # 決定モデルが使えないとき(`rules` プロバイダー)の代わり
   keyword:
-    - {if: "CASUALTIES_SUMMARY != 'なし' or contains(INCIDENT_SUMMARY, ['負傷'])", then: injury}
+    - {if: "casualty_sentence == '負傷者の報告があります。' or contains(INCIDENT_SUMMARY, ['負傷'])", then: injury}
     - {if: "contains(INCIDENT_SUMMARY, ['不能', '制御'])", then: loss_of_control}
     - {if: "contains(INCIDENT_SUMMARY, ['車両', '建物', '物件', '衝突', '接触'])", then: object_damage}
     - {else: other}
