@@ -19,6 +19,30 @@ _HOLE = re.compile(r"\{([^{}]+)\}")
 _TYPE_COUNT_RANGE = range(4, 7)
 
 
+def parse_comment_rule(rule: str) -> list[tuple[str | None, str]]:
+    """`comments.rule` を、(式 or None, プール名)の一覧にする。
+
+    書き方: `式 -> プール名; 式 -> プール名; else プール名`。プール名 `none` はコメントなし。
+    `;` と `->` は区切りなので、式の中の文字列には使えない。
+    """
+    if not isinstance(rule, str) or not rule.strip():
+        raise ValueError("空です")
+    out: list[tuple[str | None, str]] = []
+    for clause in (c.strip() for c in rule.split(";")):
+        if not clause:
+            continue
+        if clause.startswith("else "):
+            out.append((None, clause.removeprefix("else ").strip()))
+        elif "->" in clause:
+            expr, pool = clause.rsplit("->", 1)
+            out.append((expr.strip(), pool.strip()))
+        else:
+            raise ValueError(f"{clause!r} は `式 -> プール名` か `else プール名` の形です")
+    if not out or any(not pool for _, pool in out):
+        raise ValueError("プール名がありません")
+    return out
+
+
 class DatasetError(ValueError):
     """列定義 YAML の誤り。どのファイルのどこが悪いかをメッセージに含める。"""
 
@@ -71,6 +95,36 @@ class BigNumber(_Model):
 class BigNumberSet(_Model):
     primary: BigNumber
     fallback: BigNumber | None = None
+
+
+class MapPlace(_Model):
+    """地図の1地点。名前は穴を含む文、緯度経度は列名。"""
+
+    name: str
+    lat: str
+    lon: str
+
+
+class MapSpec(_Model):
+    """シーンの `map` の作り方。`route` は from / to、`points` は points を使う(polygon は #56)。"""
+
+    type: Literal["route", "points"]
+    from_: MapPlace | None = Field(default=None, alias="from")
+    to: MapPlace | None = None
+    points: list[MapPlace] = []
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    @model_validator(mode="after")
+    def _check_shape(self) -> MapSpec:
+        if self.type == "route" and (self.from_ is None or self.to is None):
+            raise ValueError("map: route には from と to が必要です")
+        if self.type == "points" and not self.points:
+            raise ValueError("map: points には points が必要です")
+        return self
+
+    def places(self) -> list[MapPlace]:
+        return [p for p in (self.from_, self.to, *self.points) if p is not None]
 
 
 class Line(_Model):
@@ -160,6 +214,14 @@ class DatasetDef(_Model):
     comments: dict[str, Any] = {}
     embed_text: str
     required: list[str] = []
+    # シーンの組み立て(#33)。いずれも省略可
+    kind: Literal["event", "stat", "geo"] | None = None  # 省略は grain: row → event、group → stat
+    headline: str | None = None  # 穴を含む文。省略は先頭の字幕の最初の文(40字以内)
+    chips: list[str] = []  # 特徴の小さなラベル(穴を含む文。穴が空のものは省く)
+    sparkline: str | None = None  # `series` の stat の名前
+    map: MapSpec | None = None
+    # 元の行を `csv_row` に出すとき、除く列(個人に関わる列など。設計書 §15.2)
+    hide: list[str] = []
 
     # 読み込み元(エラーメッセージ用。YAML のキーではない)
     source_path: Path | None = Field(default=None, exclude=True)
@@ -231,11 +293,23 @@ class DatasetDef(_Model):
             for i, r in enumerate(rules):
                 if r.if_ is not None:
                     out.append((f"fallback_rules.{name}[{i}].if", r.if_))
+        rule = self.comments.get("rule")
+        if rule is not None:
+            try:
+                clauses = parse_comment_rule(rule)
+            except ValueError:
+                clauses = []  # 形の誤りは _check_exprs が報告する
+            out += [(f"comments.rule[{i}]", c) for i, (c, _) in enumerate(clauses) if c]
         return out
 
     def texts(self) -> list[tuple[str, str]]:
         """穴を含みうる文を、(場所, 文) の一覧で返す。テンプレートの行は除く。"""
         out = [("embed_text", self.embed_text)]
+        if self.headline is not None:
+            out.append(("headline", self.headline))
+        out += [(f"chips[{i}]", c) for i, c in enumerate(self.chips)]
+        if self.map is not None:
+            out += [(f"map {p.name}", p.name) for p in self.map.places()]
         for label, bn in (
             ("primary", self.big_number.primary),
             ("fallback", self.big_number.fallback),
@@ -249,6 +323,12 @@ class DatasetDef(_Model):
 
     def _check_exprs(self) -> list[str]:
         errors = []
+        rule = self.comments.get("rule")
+        if rule is not None:
+            try:
+                parse_comment_rule(rule)
+            except ValueError as e:
+                errors.append(f"comments.rule: {e}")
         for where, text in self.exprs():
             try:
                 parse_expr(text)
@@ -272,6 +352,8 @@ class DatasetDef(_Model):
                     errors.append(
                         f"fallback_rules.{name}[{i}]: 型 {target!r} が template_groups にありません"
                     )
+        if self.sparkline is not None and self.sparkline not in {s.name for s in self.stats}:
+            errors.append(f"sparkline: stat {self.sparkline!r} が stats にありません")
         for d in self.decisions:
             if d.options_from not in (None, "template_groups"):
                 errors.append(f"decisions[{d.id}].options_from: template_groups のみ使えます")
@@ -310,6 +392,11 @@ def validate_against_columns(dataset: DatasetDef, columns: list[str] | set[str])
             errors.append(f"{where}: 式が使う {col!r} は、列にも derived / stats にもありません")
 
     cols = set(columns)
+    if dataset.map is not None:
+        for p in dataset.map.places():
+            for col in (p.lat, p.lon):
+                if col not in known:
+                    errors.append(f"map: 列 {col!r} は、列にも derived / stats にもありません")
     for name, d in dataset.derived.items():
         if d.from_ is not None and d.from_ not in cols:
             errors.append(f"derived.{name}.from: 列 {d.from_!r} がありません")
