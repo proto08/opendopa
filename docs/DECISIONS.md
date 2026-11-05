@@ -13,6 +13,7 @@
 | [ADR-0013](adr/0013-docker-compose-and-migrations.md) | 環境構築(docker-compose と DB マイグレーション) | #13 |
 | [ADR-0016](adr/0016-terraform-foundation.md) | Terraform の土台と基盤リソース | #16 |
 | [ADR-0030](adr/0030-pipeline-ingest-stats.md) | パイプライン: 取り込み・クリーニング・derived・stats・fmt | #30 |
+| [ADR-0033](adr/0033-pipeline-scene-assembly.md) | パイプライン: 選定・テンプレート選択・シーン組み立て・コメント | #33 |
 
 ## 小さな決定
 
@@ -56,3 +57,13 @@
 - 2026-11-04: エンジンは `decisions` の順に、同じ判断の問いをまとめて処理する。プロバイダーが `decide_batch` を持てばそれで一括推論し(失敗したら1件ずつに戻す)、なければ `decide` を1件ずつ呼ぶ。同じ入力は1回だけ推論する。`decisions_report.json` はエンジンの `write_report` で出し、書き出し先(`out/<id>/`)の決定と CLI への接続は `decide`/`generate` コマンド側(#35 など)で行う(#32)。
 - 2026-11-04: Decider のキャッシュで、壊れた行(途中で切れた行など)は読み飛ばし、その問いは次回に推論し直す。理由: 追記式なので実行中に落ちると最終行が切れる。キャッシュは作り直せるので、パイプラインを止めない。
 - 2026-11-05: AI の作業状況は、ラベル `status::*` を正にして GitHub Projects の Status に Actions で同期し、Board で見る(`docs/kanban.md`、`.github/workflows/project-status.yml`)。理由: ラベルは `gh` で書きやすく一覧でも見える。Board の列にできるのは Status 項目だけなので、同期をワークフローに任せてスキルを軽くするため。`PROJECT_NUMBER` と `PROJECT_TOKEN` が未設定の間、ワークフローは何もしない。
+- 2026-11-05: 選定の `score` の式は 列 / `abs(列)` / `rank_desc(列)` / `rank_asc(列)` だけ。`rank_desc` は最大が 1、最小が 1/n の 0〜1(欠損は 0)。同点は `order_by`、なければ元の行の順。`score` がなく `seed` があればその種でシャッフル、どちらもなければ `order_by` の順。理由: 重みづけ和で足せるよう順位を 0〜1 に正規化するため。式は eval を使わない許可リスト方式(#33)。
+- 2026-11-05: `diversify_by` のラウンドロビンは、点数順で最初に出たグループから順に1行ずつ取る。欠損の値も1つのグループ。`cap` の既定は 150(#33)。
+- 2026-11-05: テンプレートは、`short: false` のものを定義の順に試し(任意の行を後ろから省いて30秒に収める)、1つも収まらなければ `short: true` を試し、それでも収まらなければ `too_long`。埋められるテンプレートが1つもなければ `no_template`。言い回し違いは「必須の行の穴の集合が同じ、収まるテンプレート」とみなし、`sha256(videoId, 型の id)` で選ぶ(#33)。
+- 2026-11-05: 字幕ごとの秒数は 文字数 ÷ 6.5(小数2桁)、動画の長さはその合計。15秒に満たなければ最後の字幕の秒数を延ばして合計を15秒にする(`durationSec` は `lines` の合計という契約を保つため)(#33)。
+- 2026-11-05: `videoId` の連番は選定の順(除外した行も数える)。理由: 除外の条件を変えても、残る動画の ID が変わらないため。除外された行も `videos.jsonl` に `status: excluded`、`excluded_why` つきで出す(`scenes.jsonl` には出さない)(#33)。
+- 2026-11-05: 台本の段階の除外理由は `no_template` / `too_long` / `no_big_number`(`primary` も `fallback` も作れない)/ `decision:<id>`(noul の確率が `exclude_if_probability_above` を超えた)。型は、決定モデルの選択が埋められない型ならば、埋められる最初の型にする。組み立てたシーンがスキーマに合わないときは除外ではなく `SceneError`(#33)。
+- 2026-11-05: 大きな数字の `value` は、`text` が数だけなら数(`countUp: true`)、そうでなければ `text` の最初の数、数がなければ `text`(`countUp: false`)。見出しは YAML の `headline`、なければ先頭の字幕の最初の文(40字を超えたら 39 字+「…」)。`source.ref` は行なら `行 #<row_id>`、group なら `列=値 / 列=値`(group_by の列)(#33)。
+- 2026-11-05: コメントの種は `sha256("comments", videoId)`(`util.stable_int`)。件数は 6〜12、時刻は 0.5〜(長さ-0.5)秒を小数1桁で昇順。`calm` のプールからは「草」「ｗ」「w」「笑」を含む語を除く。`rule` に合う節がなければコメントなし。`rule` がなければ `light`(YAML が `pool_calm` だけを持つなら `calm`)。`calm` 以外のプールでは 15% が `yellow`(#33)。
+- 2026-11-05: `csv_row` は、元の列(`derived` / `stats` 以外)を列の順に `[列名, 値]` で出し、欠損は `null`。個人に関わる列は YAML の `hide` で除く(既定は全部出す)。`search_text` は `embed_text` の空の穴を空にして詰めた文(#33)。
+- 2026-11-05: YAML に省略可のキー `kind` `headline` `chips` `sparkline` `map` `hide` を足した。`map` は `route` と `points` のみ(`polygon` は GeoJSON の #56 で)。`comments.rule` の構文(`式 -> プール; else プール`)は読み込み時に検査する。理由: イシューの「YAML の指定があれば作る」を実現する指定がスキーマになかったため(#33)。

@@ -87,6 +87,25 @@ comments:
 embed_text: "事故等報告 {pref} {kind} {summary_1}"
 ```
 
+シーンの組み立て(#33)のための、省略できるキー(実装: `pipeline/opendopa_pipeline/scene.py`, `build.py`):
+
+```yaml
+kind: event                        # event | stat | geo。省略は grain: row → event、group → stat
+headline: "{pref}で無人航空機が事故"  # 穴を含む文(40字以内)。省略、または穴が空なら、先頭の字幕の最初の文
+chips: ["{pref}", "{REMARKS}"]     # 特徴のラベル。穴が空のものは省く
+sparkline: trend                   # op: series の stat の名前(12点以内)
+map:                               # 地点は 名前(穴を含む文)と 緯度・経度の列。type は route か points
+  type: points
+  points: [{name: "{place}", lat: LAT, lon: LON}]
+hide: [PHONE]                      # videos.jsonl の csv_row に出さない列(個人に関わる列。§15.2)
+comments:
+  pool_calm: ["気をつけたい"]       # pool_<名前>。なければ既定(calm / light)
+  rule: "casualty_sentence == '負傷者の報告があります。' -> none; else calm"   # `式 -> プール; ...; else プール`
+select:
+  score:                           # 式は 列 / abs(列) / rank_desc(列) / rank_asc(列)。weight は省略で 1
+    - {expr: "abs(yoy_ratio)", weight: 1.0}
+```
+
 **式(`when`、`filters`、`fallback_rules` の `if`)** は、安全な小さな式言語だけを許す(列名、`==`、`!=`、`>`、`<`、`and`、`or`、`null`、`contains(列, [語, ...])`)。`eval` は使わない。
 
 #### 8.3.1 テンプレートの規則
