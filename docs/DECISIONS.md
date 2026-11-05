@@ -43,6 +43,11 @@
 - 2026-11-04: サンプルの置き場を `packages/shared/examples/` から `fixtures/` に変え、`accident-0001.json`(`map: null`)と `map-route` / `map-polygon` / `map-points` の4本にした。理由: #28 の指定。テストが4本すべての検証を通ることを確かめる。`@opendopa/shared/fixtures/*` で web からも読める。
 - 2026-11-04: `packages/shared` に `tsconfig.json` と `typecheck`(`tsc --noEmit`)を足し、`mise run lint` の `lint:shared` に入れた。eslint は足さない。理由: vitest は型を検査せず、shared の型エラーが lint・テストをすり抜けていた(実際に `@types/node` 不足が見つかった)。eslint は規則を決める必要があり、CI(#14)で扱う方が自然。
 - 2026-11-04: `mise run test` に `test:shared`(ajv の検証テスト)を足した。理由: 言語の境目のテストを CI と同じ入口で流すため。
+- 2026-11-04: 大きな数字の文字サイズは、最終的な値の桁数(区切りと小数点を除く)で決める: 4桁まで 21cqw、5桁 17、6桁 14、7桁 12.5、8桁以上 11.5(最小)。カウント中に大きさが変わらないよう、途中の値ではなく最終の値で決める。理由: #43 に「モックはなく、具体的な分岐は実装時に決める」とあり、日本語の 1 桁をステージ幅の約 1 文字分とみて、8 桁までが幅 100cqw に収まるようにした(ブラウザで実測はしていない)。
+- 2026-11-04: 再生の時計は DOM と React に依存しない `ScenePlayer`(`lib/scenePlayer.ts`)に置き、`useScenePlayer` は `useSyncExternalStore` で繋ぐだけにした。時計は requestAnimationFrame で進め、1 回の更新で進める上限を 0.25 秒とする。理由: fake timers でテストできる形にする(#43)。裏タブで時計が飛んでも、字幕と音声が一気にずれない。
+- 2026-11-04: 一時停止アイコンは、切り替えのたびに出す(一時停止は停止の印、再開は再生の印)。`prefers-reduced-motion` では動かさず、一時停止中だけ出す。理由: 仕様は「アイコンの動きを止める」のみで、動きなしだと出しっぱなしになるため、状態を表す表示にした。
+- 2026-11-04: `/dev/stage` は `NODE_ENV === "production"` で `notFound()`(本番ビルドで 404 を確認)。フィクスチャは countUp がすべて false なので、数字の上書きと countUp の切り替えを画面に付けた。
+- 2026-11-04: ステージの CSS は `components/stage.css`(Stage から読み込む)、色・書体・動きのトークンは `app/globals.css` の `:root` に置く。フォントは `next/font/google` で CSS 変数(`--font-dela`、`--font-noto`)にする。
 - 2026-11-04: pipeline に pandas を使う。理由: イシュー #30 のテストが「小さな DataFrame」で書かれており、グループごとの集計(stats)が書きやすいため。
 - 2026-11-04: CSV はすべて文字列で読み、欠損以外がすべて数の形の列だけ数値にする。先頭が 0 の符号(`01100` など)は文字列のまま。理由: 行政区域コードの 0 を落とさないため(ADR-0030)。
 - 2026-11-04: `extract_pref` は、47 都道府県の名前を列挙して先頭一致で取る(`...県` の正規表現にしない)。理由: 3 文字の県や「北海道」、海外の長い文を誤って取らないため。事故データの「194 行中 3 行は取れない」を満たす想定(データがあるときのテストで確認)。
@@ -60,3 +65,4 @@
 - 2026-11-05: `profile` の対象は `--dataset <id>`(`datasets/<id>.yaml` の `files` を `load_frame` で読み、`rename` などを適用)か `--file <csv>`(複数可。YAML なしで、空欄だけ欠損として読む)。YAML がない `--dataset <id>` は `data/raw/<id>/*.csv` を読む(`accident` の YAML は未作成のため)。どちらも無い、または両方未指定は終了コード 2。出力先は `out/<id>/profile.json`(`--file` だけのときの id はファイル名の幹)。`--out-dir` で親を変えられる。理由: docs/data.md §10.15 の「YAML を作る前に列を調べる」流れに合わせるため(#31)。
 - 2026-11-05: 役割の推定は上から `coordinate`(列名が lat/lng/緯度/経度で値が範囲内)→ `flag`(数値で 0/1 のみ)→ `date`(9割以上が日付の形)→ `free_text`(文字列で最長 31 字以上)→ `id`(欠損以外の 98% 以上が一意。小数の列は除く)→ `number`(数値)→ `category`(種類数 20 以下かつ行数の半分以下)→ `other`。`free_text` を `id` より先にするのは、全行が異なる長い文(`INCIDENT_SUMMARY`)を id にしないため。しきい値は経験則で、データを見て調整する(#31)。
 - 2026-11-05: `profile.json` の欠損率は 0〜1 の小数(小数 4 桁)。上位の値は件数の多い順、同数は値の文字列順(出力を決定的にするため)(#31)。
+- 2026-11-05: Dependabot を入れ(`.github/dependabot.yml`)、minor・patch はまとめて CI(必須チェック `ci-ok`)が通れば自動でマージし、major は個別のPRにして人が見る(`.github/workflows/dependabot-automerge.yml`)。対象は npm(ルート)・uv(`pipeline`)・cargo(`services/recsys`)・github-actions・terraform(`infra`。CI に検証がないので PR は作るが自動マージはしない)。docker-compose のイメージ(pgvector)は ADR-0013 でバージョンを固定しているので対象外。週1回、cooldown 3日。マージ方法は履歴の形式に合わせて `--merge`。理由: 依存の更新を溜めず、major だけ人が見るため。自動マージの予約には、リポジトリの設定(Allow auto-merge を ON、main の保護で `ci-ok` を必須チェックにする)が前提で、コードでは設定できない。`mise.toml` のツールのバージョンは Dependabot の対象外。

@@ -14,8 +14,8 @@
     "@opendopa/shared": "workspace:*",
     "next": "16.4.4",
     "pg": "^8.23.1",
-    "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/node": "^26",
