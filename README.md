@@ -25,7 +25,15 @@ https://topaz.dev/projects/rf23wuwzyssmxsjj
 - [Homebrew](https://brew.sh/)
 - Docker(DB の起動に使う。Docker Desktop など、`docker compose` が使えるもの)
 
-Node・pnpm・Python・uv・Rust・dbmate・lefthook は、すべて mise で入れます。個別にインストールする必要はありません。
+次のツールは、すべて mise が `mise.toml` のバージョンで入れます。個別にインストールする必要はありません(バージョンは `mise.toml` が正です)。
+
+| 用途 | ツール |
+| --- | --- |
+| web | Node.js、pnpm |
+| recsys | Rust(clippy、rustfmt を含む) |
+| pipeline | Python、uv |
+| DB | dbmate(マイグレーション。DB 本体は Docker で起動する) |
+| 開発補助 | lefthook(git hook)、Terraform(インフラを触るときだけ) |
 
 ### 1. mise を入れて有効にする
 
@@ -93,6 +101,16 @@ web と recsys がまとめて起動します。個別に起動するときは `
 | recsys | http://localhost:8080 | `GET /healthz`、`GET /internal/ping`(ヘッダー `X-Internal-Token` が必要) |
 | DB | localhost:5432 | `mise run db-check`(pgvector と、recsys 用の読み取り専用ロールの確認) |
 
+起動できたかは、別のターミナルで次のとおり確認します。
+
+```bash
+curl -i http://localhost:3000/api/health
+```
+
+`HTTP/1.1 200` と `{"status":"ok","db":"ok"}` が返れば、web と DB がつながっています。続けて `curl -i http://localhost:3000/api/health/recsys` が 200 なら、web から recsys までつながっています。
+
+終わったら、`mise run dev` を Ctrl+C で止め、`mise run db-down` で DB を止めます。
+
 DB のタスクは次のとおりです。
 
 | コマンド | 内容 |
@@ -115,6 +133,16 @@ cd pipeline && uv run opendopa --help
 サブコマンド(`profile`、`generate`、`embed`、`publish` など)の中身は、これから実装します。
 
 ## 開発
+
+### テストの実行
+
+```bash
+mise run test
+```
+
+全言語のテストをまとめて流します。言語ごとに流すときは `mise run test:web` / `test:shared` / `test:pipeline` / `test:recsys` を使います(`mise run lint:*` も同じ並びです)。web は、変更したら `cd apps/web && mise exec -- pnpm typecheck` も通してください。テストは DB を必要としません。
+
+### コマンド
 
 | コマンド | 内容 |
 | --- | --- |
