@@ -8,6 +8,7 @@ python = "3.13.18"
 uv = "0.13.6"
 rust = { version = "1.99.1", components = "clippy,rustfmt" }
 dbmate = "2.37.0"
+terraform = "1.16.2"
 lefthook = "2.2.2"
 
 [env]
@@ -85,6 +86,21 @@ description = "生成した型がスキーマと一致しているかを確か�
 depends = ["gen-types"]
 run = "git diff --exit-code -- packages/shared/src/generated pipeline/opendopa_pipeline/generated"
 
+# ---- インフラ(Terraform。ADR-0016) ----
+# apply は課金が発生する。plan を確かめてから人が実行する。
+
+[tasks.infra-init]
+description = "Terraform を初期化する(infra/backend.hcl が必要。bootstrap は infra/bootstrap/bootstrap.sh)"
+run = "make infra-init"
+
+[tasks.infra-plan]
+description = "Terraform の plan を出す(infra/tfplan に保存)"
+run = "make infra-plan"
+
+[tasks.infra-apply]
+description = "保存した plan(infra/tfplan)を apply する。リソースが作られ、課金される"
+run = "make infra-apply"
+
 # ---- 整形・lint・テスト ----
 
 [tasks.fmt]
@@ -94,6 +110,7 @@ run = [
   "uv run --project pipeline ruff format .",
   "uv run --project pipeline ruff check --fix .",
   "cargo fmt --manifest-path services/recsys/Cargo.toml --all",
+  "terraform -chdir=infra fmt -recursive",
 ]
 
 [tasks.lint]
@@ -111,6 +128,14 @@ run = "pnpm typecheck"
 [tasks."lint:pipeline"]
 dir = "pipeline"
 run = ["uv run ruff format --check .", "uv run ruff check ."]
+
+[tasks."lint:infra"]
+description = "Terraform の整形検査と validate(バックエンドには接続しない)"
+run = [
+  "terraform -chdir=infra fmt -check -recursive",
+  "terraform -chdir=infra init -backend=false -input=false -lockfile=readonly",
+  "terraform -chdir=infra validate",
+]
 
 [tasks."lint:recsys"]
 dir = "services/recsys"

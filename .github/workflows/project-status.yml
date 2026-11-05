@@ -52,7 +52,7 @@ jobs:
             labeled)
               [ "$state" = "open" ] || exit 0
               case "$LABEL" in
-                status::in-progress)       target="In progress" ;;
+                status::in-progress)       target="In Progress" ;;
                 status::review-wait)       target="Review wait" ;;
                 status::pr-review)         target="PR review" ;;
                 status::changes-requested) target="Changes requested" ;;
