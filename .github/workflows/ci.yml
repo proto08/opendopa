@@ -31,7 +31,7 @@ jobs:
       recsys: ${{ steps.filter.outputs.recsys }}
       types: ${{ steps.filter.outputs.types }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -69,7 +69,7 @@ jobs:
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # mise.toml のバージョンで、必要なツールだけ入れる(ツールのキャッシュ込み)
       - uses: jdx/mise-action@v2
         with:
@@ -97,7 +97,7 @@ jobs:
     if: needs.changes.outputs.pipeline == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v2
         with:
           install_args: python uv
@@ -119,7 +119,7 @@ jobs:
     if: needs.changes.outputs.recsys == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: jdx/mise-action@v2
         with:
           install_args: rust
@@ -140,7 +140,7 @@ jobs:
     if: needs.changes.outputs.types == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # rust は入れない。gen-types 系のタスクが rust を使うようになったら、ここに足す
       - uses: jdx/mise-action@v2
         with:
