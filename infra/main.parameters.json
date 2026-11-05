@@ -1,0 +1,17 @@
+{
+  "openai_location": "japaneast",
+  "openai_deployments": {
+    "embedding": {
+      "model_name": "text-embedding-3-small",
+      "model_version": "1",
+      "sku_name": "Standard",
+      "capacity": 50
+    },
+    "chat": {
+      "model_name": "gpt-4o-mini",
+      "model_version": "2024-07-18",
+      "sku_name": "Standard",
+      "capacity": 30
+    }
+  }
+}

@@ -3,3 +3,8 @@ env_name = "dev"
 # subscription_id = "00000000-0000-0000-0000-000000000000"
 # Container Registry の名前が他と衝突したときに足す
 # name_suffix = "team"
+
+# 管理者パスワードは tfvars に書かず、環境変数で渡す(16 文字以上)
+#   export TF_VAR_postgres_admin_password='...'
+# TTS_PROVIDER=azure にするときだけ Speech を作る
+# tts_provider = "azure"
