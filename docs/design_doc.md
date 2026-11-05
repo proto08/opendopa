@@ -426,7 +426,7 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 - `seenIds`: 配信済みの動画ID。`recentDatasets`: 配信済みのデータセットを新しい順に。
 - `reason` は `first` / `explore_cold` / `near` / `adventure`。表示名(`reasonLabel`)は Next.js が付ける。
 - 最初の数本を偏らせる判断の `eventCount` は、`events` のうち `view` の数。
-- recsys は、起動時と `reload` のときだけ、DBから、`embeddings`(ベクトル・地図の座標)、`clusters`、`videos`(`id`、`dataset_id`)を**読み取りのみ**で全件読み込む。接続は、読み取り専用のロール(環境変数 `RECSYS_DATABASE_URL`)。
+- recsys は、起動時と `reload` のときだけ、DBから、`embeddings`(ベクトル・地図の座標)、`clusters`、`meta`(`key='centroid'`。好みの初期値 `u0`、§7.2)、`videos`(`id`、`dataset_id`、`status`)を**読み取りのみ**で全件読み込む。接続は、読み取り専用のロール(環境変数 `RECSYS_DATABASE_URL`)。
 - 動画のシーンJSON・CSV行・地図のデータは、recsys は扱わない(Next.js が、DBから直接読む)。
 
 
