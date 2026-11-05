@@ -23,6 +23,11 @@ pub struct Replay {
     pub skipped: Vec<String>,
 }
 
+/// 内積。次元が違う分は切り捨てられる(`Index` が同じ次元を保証する前提)。
+pub fn dot(a: &[f32], b: &[f32]) -> f32 {
+    a.iter().zip(b).map(|(a, b)| a * b).sum()
+}
+
 /// ベクトルを長さ 1 にする。長さが 0(または非有限)なら `None`。
 pub fn normalize(v: &[f32]) -> Option<Vec<f32>> {
     let norm = v.iter().map(|x| x * x).sum::<f32>().sqrt();

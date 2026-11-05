@@ -418,12 +418,13 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 
 | メソッド・パス | 送る | 返す |
 | --- | --- | --- |
-| `POST /internal/feed` | `{events, seenIds, recentDatasets, count}` | `{picks:[{videoId, reason}], taste:{x, y, shares:[{clusterId, pct}]}}` |
+| `POST /internal/feed` | `{events, seenIds, recentDatasets, count}` | `{picks:[{videoId, reason}], seenReset, taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/taste` | `{events}` | `{taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/reload` | なし | 動画の索引を、DBから読み直す(公開のあとに呼ぶ) |
 | `GET /healthz` | なし | 200(索引の件数を含む) |
 
 - `seenIds`: 配信済みの動画ID。`recentDatasets`: 配信済みのデータセットを新しい順に。
+- `seenReset`: 未視聴が尽きたので、`seenIds` を空として扱って選んだ印。`true` なら Next.js が、そのユーザーの `impressions` を削除する(recsys は書き込まない。ADR-0040 A1)。
 - `reason` は `first` / `explore_cold` / `near` / `adventure`。表示名(`reasonLabel`)は Next.js が付ける。
 - 最初の数本を偏らせる判断の `eventCount` は、`events` のうち `view` の数。
 - recsys は、起動時と `reload` のときだけ、DBから、`embeddings`(ベクトル・地図の座標)、`clusters`、`meta`(`key='centroid'`。好みの初期値 `u0`、§7.2)、`videos`(`id`、`dataset_id`、`status`)を**読み取りのみ**で全件読み込む。接続は、読み取り専用のロール(環境変数 `RECSYS_DATABASE_URL`)。
@@ -480,7 +481,7 @@ like(false):  いいねを取り消し、そのユーザーの全イベントを
 ```
 function pickNext(anon, u, eventCount, lastDatasets):
   unseen = videos where status='ok' and id not in impressions(anon)
-  if unseen is empty: impressions をリセットして全体から選び直す
+  if unseen is empty: seenIds を空として扱って全体から選び直し、seenReset=true を返す(Next.js が impressions を削除する)
   if eventCount < COLD_START_N:
       データセットごとに1本ずつ順に(まだ出ていないデータセットから)ランダムに選ぶ。reason='explore_cold'
   elif random() < EXPLORE:

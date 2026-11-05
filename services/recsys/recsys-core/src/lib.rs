@@ -6,4 +6,7 @@
 
 pub mod config;
 pub mod index;
+pub mod panel;
+pub mod pick;
+pub mod rng;
 pub mod taste;
