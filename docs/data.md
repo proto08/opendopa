@@ -142,7 +142,7 @@ decisions:
   - id: template                         # 型を選ぶ(主役)
     kind: choice
     question: "この事故等報告の概要は、次のどの型に一番近いですか。"
-    state: [INCIDENT_SUMMARY, CASUALTIES_SUMMARY]   # 判断モデルに渡す列(これだけ)
+    state: [INCIDENT_SUMMARY, casualty_sentence]   # 判断モデルに渡す列(これだけ)。負傷の内容(CASUALTIES_SUMMARY)は渡さず、定型文にしたものを渡す
     options_from: template_groups        # 各型の label を選択肢にする(その行で埋められる型だけ)
     min_confidence: 0.55
     fallback: {rule: keyword, default: other}   # 低確信度・失敗のときの代わり
@@ -156,7 +156,7 @@ decisions:
 
 fallback_rules:                          # 決定モデルが使えないとき(`rules` プロバイダー)の代わり
   keyword:
-    - {if: "CASUALTIES_SUMMARY != 'なし' or contains(INCIDENT_SUMMARY, ['負傷'])", then: injury}
+    - {if: "casualty_sentence == '負傷者の報告があります。' or contains(INCIDENT_SUMMARY, ['負傷'])", then: injury}
     - {if: "contains(INCIDENT_SUMMARY, ['不能', '制御'])", then: loss_of_control}
     - {if: "contains(INCIDENT_SUMMARY, ['車両', '建物', '物件', '衝突', '接触'])", then: object_damage}
     - {else: other}
