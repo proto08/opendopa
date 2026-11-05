@@ -37,6 +37,7 @@ argument-hint: "[PR番号]"
   `git worktree add ../opendopa-pr-<番号> pr-<番号>-review` で独立した作業ディレクトリを作る。
 - 既に同名のworktreeがある場合は、内容を確認してから再利用するかユーザーに尋ねる。
 - 以降のファイル参照・テスト実行などはこのworktree内で行う。
+- 状態ラベル(`docs/kanban.md`)を `status::pr-review` にする(既存の `status::*` は同じコマンドで外す)。ラベルの付け替えは、コメントの投稿ではないので許可は要らない。
 
 ## 3. イシューの特定とレビュー
 
@@ -70,6 +71,7 @@ argument-hint: "[PR番号]"
 - **ユーザーの明示的な許可なしにPRへコメント・レビューを投稿してはならない。**
 - 投稿する指摘の取捨選択・文面修正をユーザーに確認し、許可後に `gh pr review` または `gh api`(行コメント)で投稿する。
 - 投稿種別(approve / request changes / comment)もユーザーに確認する。
+- 投稿後(投稿せず終える場合も)、`status::pr-review` を付け替える。指摘を投稿したら `status::changes-requested`、指摘なしなら `status::ready-to-merge`、投稿しないなら外す。
 
 ## 6. 後片付け
 
