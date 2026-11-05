@@ -31,3 +31,11 @@ target/
 
 # Claude Code の個人設定
 .claude/settings.local.json
+
+# Terraform
+infra/.terraform/
+infra/terraform.tfvars
+infra/backend.hcl
+infra/tfplan
+*.tfstate
+*.tfstate.*

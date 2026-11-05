@@ -1,0 +1,6 @@
+# コピーして backend.hcl を作る(bootstrap/bootstrap.sh が同じ形を出力する。backend.hcl はコミットしない)
+resource_group_name  = "rg-opendopa-tfstate"
+storage_account_name = "stopendopatfstate0000"
+container_name       = "tfstate"
+key                  = "dev.terraform.tfstate"
+use_azuread_auth     = true
