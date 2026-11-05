@@ -5,14 +5,23 @@ description = "OpenDopa のコンテンツ生成パイプライン(Batch。設�
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "jsonschema>=4.26.0",
+    "numpy>=2.5.4",
+    "openai>=3.46.0",
     "pandas>=3.1.0",
     "pydantic>=2.14.2",
     "pyyaml>=6.0.3",
+    "scikit-learn>=1.9.1",
     "typer>=0.27.3",
+    "umap-learn>=0.5.12",
 ]
 
 [project.scripts]
 opendopa = "opendopa_pipeline.cli:app"
+
+[project.optional-dependencies]
+local = [
+    "sentence-transformers>=6.2.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]
