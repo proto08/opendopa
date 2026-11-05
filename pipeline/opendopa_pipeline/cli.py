@@ -3,10 +3,18 @@
 各サブコマンドの中身は、M1 以降で実装する。
 """
 
+import json
 from pathlib import Path
 from typing import Annotated
 
+import pandas as pd
 import typer
+
+from opendopa_pipeline.ingest import IngestError, load_frame, load_path
+from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
+from opendopa_pipeline.spec import load_dataset
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 app = typer.Typer(help="OpenDopa のコンテンツ生成パイプライン", no_args_is_help=True)
 
@@ -18,10 +26,54 @@ def _not_implemented(name: str, milestone: str) -> None:
     raise typer.Exit(code=1)
 
 
+def _fail(message: str) -> typer.Exit:
+    typer.echo(f"エラー: {message}", err=True)
+    return typer.Exit(code=2)
+
+
 @app.command()
-def profile(dataset: DatasetOpt) -> None:
-    """列のプロファイルを出す。"""
-    _not_implemented("profile", "M1")
+def profile(
+    dataset: Annotated[
+        str | None, typer.Option("--dataset", help="データセットID(例: accident)")
+    ] = None,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option("--file", help="CSV を直接指定する(YAML がない新規データセット用。複数可)"),
+    ] = None,
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
+) -> None:
+    """列のプロファイル(型・欠損率・種類数・最長の文字数・役割・上位の値)を出す。"""
+    if dataset is None and not file:
+        raise _fail("--dataset か --file のどちらかを指定してください")
+    dataset_id = dataset or file[0].stem  # type: ignore[index]
+    try:
+        if file:
+            df = prepare_raw(pd.concat([load_path(p) for p in file], ignore_index=True))
+            source = [str(p) for p in file]
+        else:
+            yaml_path = REPO_ROOT / "datasets" / f"{dataset_id}.yaml"
+            if yaml_path.exists():
+                definition = load_dataset(yaml_path)
+                df = load_frame(definition, REPO_ROOT)
+                source = definition.files
+            else:
+                # 新規データセットは YAML がまだない。data/raw/<id>/ の CSV を読む
+                paths = sorted((REPO_ROOT / "data" / "raw" / dataset_id).glob("*.csv"))
+                if not paths:
+                    raise IngestError(
+                        f"datasets/{dataset_id}.yaml も data/raw/{dataset_id}/*.csv もありません"
+                    )
+                df = prepare_raw(pd.concat([load_path(p) for p in paths], ignore_index=True))
+                source = [str(p.relative_to(REPO_ROOT)) for p in paths]
+    except (IngestError, ValueError) as e:
+        raise _fail(str(e)) from e
+
+    result = build_profile(dataset_id, df, source)
+    typer.echo(format_table(result))
+    out_path = out_dir / dataset_id / "profile.json"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    typer.echo(f"\n書き出しました: {out_path}")
 
 
 @app.command()
