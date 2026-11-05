@@ -10,7 +10,7 @@
 2. worktree を `../opendopa-<イシュー番号 or PR番号>` に用意する(既存があり未pushの変更がなければ再利用、あれば別名)。PRの head ブランチをチェックアウトする。
 3. `git fetch origin` のあと、`git merge origin/<デフォルトブランチ>` で取り込む。**rebase と force push はしない**(履歴を書き換えない)。
 4. コンフリクトを解消する。
-   - `docs/DECISIONS.md` などの追記系は、両方の行を残す。
+   - 追記系(`docs/DECISIONS.md` の旧い行や、ADR の一覧表など)は、両方の行を残す。小さな決定は `docs/decisions/` の別ファイルなので、通常は衝突しない。
    - コード・スキーマは、双方の意図(PRの説明欄・イシュー・main 側の該当 commit)を読んで統合する。生成物(`packages/shared/src/generated/` など)は手で直さず、元(JSON Schema)を統合して `mise run gen-types` で再生成する。
 5. 検証する。`mise run lint` と `mise run test`(web を変えたなら `cd apps/web && mise exec -- pnpm typecheck` も)。
 6. 通ったら merge commit を `git push origin <ブランチ名>` で push する。コミットメッセージは日本語(例: `merge: main を取り込みコンフリクトを解消`)。PRに、解消した内容を2〜3行で `gh pr comment` する。
