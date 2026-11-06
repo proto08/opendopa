@@ -21,3 +21,9 @@ def test_generate_without_data_fails_cleanly(tmp_path) -> None:
     # data/raw がない環境では、トレースバックでなくエラーメッセージで終わる
     result = runner.invoke(app, ["generate", "--dataset", "nope", "--out-dir", str(tmp_path)])
     assert result.exit_code == 2
+
+
+def test_decide_requires_exactly_one_mode() -> None:
+    assert runner.invoke(app, ["decide", "--dataset", "accident"]).exit_code == 2
+    both = ["decide", "--dataset", "accident", "--draft", "--eval", "x.csv"]
+    assert runner.invoke(app, both).exit_code == 2
