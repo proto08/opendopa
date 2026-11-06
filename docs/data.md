@@ -171,18 +171,25 @@ fallback_rules:                          # 決定モデルが使えないとき(
 
 ```python
 class Decider(Protocol):
-    def decide(self, kind, state: dict, question: str,
-               options: list[Option] | None = None, rubric: list[str] | None = None) -> Decision: ...
+    def decide(
+        self,
+        kind,
+        state: dict,
+        question: str,
+        options: list[Option] | None = None,
+        rubric: list[str] | None = None,
+    ) -> Decision: ...
+
 
 @dataclass
 class Decision:
-    choice: str | None             # choice のとき
-    distribution: dict[str, float] # 各選択肢の確率
-    score: float | None            # score のとき(期待値)
-    probability: float | None      # noul のとき(はいの確率)
-    confidence: float              # 分布の集中の度合い(0〜1)
-    provider: str                  # 'strands_azure' など
-    used_fallback: bool            # フォールバックしたか
+    choice: str | None  # choice のとき
+    distribution: dict[str, float]  # 各選択肢の確率
+    score: float | None  # score のとき(期待値)
+    probability: float | None  # noul のとき(はいの確率)
+    confidence: float  # 分布の集中の度合い(0〜1)
+    provider: str  # 'strands_azure' など
+    used_fallback: bool  # フォールバックしたか
 ```
 
 - **フォールバック**: 確信度が `min_confidence` 未満、またはエラー・タイムアウトのときは、YAMLの `fallback`(`fallback_rules` か既定の選択肢)を使い、`used_fallback=True` で記録する。決定モデルが動かなくても、パイプラインは止まらない。
@@ -264,7 +271,7 @@ select:
 - 日付: `2022年12月6日11時20分`(分が0なら「11時」)。
 - パーセント: 小数1桁まで。
 - 順位: 「○位」。件数: 「○件」。
-- 実装は `pipeline/opendopa_pipeline/fmt.py`。`fmt:` に書ける名前は `yen`(円)、`sen_yen`(千円の列)、`percent`、`rank`、`count`。derived では `op: format` で使う。
+- 実装は `pipeline/opendopa_pipeline/fmt.py`。`fmt:` に書ける名前は `yen`(円)、`sen_yen`(千円の列)、`percent`、`rank`、`count`、`decimal`(小数1桁まで。単位なし)。derived では `op: format` で使う。
 - 1桁の丸めで誤差が0.5%を超えるときは、「1億400万円」のように下の単位まで書く(1.04億を「約1億円」とはしない)。
 
 ### 8.6 品質ゲート(通らない行は `excluded` にして理由を記録)

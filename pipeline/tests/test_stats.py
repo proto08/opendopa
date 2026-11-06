@@ -206,6 +206,11 @@ def test_fmt_adds_text_column(make_dataset) -> None:
     assert "p_text" in ds.defined_names()
 
 
+def test_rank_in_group_defines_n_column(make_dataset) -> None:
+    ds = make_dataset(stats=[{"name": "r", "op": "rank_in_group", "value": "v"}])
+    assert "r_n" in ds.defined_names()
+
+
 def test_errors(make_dataset) -> None:
     df = pd.DataFrame({"v": [1]})
     with pytest.raises(StatError, match="未知の op 'nope'"):
