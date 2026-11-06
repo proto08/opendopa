@@ -42,6 +42,21 @@ PII_TEXT_PATTERNS: dict[str, re.Pattern[str]] = {
     "postal": re.compile(r"〒\s*\d{3}-?\d{4}|(?<!\d)\d{3}-\d{4}(?!\d)"),
 }
 
+# 負傷の部位・症状を示す語(設計書 §0.2・§15.2「負傷の部位や症状は読まない」)。
+# 部位の語は、機体の部品(腕部固定金具、機首部)や別の語(運転手、不足、目的)にも使われる。
+# そこで、負傷を示す語と同じ文にあるときだけ、部位とみなす(「機体に接触」は負傷を示さない)。
+_BODY_STRICT = re.compile(
+    r"顔|鼻|肘|膝|腕|皮膚|頭部|素手|手のひら|手の平|手の甲|足の甲"
+    r"|指(?![示定導摘令針標揮])|(?:左|右|両)(?:手|足|目|耳|肩|脚)"
+)
+_BODY_BROAD = re.compile(
+    r"手(?=に|を|が|の)|足(?=に|を|が|の)|目(?=に|を|が)|頭|首|肩|腰|胸|腹|背中"
+)
+_INJURY_WORD = re.compile(r"負傷|けが|怪我|打撲|裂傷|切創|創傷|傷を負|骨折|出血|挟まれ|巻き込まれ")
+_CONTACT_WORD = re.compile(r"接触|当たっ|当たり")
+_NOT_BODY = re.compile(r"運転手|相手|選手|助手|不足|満足|補足|充足|機首|機体の首")
+_SENTENCE_END = re.compile(r"(?<=[。!?!?])")
+
 FALLBACK_WARN_RATE = 0.30  # 1データセットでフォールバックがこれを超えたら警告
 
 _KANJI_DIGIT = {
@@ -174,6 +189,27 @@ def check_forbidden(lines: Sequence[str]) -> list[str]:
     return [f"禁止表現: {w}" for w in FORBIDDEN_PHRASES if w in text]
 
 
+def check_casualty_detail(lines: Sequence[str]) -> list[str]:
+    """負傷の部位・症状(顔、指、骨折など)が原稿に出ていない(設計書 §15.2)。
+
+    負傷を示す語と同じ文に部位の語があるとき、または部位の語のすぐ後ろ(8字以内)に
+    「接触」があるとき(「左腕に接触し」)、不合格にする。
+    """
+    found: list[str] = []
+    for line in lines:
+        for sentence in _SENTENCE_END.split(line):
+            plain = _NOT_BODY.sub("", sentence)
+            strict = _BODY_STRICT.search(plain)
+            hit = None
+            if _INJURY_WORD.search(plain):
+                hit = strict or _BODY_BROAD.search(plain)
+            elif strict and _CONTACT_WORD.search(plain[strict.end() : strict.end() + 8]):
+                hit = strict
+            if hit is not None:
+                found.append(f"負傷の部位・症状: {hit.group()}")
+    return list(dict.fromkeys(found))
+
+
 def check_decisions(decisions: Mapping[str, Mapping[str, Any]]) -> list[str]:
     """判断で除外になった行(`pii` の確率が上限を超えた行など)。"""
     return [f"判断 {did} で除外" for did, rec in decisions.items() if rec.get("excluded")]
@@ -209,8 +245,12 @@ def check_all(
     row: Mapping[str, Any],
     numbers: Sequence[Mapping[str, Any]],
     required: Sequence[str],
+    extra_texts: Sequence[str] = (),
 ) -> dict[str, list[str]]:
-    """行ごとの検査をまとめて実行する。不合格の検査だけ、理由コード → 説明の一覧で返す。"""
+    """行ごとの検査をまとめて実行する。不合格の検査だけ、理由コード → 説明の一覧で返す。
+
+    `extra_texts` は字幕以外の表示文(見出し・チップ・コメント)。負傷の部位の検査だけに足す。
+    """
     results = {
         "missing": check_required(required, row),
         "unreplaced": check_unreplaced(lines),
@@ -218,6 +258,7 @@ def check_all(
         "length": check_length(duration_sec),
         "pii": check_pii(lines),
         "forbidden": check_forbidden(lines),
+        "casualty_detail": check_casualty_detail([*lines, *extra_texts]),
     }
     return {k: v for k, v in results.items() if v}
 

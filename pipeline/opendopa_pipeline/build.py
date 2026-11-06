@@ -189,6 +189,11 @@ def _build_one(
         row=row,
         numbers=scene["numbers"],
         required=dataset.required,
+        extra_texts=[
+            scene["headline"],
+            *scene["chips"],
+            *(c["text"] for c in scene["comments"]),
+        ],
     )
     if failed:
         # 理由コードは、最初に不合格になった検査。説明には全部を残す
