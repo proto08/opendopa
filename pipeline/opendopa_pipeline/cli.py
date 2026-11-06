@@ -10,7 +10,16 @@ from typing import Annotated
 import pandas as pd
 import typer
 
-from opendopa_pipeline.ingest import IngestError, load_frame, load_path
+from opendopa_pipeline.decider.evaluate import (
+    draft_labels,
+    evaluate,
+    format_results,
+    load_labels,
+    write_labels,
+)
+from opendopa_pipeline.generate import format_summary, run_generate
+from opendopa_pipeline.ingest import IngestError, load_frame, load_path, row_dict
+from opendopa_pipeline.prepare import prepare
 from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
 from opendopa_pipeline.spec import load_dataset
 
@@ -77,18 +86,59 @@ def profile(
 
 
 @app.command()
-def generate(dataset: DatasetOpt) -> None:
-    """選定 → 原稿 → シーン → 検証 → out/<id>/scenes.jsonl。"""
-    _not_implemented("generate", "M1")
+def generate(
+    dataset: DatasetOpt,
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="判断のプロバイダー(既定は DECIDER_PROVIDER)")
+    ] = None,
+) -> None:
+    """選定 → 判断 → 原稿 → シーン → 品質ゲート → out/<id>/ に出力。"""
+    yaml_path = REPO_ROOT / "datasets" / f"{dataset}.yaml"
+    try:
+        definition = load_dataset(yaml_path)
+        result = run_generate(definition, REPO_ROOT, out_dir / dataset, provider)
+    except (IngestError, ValueError, OSError) as e:  # DatasetError は ValueError
+        raise _fail(str(e)) from e
+    typer.echo(format_summary(result.report))
+    typer.echo(f"\n書き出しました: {out_dir / dataset}")
 
 
 @app.command()
 def decide(
     dataset: DatasetOpt,
     eval_labels: Annotated[Path | None, typer.Option("--eval", help="人が付けた正解のCSV")] = None,
+    draft: Annotated[
+        bool, typer.Option("--draft", help="rules の判断で、評価用ラベルの下書き(50行)を出す")
+    ] = False,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="評価するプロバイダー(カンマ区切りで複数。既定は rules)"),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="--draft で既存のファイルを上書きする")
+    ] = False,
 ) -> None:
-    """判断モデルの評価(人が付けた正解との一致率)。"""
-    _not_implemented("decide", "M1b")
+    """判断モデルの評価(人が付けた正解との一致率)と、正解の下書き。"""
+    if draft == (eval_labels is not None):
+        raise _fail("`--eval <CSV>` と `--draft` のどちらか1つを指定してください")
+    yaml_path = REPO_ROOT / "datasets" / f"{dataset}.yaml"
+    try:
+        definition = load_dataset(yaml_path)
+        rows = [row_dict(r) for _, r in prepare(definition, REPO_ROOT).frame.iterrows()]
+        if draft:
+            out = REPO_ROOT / "datasets" / f"{dataset}.labels.csv"
+            if out.exists() and not force:
+                raise _fail(f"{out} が既にあります(人が直した内容を守るため。上書きは --force)")
+            write_labels(out, draft_labels(definition, rows))
+            typer.echo(f"下書きを書き出しました: {out}\n`template` を人が確認して直してください")
+            return
+        assert eval_labels is not None
+        names = [p.strip() for p in (provider or "rules").split(",") if p.strip()]
+        labels = load_labels(eval_labels, definition, rows)
+        typer.echo(format_results(evaluate(definition, rows, labels, names)))
+    except (IngestError, ValueError, OSError) as e:  # EvalError・DatasetError は ValueError
+        raise _fail(str(e)) from e
 
 
 @app.command()

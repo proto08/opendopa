@@ -1,9 +1,8 @@
-"""選定 → 判断 → 台本 → シーン → 検証 → 出力(設計書 §8.2 の 4〜7)。
+"""選定 → 判断 → 台本 → シーン → 品質ゲート → 出力(設計書 §8.2 の 4〜7)。
 
-品質ゲート(§8.6 の検査)と `generate` コマンドとしての接続は #34。ここで除外するのは、
-台本が作れない行(`no_template` / `too_long`)、型を選べない行、判断(`pii`)で除外になった行、
-大きな数字が作れない行だけ。組み立てたシーンがスキーマに合わないのは生成側のバグなので、
-除外ではなくエラー(`SceneError`)にする。
+除外する行は、台本が作れない行(`no_template` / `too_long`)、型を選べない行、判断(`pii`)で
+除外になった行、大きな数字が作れない行、品質ゲート(`gate.py`、docs/data.md §8.6)に通らない行。
+組み立てたシーンがスキーマに合わないのは生成側のバグなので、除外ではなくエラー(`SceneError`)にする。
 """
 
 from __future__ import annotations
@@ -15,6 +14,7 @@ from typing import Any
 
 import pandas as pd
 
+from opendopa_pipeline import gate
 from opendopa_pipeline.comments import generate_comments
 from opendopa_pipeline.decider import DecisionEngine, create_decider
 from opendopa_pipeline.ingest import row_dict
@@ -50,6 +50,7 @@ class Video:
     decisions: dict[str, dict[str, Any]]
     status: str = "ok"  # 'ok' | 'excluded'
     excluded_why: str | None = None
+    excluded_detail: str = ""  # 除外の説明(excluded.csv 用。DB には入れない)
 
     def to_row(self) -> dict[str, Any]:
         return {
@@ -91,10 +92,29 @@ def build_dataset(
     else:
         decisions = [{} for _ in rows]
 
-    return [
+    videos = [
         _build_one(dataset, prepared, f"{dataset.id}-{n:04d}", rid, row, decs)
         for n, (rid, row, decs) in enumerate(zip(ids, rows, decisions, strict=True), start=1)
     ]
+    _drop_duplicates(videos)
+    return videos
+
+
+def _drop_duplicates(videos: list[Video]) -> None:
+    """同じ原稿の動画は、最初の1本だけ残す(品質ゲートの「重複」)。"""
+    keys = [
+        gate.script_text_key([x["text"] for x in v.scene["lines"]]) if v.scene else None
+        for v in videos
+    ]
+    for v, dup, first in zip(videos, gate.check_duplicates(keys), _first_index(keys), strict=True):
+        if dup:
+            v.scene, v.status, v.excluded_why = None, "excluded", "duplicate"
+            v.excluded_detail = f"{videos[first].video_id} と同じ原稿"
+
+
+def _first_index(keys: list[str | None]) -> list[int]:
+    firsts: dict[str, int] = {}
+    return [firsts.setdefault(k, i) if k is not None else i for i, k in enumerate(keys)]
 
 
 def _choose_type(dataset: DatasetDef, row: dict[str, Any], decs: dict[str, Any]) -> str | None:
@@ -128,23 +148,26 @@ def _build_one(
         "excluded",
     )
 
+    def exclude(why: str, detail: str = "") -> Video:
+        base.excluded_why, base.excluded_detail = why, detail
+        return base
+
     flagged = next((d_id for d_id, rec in decs.items() if rec.get("excluded")), None)
     if flagged is not None:
-        base.excluded_why = f"decision:{flagged}"
-        return base
+        return exclude(f"decision:{flagged}", "; ".join(gate.check_decisions(decs)))
+    missing = gate.check_required(dataset.required, row)
+    if missing:
+        return exclude("missing", "; ".join(missing))
     type_id = _choose_type(dataset, row, decs)
     if type_id is None:
-        base.excluded_why = "no_template"
-        return base
+        return exclude("no_template", "埋められるテンプレートがある型がありません")
     group = next(g for g in dataset.template_groups if g.id == type_id)
     result = write_script(dataset, group, row, video_id)
     if result.script is None:
-        base.excluded_why = result.excluded
-        return base
+        return exclude(result.excluded or "no_template", result.detail)
     bignum = big_number(dataset, row)
     if bignum is None:
-        base.excluded_why = "no_big_number"
-        return base
+        return exclude("no_big_number", "大きな数字が作れません")
 
     script = result.script
     scene = build_scene(
@@ -160,6 +183,16 @@ def _build_one(
     errors = validate_scene(scene)
     if errors:
         raise SceneError(f"{video_id}: シーンがスキーマに合いません:\n  " + "\n  ".join(errors))
+    failed = gate.check_all(
+        lines=[x["text"] for x in scene["lines"]],
+        duration_sec=scene["durationSec"],
+        row=row,
+        numbers=scene["numbers"],
+        required=dataset.required,
+    )
+    if failed:
+        # 理由コードは、最初に不合格になった検査。説明には全部を残す
+        return exclude(next(iter(failed)), "; ".join(m for ms in failed.values() for m in ms))
     base.scene, base.status = scene, "ok"
     return base
 

@@ -1,0 +1,144 @@
+# 無人航空機の事故等報告(docs/data.md §8.3 と §10.1)
+id: accident
+label: 事故等報告
+source_name: 無人航空機の事故等報告
+wm_char: 機
+color: "#FF7A59"
+files: [data/raw/accident/02_jikojyouhou.csv]
+grain: row
+rename: {}
+null_values: ["", "不明"]
+zero_is_null: []
+filters: [{col: INCIDENT_SUMMARY, not_null: true}]
+
+derived:
+  date: {from: OCCURRENCE_DATE, op: format_datetime, fmt: ymdhm}
+  place: {from: OCCURRENCE_LOCATION, op: strip_parenthesis}
+  pref: {from: OCCURRENCE_LOCATION, op: extract_pref}
+  kind:
+    from: REMARKS
+    op: classify
+    rules: [{contains: "事故に該当", value: 事故}, {else: 重大インシデント}]
+  summary_1: {from: INCIDENT_SUMMARY, op: sentence, n: 1}
+  summary_2: {from: INCIDENT_SUMMARY, op: sentence, n: 2}
+  # 負傷の部位や症状は読まない(設計書 §15.2)。「なし」かどうかだけを見て、定型文にする
+  casualty_sentence:
+    from: CASUALTIES_SUMMARY
+    op: map
+    map: {"なし": "人的被害は、報告にありません。"}
+    else: "負傷者の報告があります。"
+  measure_first: {from: RECURRENCE_PREVENTION_MEASURES, op: sentence, n: 1}
+
+stats:
+  - {name: pref_seq, op: seq_in_group, group: pref, order: OCCURRENCE_DATE}
+
+select: {cap: 194, order_by: No., diversify_by: null}
+
+big_number:
+  primary: {text: "{pref}で{pref_seq}件目", unit: "", label: "報告された事故等", when: "pref != null"}
+  fallback: {text: "第{No.}号", unit: "", label: "報告の番号"}
+
+headline: "{pref}で無人航空機の{kind}"
+chips: ["{pref}", "{kind}"]
+# 負傷の内容は、元の行としても出さない(§15.2)
+hide: [CASUALTIES_SUMMARY]
+
+template_groups:
+  - id: object_damage
+    label: "物件(車両・建物など)に接触・衝突した"
+    templates:
+      - id: object_damage_std
+        lines:
+          - "{date}、{place}で、無人航空機が物件に接触・衝突する事故が報告されました。"
+          - "{summary_1}"
+          - {text: "{summary_2}", optional: true}
+          - "{casualty_sentence}"
+          - {text: "機体の被害は、{AIRCRAFT_DAMAGE_SUMMARY}と記載されています。", optional: true}
+          - {text: "再発防止策として、報告にはこう書かれています。{measure_first}", optional: true}
+      - id: object_damage_short
+        short: true
+        lines:
+          - "{date}、{place}で、無人航空機が物件に接触・衝突する事故が報告されました。"
+          - "{summary_1}"
+          - "{casualty_sentence}"
+  - id: injury
+    label: "人が負傷した"
+    templates:
+      # 概要の2文目以降と機体の被害は使わない(負傷の部位や症状が入りうるため)
+      - id: injury_std
+        lines:
+          - "{date}、{place}で、無人航空機に関わる人の負傷が報告されました。"
+          - "{summary_1}"
+          - "{casualty_sentence}"
+          - {text: "再発防止策として、報告にはこう書かれています。{measure_first}", optional: true}
+      - id: injury_short
+        short: true
+        lines:
+          - "{date}、{place}で、無人航空機に関わる人の負傷が報告されました。"
+          - "{casualty_sentence}"
+  - id: loss_of_control
+    label: "制御不能・墜落・落下した"
+    templates:
+      - id: loss_of_control_std
+        lines:
+          - "{date}、{place}で、無人航空機の制御不能や墜落・落下が報告されました。"
+          - "{summary_1}"
+          - {text: "{summary_2}", optional: true}
+          - "{casualty_sentence}"
+          - {text: "機体の被害は、{AIRCRAFT_DAMAGE_SUMMARY}と記載されています。", optional: true}
+          - {text: "再発防止策として、報告にはこう書かれています。{measure_first}", optional: true}
+      - id: loss_of_control_short
+        short: true
+        lines:
+          - "{date}、{place}で、無人航空機の制御不能や墜落・落下が報告されました。"
+          - "{summary_1}"
+          - "{casualty_sentence}"
+  - id: other
+    label: "上のどれでもない"
+    templates:
+      - id: other_std
+        lines:
+          - "{date}、{place}で、無人航空機の{kind}が報告されました。"
+          - "{summary_1}"
+          - {text: "{summary_2}", optional: true}
+          - "{casualty_sentence}"
+          - {text: "機体の被害は、{AIRCRAFT_DAMAGE_SUMMARY}と記載されています。", optional: true}
+          - {text: "再発防止策として、報告にはこう書かれています。{measure_first}", optional: true}
+      - id: other_short
+        short: true
+        lines:
+          - "{date}、{place}で、無人航空機の{kind}が報告されました。"
+          - "{summary_1}"
+          - "{casualty_sentence}"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この事故等報告の概要は、次のどの型に一番近いですか。"
+    # 渡すのはこの2つだけ。負傷の内容(CASUALTIES_SUMMARY)は渡さず、定型文にしたものを渡す
+    state: [INCIDENT_SUMMARY, casualty_sentence]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: keyword, default: other}
+  - id: pii
+    kind: noul
+    question: "この文章に、個人を特定できる記述(氏名・番地・電話番号など)がありますか。"
+    state: [INCIDENT_SUMMARY]
+    exclude_if_probability_above: 0.5
+    fallback: {rule: regex_pii}
+
+fallback_rules:
+  keyword:
+    - {if: "casualty_sentence == '負傷者の報告があります。' or contains(INCIDENT_SUMMARY, ['負傷'])", then: injury}
+    - {if: "contains(INCIDENT_SUMMARY, ['不能', '制御'])", then: loss_of_control}
+    - {if: "contains(INCIDENT_SUMMARY, ['車両', '建物', '物件', '衝突', '接触'])", then: object_damage}
+    - {else: other}
+
+comments:
+  pool_calm: ["気をつけたい", "無事でよかった", "安全第一", "落ち着いて見たい"]
+  rule: "casualty_sentence == '負傷者の報告があります。' -> none; else calm"
+
+embed_text: "事故等報告 {pref} {kind} {summary_1}"
+required: [INCIDENT_SUMMARY, OCCURRENCE_DATE, OCCURRENCE_LOCATION]
