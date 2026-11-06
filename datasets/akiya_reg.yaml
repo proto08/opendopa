@@ -1,0 +1,197 @@
+# 空き家バンク: 登録物件(docs/data.md §8.3 と §10.3)
+id: akiya_reg
+label: 空き家バンク(登録)
+source_name: 空き家バンク 登録物件
+wm_char: 家
+color: "#F2B84B"
+files: [data/raw/akiya_reg/01_tourokubukken.csv]
+grain: row
+# 「/」を含む列名は式に書けないので置き換える。CSV の LAYOUT の "R" は間取りとして読めないので欠損にする
+rename: {AMOUNT/RENT: AMOUNT_RENT}
+null_values: ["", "指定なし", "R"]
+zero_is_null: [AMOUNT_RENT]
+# 価格が 0・欠損・10億円以上の行は動画にしない(データの入力ミスらしい行)
+filters:
+  - {col: AMOUNT_RENT, not_null: true}
+  - "AMOUNT_RENT < 1000000000"
+
+derived:
+  # 賃貸は月額なので「月3.5万円」、売買は「350万円」
+  price:
+    from: AMOUNT_RENT
+    op: format
+    fmt: yen
+    prefix_if: {col: PROPERTY_CATEGORY, contains: 賃貸, prefix: 月}
+  price_label:
+    from: PROPERTY_CATEGORY
+    op: map
+    map: {賃貸居住用: 賃料, 賃貸土地: 賃料, 賃貸事業用: 賃料}
+    else: 価格
+  # 築年数は、基準の年(2026)から数える。欠損が多い
+  age: {from: DATE_OF_CONSTRUCTION, op: years_since, as_of_year: 2026}
+  station: {from: NEAREST_STATION, op: ensure_suffix, suffix: 駅}
+  garden_text:
+    from: GARDEN
+    op: map
+    map: {"有り": "庭があります。"}
+  retail_text:
+    from: RETAIL_PREMISES
+    op: map
+    map: {"有り": "店舗の区画があります。"}
+  business:
+    from: PROPERTY_CATEGORY
+    op: map
+    map: {売買事業用: 事業用, 賃貸事業用: 事業用}
+  # 自由記述は、広告・屋号・個人情報・数字を含む文を使わず、最初の1文だけ(40字以内)
+  strong_point: {from: STRONG_POINTS, op: free_sentence, max_chars: 40}
+  has_strong_points: {from: STRONG_POINTS, op: flag_present}
+
+select:
+  cap: 150
+  diversify_by: [PREFECTURE]
+  # STRONG_POINTS が記入のある物件に加点
+  score:
+    - {expr: has_strong_points, weight: 1.0}
+
+big_number:
+  primary: {text: "{price}", unit: "", label: "{price_label}"}
+
+headline: "{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}"
+chips: ["{PREFECTURE}", "{PROPERTY_CATEGORY}", "{CONSTRUCTION}", "築{age}年", "{LAYOUT}"]
+# 自由記述(広告や個人情報が混ざる)と、使わないIDは、元の行としても出さない
+hide: [STRONG_POINTS, TOILET_NOTE, PROPERTY_NUMBER_ID]
+
+# 面積(OCCUPATION_AREA)と敷地(SIZE_OF_LOT)の数字は、単位が確認できるまで読み上げない。
+# 最寄り駅までの距離(分とメートルが混ざる)も読み上げない
+template_groups:
+  - id: nature
+    label: "自然・静かな環境を紹介している"
+    templates:
+      - id: nature_std
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{price_label}は{price}です。"
+          - "紹介文には、「{strong_point}」とあります。"
+          - {text: "築{age}年の建物です。", optional: true}
+          - {text: "間取りは{LAYOUT}です。", optional: true}
+      - id: nature_short
+        short: true
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{price_label}は{price}です。"
+          - "紹介文には、「{strong_point}」とあります。"
+  - id: access
+    label: "駅や生活の便利さを紹介している"
+    templates:
+      - id: access_std
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "最寄り駅は{station}です。"
+          - "{price_label}は{price}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "築{age}年の建物です。", optional: true}
+          - {text: "間取りは{LAYOUT}です。", optional: true}
+      - id: access_short
+        short: true
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "最寄り駅は{station}です。"
+          - "{price_label}は{price}です。"
+  - id: space
+    label: "広さや庭を紹介している"
+    templates:
+      - id: space_garden
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{garden_text}"
+          - "{price_label}は{price}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "間取りは{LAYOUT}です。", optional: true}
+      - id: space_layout
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "間取りは{LAYOUT}です。"
+          - "{price_label}は{price}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "築{age}年の建物です。", optional: true}
+      - id: space_short
+        short: true
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{price_label}は{price}です。"
+  - id: shop
+    label: "店舗や事業での利用を紹介している"
+    templates:
+      - id: shop_business
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{business}の物件として登録されています。"
+          - "{price_label}は{price}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "築{age}年の建物です。", optional: true}
+      - id: shop_retail
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{retail_text}"
+          - "{price_label}は{price}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "築{age}年の建物です。", optional: true}
+      - id: shop_short
+        short: true
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{price_label}は{price}です。"
+  - id: other
+    label: "上のどれでもない"
+    templates:
+      - id: other_std
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{price_label}は{price}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "築{age}年の建物です。", optional: true}
+          - {text: "間取りは{LAYOUT}です。", optional: true}
+          - {text: "構造は{CONSTRUCTION}です。", optional: true}
+      - id: other_short
+        short: true
+        lines:
+          - "今日の物件を紹介します。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}です。"
+          - "{price_label}は{price}です。"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この空き家バンクの物件は、紹介文や種別から見て、次のどの型に一番近いですか。"
+    # 渡すのはこの列だけ(自由記述は、使える1文にしたものを渡す)
+    state: [strong_point, PROPERTY_CATEGORY, RETAIL_PREMISES, station, garden_text]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: keyword, default: other}
+  # 広告・屋号らしい文は、行は除外せず、その文だけ使わない(`rules` のときは、derived の
+  # キーワードと正規表現(free_sentence)で代用する)
+  - id: stronger_ad
+    kind: noul
+    question: "この文に、不動産会社の屋号や広告の言い回しが含まれていますか。"
+    state: [strong_point]
+    drop: strong_point
+    drop_if_probability_above: 0.5
+    fallback: {rule: regex_pii}
+
+fallback_rules:
+  keyword:
+    - {if: "PROPERTY_CATEGORY == '売買事業用' or PROPERTY_CATEGORY == '賃貸事業用' or RETAIL_PREMISES == '有り' or contains(strong_point, ['店舗', '事務所', '事業', '営業'])", then: shop}
+    - {if: "contains(strong_point, ['自然', '静か', '閑静', '緑', '山', '川', '海', '田舎', 'のどか', 'のんびり', '眺', '景色', '森', '畑'])", then: nature}
+    - {if: "contains(strong_point, ['駅', '便利', '利便', 'バス', 'スーパー', '交通', 'アクセス', '街中', 'まちなか'])", then: access}
+    - {if: "contains(strong_point, ['広', '庭', '敷地', '菜園', '駐車', '部屋数'])", then: space}
+    - {if: "station != null", then: access}
+    - {if: "garden_text != null", then: space}
+    - {else: other}
+
+comments:
+  pool_light: ["気になる", "住んでみたい", "こんな物件もあるんだ", "ほう", "なるほど", "へえ"]
+  rule: "else light"
+
+embed_text: "空き家バンク 登録 {PREFECTURE} {CITY} {PROPERTY_CATEGORY} {strong_point}"
+required: [PREFECTURE, CITY, PROPERTY_CATEGORY, AMOUNT_RENT]

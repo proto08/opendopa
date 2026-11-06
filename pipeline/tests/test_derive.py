@@ -125,6 +125,79 @@ def test_accident_extract_pref_null_count(make_dataset) -> None:
     assert pref.isna().sum() == 3
 
 
+def test_format_prefix_if(make_dataset) -> None:
+    ds = make_dataset(
+        derived={
+            "out": {
+                "from": "amount",
+                "op": "format",
+                "fmt": "yen",
+                "prefix_if": {"col": "cat", "contains": "賃貸", "prefix": "月"},
+            }
+        }
+    )
+    df = pd.DataFrame(
+        {"amount": [35000, 3500000, None], "cat": ["賃貸居住用", "売買居住用", "賃貸土地"]}
+    )
+    assert list(derive(df, ds)["out"]) == ["月3.5万円", "350万円", None]
+
+
+def test_pct_diff(make_dataset) -> None:
+    ds = make_dataset(
+        derived={
+            "pct": {"from": "a", "op": "pct_diff", "against": "b"},
+            "txt": {
+                "from": "a",
+                "op": "pct_diff",
+                "against": "b",
+                "fmt": "percent",
+                "only_positive": True,
+            },
+        }
+    )
+    df = pd.DataFrame({"a": [1000, 1000, 1000, None, 0], "b": [900, 1100, 0, 500, 5]})
+    out = derive(df, ds)
+    assert out["pct"][0] == pytest.approx(10.0)
+    assert out["pct"][1] == pytest.approx(-10.0)
+    assert [out["pct"][i] for i in (2, 3, 4)] == [None, None, None]  # 片方が 0・欠損なら欠損
+    assert list(out["txt"]) == ["10%", None, None, None, None]
+
+
+def test_ensure_suffix_year_of_years_since(make_dataset) -> None:
+    assert list(
+        run(make_dataset, pd.Series(["石動", "佐伯駅", "", None]), op="ensure_suffix", suffix="駅")
+    ) == ["石動駅", "佐伯駅", None, None]
+    assert list(
+        run(make_dataset, pd.Series(["1976/9/1", "x", None]), op="year_of", suffix="年築")
+    ) == ["1976年築", None, None]
+    s = run(
+        make_dataset,
+        pd.Series(["1980/3/1", "2026/1/1", "2030/1/1", "1800/1/1", None]),
+        op="years_since",
+        as_of_year=2026,
+    )
+    assert list(s) == [46, None, None, None, None]  # 1 年未満・未来・150 年超は欠損
+
+
+def test_free_sentence(make_dataset) -> None:
+    cases = {
+        "閑静な住宅街です。駅も近いです。": "閑静な住宅街です。",  # 最初の1文だけ
+        "★のんびりした古民家♪\r\n駅近": "のんびりした古民家",  # 記号を取る
+        "・駅近の物件です！": "駅近の物件です！",
+        "広々1,400㎡の土地です。": None,  # 数字を含む文は使わない
+        "ＪＲ双岩駅まで３００メートル。": None,
+        "（株）マツバラ不動産がご案内します。": None,  # 屋号・広告
+        "お気軽にお問い合わせください。": None,
+        "静かな環境です。お電話は0996-36-5134まで。": None,  # 個人情報らしい文字列があれば使わない
+        "とても良い物件です！！！": None,  # 「！」の連続
+        "【新着】静かな住宅地": None,
+        "あ" * 41 + "。": None,  # 40字超
+        "": None,
+    }
+    s = run(make_dataset, pd.Series(list(cases)), op="free_sentence")
+    assert dict(zip(cases, s, strict=True)) == cases
+
+
 def test_scale_multiplies_with_decimal(make_dataset) -> None:
     s = run(make_dataset, pd.Series([0.62, 0.625, None, "x"]), op="scale", by=100, digits=1)
     assert list(s[:2]) == [62.0, 62.5]

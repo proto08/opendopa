@@ -190,6 +190,8 @@ class DecisionEngine:
         rec = {"id": d.id, "kind": d.kind, **dec.to_dict()}
         if d.exclude_if_probability_above is not None and dec.probability is not None:
             rec["excluded"] = dec.probability > d.exclude_if_probability_above
+        if d.drop_if_probability_above is not None and dec.probability is not None:
+            rec["dropped"] = dec.probability > d.drop_if_probability_above
         return rec
 
     # ---- キャッシュ ----
