@@ -3,10 +3,13 @@
 import type { Scene } from "@opendopa/shared";
 import { useEffect, type CSSProperties } from "react";
 import { useScenePlayer } from "@/lib/useScenePlayer";
+import { AiLabel } from "./AiLabel";
 import { BigNumber } from "./BigNumber";
 import { Captions } from "./Captions";
+import { Comments } from "./Comments";
 import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
+import { SourceLine } from "./SourceLine";
 import { Telop } from "./Telop";
 import "./stage.css";
 
@@ -56,6 +59,9 @@ export function Stage({ scene }: { scene: Scene }) {
       <BigNumber data={scene.bigNumber} countProgress={player.countProgress} />
       <Telop categoryName={scene.categoryName} headline={scene.headline} />
       <Captions lines={scene.lines} lineIndex={player.lineIndex} />
+      <SourceLine source={scene.source} />
+      <AiLabel />
+      <Comments comments={scene.comments} totalSec={player.totalSec} playedSec={player.playedSec} />
       <PauseIcon paused={player.paused} toggles={player.toggles} />
     </div>
   );
