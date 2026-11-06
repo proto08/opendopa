@@ -43,7 +43,7 @@ deploy:
 	echo "デプロイしました: $$web_url (確認: $$web_url/api/health)"
 
 # 判断モデル(strands_azure)の API サーバーのイメージを push して更新する。
-# 事前に infra の decider_enabled = true で apply 済みであること。GPU が課金されるため、人が実行する。
+# 事前に infra の decider_enabled = true で apply 済みであること。常時 1 レプリカが課金されるため、人が実行する。
 # DECIDER_DOCKERFILE: 判断モデルのサーバーの Dockerfile(モデルの入手元・ライセンスの確認後に用意する)
 DECIDER_DOCKERFILE ?= services/decider/Dockerfile
 
@@ -58,4 +58,4 @@ deploy-decider:
 	docker build --platform $(PLATFORM) -f "$(DECIDER_DOCKERFILE)" -t "$$login_server/opendopa-decider:$(TAG)" .; \
 	docker push "$$login_server/opendopa-decider:$(TAG)"; \
 	az containerapp update -g "$$rg" -n "$$app" --image "$$login_server/opendopa-decider:$(TAG)"; \
-	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$(terraform -chdir=$(TF_DIR) output -raw decider_internal_url)"
+	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$(terraform -chdir=$(TF_DIR) output -raw decider_url)"

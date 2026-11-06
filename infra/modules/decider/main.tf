@@ -1,7 +1,7 @@
-# 判断モデル(Strands Decider 2B)の配備先: GPU 付き Container Apps(内部のみ)。
-# 設計書 D14 / §12.1。GPU は workload profile の Container Apps Environment でだけ使えるため、
-# 本体の Environment とは別に作る。VNet の内部ロードバランサーにして、外部には公開しない。
-# 課金される(GPU)。infra/variables.tf の decider_enabled = true にしたときだけ作る。
+# 判断モデル(Strands Decider 2B)の配備先: 本体と同じ Container Apps Environment の CPU の Container App。
+# 設計書 D14 / §12.1(GPU 前提の記述は docs/decisions/2026-11-06-decider-cpu-external.md で読み替える)。
+# 専用の VNet・Environment・内部ロードバランサー・GPU は使わない。ingress は外部で、Bearer トークンで守る。
+# 課金される(常時 1 レプリカ)。infra/variables.tf の decider_enabled = true にしたときだけ作る。
 
 terraform {
   required_providers {
@@ -20,12 +20,13 @@ variable "resource_group_name" {
 }
 
 variable "location" {
-  description = "GPU の割り当てがあるリージョン(Japan East で使えるかは配備前に要確認)"
+  description = "本体と同じリージョン(japaneast)"
   type        = string
 }
 
-variable "log_analytics_workspace_id" {
-  type = string
+variable "environment_id" {
+  description = "本体の Container Apps Environment の ID(modules/containerapp の output)"
+  type        = string
 }
 
 variable "registry_id" {
@@ -42,14 +43,26 @@ variable "image" {
   default     = ""
 }
 
-variable "gpu_profile_type" {
-  description = "GPU の workload profile(例: Consumption-GPU-NC8as-T4)"
+variable "cpu" {
+  description = "コンテナの CPU(consumption の上限は 4)"
+  type        = number
+  default     = 4
+}
+
+variable "memory" {
+  description = "コンテナのメモリ(consumption の上限は 8Gi。cpu と組み合わせの制約がある)"
   type        = string
-  default     = "Consumption-GPU-NC8as-T4"
+  default     = "8Gi"
+}
+
+variable "min_replicas" {
+  description = "最小レプリカ数。モデルの読み込みが重いので 1(コールドスタートを避ける)。0 にすると止まっている間は課金されない"
+  type        = number
+  default     = 1
 }
 
 variable "token" {
-  description = "内部 API の認証トークン(STRANDS_DECIDER_TOKEN と同じ値)"
+  description = "API の認証トークン(STRANDS_DECIDER_TOKEN と同じ値)"
   type        = string
   sensitive   = true
 
@@ -75,44 +88,6 @@ locals {
   image = var.image != "" ? var.image : "mcr.microsoft.com/k8se/quickstart:latest"
 }
 
-resource "azurerm_virtual_network" "this" {
-  name                = "vnet-${var.name}-decider"
-  resource_group_name = var.resource_group_name
-  location            = var.location
-  address_space       = ["10.20.0.0/16"]
-  tags                = var.tags
-}
-
-resource "azurerm_subnet" "this" {
-  name                 = "snet-decider"
-  resource_group_name  = var.resource_group_name
-  virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["10.20.0.0/23"]
-
-  delegation {
-    name = "containerapps"
-    service_delegation {
-      name    = "Microsoft.App/environments"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
-    }
-  }
-}
-
-resource "azurerm_container_app_environment" "this" {
-  name                           = "cae-${var.name}-decider"
-  resource_group_name            = var.resource_group_name
-  location                       = var.location
-  log_analytics_workspace_id     = var.log_analytics_workspace_id
-  infrastructure_subnet_id       = azurerm_subnet.this.id
-  internal_load_balancer_enabled = true
-  tags                           = var.tags
-
-  workload_profile {
-    name                  = "gpu"
-    workload_profile_type = var.gpu_profile_type
-  }
-}
-
 resource "azurerm_user_assigned_identity" "pull" {
   name                = "id-${var.name}-decider-acrpull"
   resource_group_name = var.resource_group_name
@@ -129,9 +104,8 @@ resource "azurerm_role_assignment" "acr_pull" {
 resource "azurerm_container_app" "decider" {
   name                         = "ca-${var.name}-decider"
   resource_group_name          = var.resource_group_name
-  container_app_environment_id = azurerm_container_app_environment.this.id
+  container_app_environment_id = var.environment_id
   revision_mode                = "Single"
-  workload_profile_name        = "gpu"
   tags                         = var.tags
 
   identity {
@@ -150,7 +124,7 @@ resource "azurerm_container_app" "decider" {
   }
 
   ingress {
-    external_enabled = false
+    external_enabled = true
     target_port      = 8000
     transport        = "http"
 
@@ -161,15 +135,14 @@ resource "azurerm_container_app" "decider" {
   }
 
   template {
-    # モデルの読み込みが重いので、最小1(コールドスタートを避ける)
-    min_replicas = 1
+    min_replicas = var.min_replicas
     max_replicas = 1
 
     container {
       name   = "decider"
       image  = local.image
-      cpu    = 8
-      memory = "56Gi"
+      cpu    = var.cpu
+      memory = var.memory
 
       env {
         name        = "STRANDS_DECIDER_TOKEN"
@@ -196,7 +169,7 @@ output "name" {
   value = azurerm_container_app.decider.name
 }
 
-output "internal_url" {
-  description = "STRANDS_DECIDER_URL に設定する値(VNet の中からだけ届く)"
+output "url" {
+  description = "STRANDS_DECIDER_URL に設定する値(外部 URL。Bearer トークンが必要)"
   value       = "https://${azurerm_container_app.decider.ingress[0].fqdn}"
 }

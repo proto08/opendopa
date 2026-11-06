@@ -119,9 +119,9 @@ output "recsys_internal_url" {
   value       = module.containerapp.recsys_internal_url
 }
 
-output "decider_internal_url" {
-  description = "STRANDS_DECIDER_URL に設定する値(decider_enabled のときだけ)"
-  value       = var.decider_enabled ? module.decider[0].internal_url : null
+output "decider_url" {
+  description = "STRANDS_DECIDER_URL に設定する値(外部 URL。decider_enabled のときだけ)"
+  value       = var.decider_enabled ? module.decider[0].url : null
 }
 
 output "decider_app_name" {

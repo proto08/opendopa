@@ -1,8 +1,8 @@
-"""`strands_azure` プロバイダー: Azure 上の内部 API(Strands Decider 2B)を呼ぶ。
+"""`strands_azure` プロバイダー: Azure 上のAPI(Strands Decider 2B)を呼ぶ。
 
 環境変数:
-- `STRANDS_DECIDER_URL`: 内部 API のベース URL(必須。外部には公開しない)
-- `STRANDS_DECIDER_TOKEN`: 内部 API の認証トークン(`Authorization: Bearer` で送る)
+- `STRANDS_DECIDER_URL`: API のベース URL(必須。外部 URL。terraform output decider_url)
+- `STRANDS_DECIDER_TOKEN`: API の認証トークン(`Authorization: Bearer` で送る)
 - `STRANDS_DECIDER_TIMEOUT`: 1問あたりの秒数(既定 30)
 
 API の形(`POST {URL}/v1/decide`。問いは配列で、同じ順に結果が返る):
@@ -20,12 +20,15 @@ API の形(`POST {URL}/v1/decide`。問いは配列で、同じ順に結果が�
 from __future__ import annotations
 
 import json
+import logging
 import os
 import urllib.request
 from typing import Any
 
 from opendopa_pipeline.decider.base import Decision, DecisionRequest, Kind, Option
 from opendopa_pipeline.spec import DatasetDef
+
+logger = logging.getLogger(__name__)
 
 NAME = "strands_azure"
 DEFAULT_TIMEOUT = 30.0
@@ -39,6 +42,7 @@ class StrandsAzureDecider:
         self._endpoint = url.rstrip("/") + PATH
         self._token = token
         self._timeout = timeout
+        self.failed = 0  # rules にフォールバックさせた件数の累計(黙ってフォールバックしないため)
 
     @classmethod
     def from_dataset(cls, _dataset: DatasetDef) -> StrandsAzureDecider:
@@ -56,20 +60,48 @@ class StrandsAzureDecider:
         options: list[Option] | None = None,
         rubric: list[str] | None = None,
     ) -> Decision:
-        return self.decide_batch([DecisionRequest(kind, state, question, options, rubric)])[0]
+        req = DecisionRequest(kind, state, question, options, rubric)
+        try:
+            out = self._request([req])
+        except Exception:
+            self._count_failed(1)
+            raise
+        self._count_failed(sum(d.confidence == 0.0 for d in out))
+        return out[0]
 
     def decide_batch(self, requests: list[DecisionRequest]) -> list[Decision]:
+        try:
+            out = self._request(requests)
+        except Exception as e:
+            # エンジンが1件ずつに戻して再試行する。ここでは件数に数えない(二重に数えないため)
+            logger.warning(
+                "strands_azure: %d 件のバッチ呼び出しに失敗(1件ずつ再試行): %s", len(requests), e
+            )
+            raise
+        self._count_failed(sum(d.confidence == 0.0 for d in out))
+        return out
+
+    def _request(self, requests: list[DecisionRequest]) -> list[Decision]:
         body = {"requests": [_wire(r) for r in requests]}
         results = self._post(body, self._timeout * max(len(requests), 1)).get("results")
         if not isinstance(results, list) or len(results) != len(requests):
             raise ValueError("strands_azure: results の件数が問いと合いません")
         return [_to_decision(r, raw) for r, raw in zip(requests, results, strict=True)]
 
+    def _count_failed(self, n: int) -> None:
+        if n:
+            self.failed += n
+            logger.warning(
+                "strands_azure が %d 件失敗し rules にフォールバックした(累計 %d 件)",
+                n,
+                self.failed,
+            )
+
     def _post(self, body: dict[str, Any], timeout: float) -> dict[str, Any]:
         headers = {"Content-Type": "application/json"}
         if self._token:
             headers["Authorization"] = f"Bearer {self._token}"
-        req = urllib.request.Request(  # noqa: S310  # URL は環境変数(内部 API)
+        req = urllib.request.Request(  # noqa: S310  # URL は環境変数
             self._endpoint,
             data=json.dumps(body, ensure_ascii=False).encode("utf-8"),
             headers=headers,

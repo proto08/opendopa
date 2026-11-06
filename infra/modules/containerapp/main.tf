@@ -272,6 +272,11 @@ resource "azurerm_container_app" "web" {
   depends_on = [azurerm_role_assignment.acr_pull]
 }
 
+output "environment_id" {
+  description = "Container Apps Environment の ID(decider など、同じ環境に Container App を足すときに使う)"
+  value       = azurerm_container_app_environment.this.id
+}
+
 output "web_name" {
   value = azurerm_container_app.web.name
 }

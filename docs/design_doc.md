@@ -99,7 +99,7 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 | D11 | 配信 | Azure Blob Storage + CDN(Front Door)。音声とシーンJSONの置き場 |
 | D12 | 原稿生成 | 列定義 + **完成した台本のテンプレート**(型ごとに数本、YAML) + 共通エンジン(Python)。型の選択は決定モデル、穴埋めはコード。行ごとにLLMを呼ばない |
 | D13 | Databricks | 使わない |
-| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら、Azure上で動かす Strands Decider 2B(`strands_azure`)に切り替える。配備先(GPU付きContainer Apps か Azure ML)とモデルの入手元・ライセンスは実装時に確認し、評価の結果は `docs/DECISIONS.md` に記録する |
+| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら、Azure上で動かす Strands Decider 2B(`strands_azure`)に切り替える。配備先(本体と同じ Container Apps Environment の CPU の Container App。外部 ingress + Bearer トークン。`docs/decisions/2026-11-06-decider-cpu-external.md`)とモデルの入手元・ライセンスは実装時に確認し、評価の結果は `docs/DECISIONS.md` に記録する |
 | D15 | 音声 | **VOICEVOX**。最初は `none` で通し、あとから `voicevox` に切り替える。声(キャラクター)・速度・読み辞書は実装時に決める |
 | D16 | 地図の背景 | 日本の輪郭をアプリに同梱する(Natural Earthを元にした公開データ。npmの`world-atlas`など) |
 | D17 | ベクトル計算 | **Rustの別サービス(`services/recsys`)**。**状態を持たない計算サービス**で、Next.js から、イベントの履歴などを受け取り、好みの位置・割合と、次の動画を返す。DBには書き込まない(起動時に、動画の埋め込みを読み取りのみ)。Container Apps の内部サービス(§6.6) |
@@ -687,7 +687,7 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
 | Azure OpenAI | 埋め込み、チャットのデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認 |
-| 判断モデルの配備先(GPU付きContainer Apps、またはAzure ML) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。**内部のみ** |
+| 判断モデルの配備先(本体と同じ環境の CPU の Container App) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。外部 ingress だが Bearer トークン必須。既定では作らない(`decider_enabled`) |
 | Azure AI Speech | `TTS_PROVIDER=azure` のとき(VOICEVOX採用のため、既定では不要) |
 | Key Vault(任意) | 接続文字列とキー |
 

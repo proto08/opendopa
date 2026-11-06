@@ -432,3 +432,24 @@ def test_strands_azure_failures_fall_back_without_stopping(tmp_path, stub, mode)
     if mode != "low":  # pii は min_confidence がないので、低確信度だけではフォールバックしない
         assert rec["pii"]["used_fallback"] is True
         assert engine.report()["fallback_rate"] == 1.0
+
+
+def test_strands_azure_logs_fallback_count(tmp_path, stub, caplog):
+    s = stub(lambda body: (503, {"error": "down"}))
+    decider = _strands(s)
+    engine = DecisionEngine(make_dataset(tmp_path), decider, timeout=30.0)
+    rows = [{"CASUALTIES_SUMMARY": "なし", "INCIDENT_SUMMARY": f"行{i}"} for i in range(2)]
+    with caplog.at_level("WARNING"):
+        engine.run(rows, lambda row: ALL)
+    assert decider.failed > 0
+    assert any(
+        "strands_azure が" in m and "件失敗し rules にフォールバックした" in m
+        for m in caplog.messages
+    )
+
+
+def test_strands_azure_no_log_on_success(stub, caplog):
+    decider = _strands(stub(_answer))
+    with caplog.at_level("WARNING"):
+        decider.decide("noul", {"a": 1}, "q")
+    assert decider.failed == 0 and not caplog.messages
