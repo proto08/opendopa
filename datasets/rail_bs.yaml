@@ -1,0 +1,130 @@
+# 鉄軌道: 貸借対照表(docs/data.md §8.3 と §10.14)
+# 金額の列に単位の記載がない。千円と推定して読む(要確認。docs/data.md §10.14)。
+# 動画の中心は比率(自己資本の比率と、同じ区分の中の順位)で、絶対額は任意の1行にとどめる
+id: rail_bs
+label: 鉄道会社の貸借
+source_name: 鉄軌道統計年報 貸借対照表
+wm_char: 貸
+color: "#9B6BFF"
+files: [data/raw/rail_bs/06_tetsudou_taisyakutaisyouhyou.csv]
+grain: row
+rename: {}
+null_values: [""]
+# 0 は「記載なし」とみなす(総資産が 0 の行は、比率が出せない)
+zero_is_null: [TOTAL_ASSETS, TOTAL_LIABILITIES, TOTAL_EQUITY_PERCENT]
+filters: [{col: TOTAL_EQUITY_PERCENT, not_null: true}]
+
+derived:
+  eq_pct_text: {from: TOTAL_EQUITY_PERCENT, op: format, fmt: percent}
+  # 比率がマイナスの会社は、符号を「マイナス」と書くので、大きさだけの表記も作る
+  eq_pct_abs_text: {from: TOTAL_EQUITY_PERCENT, op: format, fmt: percent, abs: true}
+  # 総資産が極端に小さい行(千円と推定して1,000千円=100万円に満たない)の絶対額は読まない
+  assets_amt: {from: TOTAL_ASSETS, op: format, fmt: sen_yen, min_abs: 1000}
+
+stats:
+  - {name: eq_rank, op: rank_in_group, value: TOTAL_EQUITY_PERCENT, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: liab_pct, op: per, num: TOTAL_LIABILITIES, den: TOTAL_ASSETS, scale: 100, fmt: percent}
+  - {name: eq_series, op: series, value: TOTAL_EQUITY_PERCENT, group_by: OPERATOR_NAME, order: YEAR}
+
+# 最新年度(2023)を中心に、総資産の大きい事業者を選ぶ。区分でばらす
+select:
+  cap: 150
+  order_by: YEAR
+  score:
+    - {expr: YEAR, weight: 1.0}
+    - {expr: rank_desc(TOTAL_ASSETS), weight: 0.5}
+  diversify_by: CATEGORY
+
+kind: stat
+headline: "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}"
+chips: ["{CATEGORY}", "{JURISDICTION}"]
+sparkline: eq_series
+
+big_number:
+  primary: {text: "{eq_pct_text}", unit: "", label: "総資産に占める自己資本"}
+
+template_groups:
+  - id: equity_high
+    label: "自己資本が総資産の半分を超えている"
+    templates:
+      - id: equity_high_std
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}でした。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+          - {text: "負債は総資産の{liab_pct_text}です。", optional: true}
+          - {text: "総資産は{assets_amt}です。", optional: true}
+      - id: equity_high_short
+        short: true
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}でした。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+  - id: equity_low
+    label: "自己資本が総資産の半分以下で、比率は0以上"
+    templates:
+      - id: equity_low_std
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}でした。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+          - {text: "負債は総資産の{liab_pct_text}です。", optional: true}
+          - {text: "総資産は{assets_amt}です。", optional: true}
+      - id: equity_low_short
+        short: true
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}でした。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+  - id: equity_negative
+    label: "自己資本の比率がマイナス"
+    templates:
+      - id: equity_negative_std
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産のマイナス{eq_pct_abs_text}でした。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+          - {text: "負債は総資産の{liab_pct_text}です。", optional: true}
+          - {text: "総資産は{assets_amt}です。", optional: true}
+      - id: equity_negative_short
+        short: true
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産のマイナス{eq_pct_abs_text}でした。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+  - id: equity_over
+    label: "自己資本が総資産を上回っている"
+    templates:
+      - id: equity_over_std
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}でした。"
+          - "自己資本が、総資産を上回っています。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+          - {text: "負債は総資産の{liab_pct_text}です。", optional: true}
+      - id: equity_over_short
+        short: true
+        lines:
+          - "{OPERATOR_NAME}の{YEAR}年、自己資本は総資産の{eq_pct_text}でした。"
+          - "自己資本が、総資産を上回っています。"
+          - "同じ区分の{eq_rank_n}社中、自己資本の比率が高い順で{eq_rank_text}です。"
+
+# 型は、自己資本の比率の大きさで決まる(数字の判断なので、ルールで選ぶ)
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この事業者の自己資本の比率は、次のどの型に当たりますか。"
+    state: [TOTAL_EQUITY_PERCENT]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: equity, default: equity_low}
+
+fallback_rules:
+  equity:
+    - {if: "TOTAL_EQUITY_PERCENT > 100", then: equity_over}
+    - {if: "TOTAL_EQUITY_PERCENT > 50", then: equity_high}
+    - {if: "TOTAL_EQUITY_PERCENT < 0", then: equity_negative}
+    - {else: equity_low}
+
+comments:
+  pool_light: ["ほう", "なるほど", "へえ", "知らなかった", "これは気になる"]
+  pool_calm: ["なるほど", "落ち着いて見たい", "そうなんだ", "地域の足だね"]
+  rule: "TOTAL_EQUITY_PERCENT < 0 -> calm; else light"
+
+embed_text: "鉄道 貸借対照表 自己資本 {OPERATOR_NAME} {CATEGORY} {YEAR}年"
+required: [OPERATOR_NAME, YEAR, TOTAL_EQUITY_PERCENT]

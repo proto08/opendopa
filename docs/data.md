@@ -268,6 +268,9 @@ select:
 - パーセント: 小数1桁まで。
 - 順位: 「○位」。件数: 「○件」。
 - 実装は `pipeline/opendopa_pipeline/fmt.py`。`fmt:` に書ける名前は `yen`(円)、`sen_yen`(千円の列)、`percent`、`rank`、`count`。derived では `op: format` で使う。
+- `op: format` の省略できる引数: `abs: true`(符号を除く。黒字・赤字の額は、符号を言葉にして大きさだけ読む)、`min_abs` / `max_abs`(大きさが範囲の外なら欠損にする。桁が極端な値を読まない)。
+- `op: sign_label`(derived): 数値の符号を `positive` / `negative` / `zero` に書いた言葉(黒字・赤字など)にする。書いていない符号は欠損。
+- `op: prev_year_label`(stats): 前年の同じ主体の `value` の符号を、`positive` / `negative` の言葉にする(「前年は黒字でした」)。前年がない・0 は欠損。
 - 1桁の丸めで誤差が0.5%を超えるときは、「1億400万円」のように下の単位まで書く(1.04億を「約1億円」とはしない)。
 
 ### 8.6 品質ゲート(通らない行は `excluded` にして理由を記録)

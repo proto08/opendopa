@@ -141,11 +141,50 @@ def _map(col: pd.Series, d: Derived) -> pd.Series:
 
 @derive_op("format")
 def _format(col: pd.Series, d: Derived) -> pd.Series:
-    """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`"""
+    """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`
+
+    省略できる引数: `abs: true`(符号を除いた大きさにする。黒字・赤字の額など)、
+    `min_abs` / `max_abs`(大きさがこの範囲の外なら欠損にする。桁が極端な値を読まないため)。
+    """
     fmt = _arg(d, "fmt")
     if fmt not in FORMATTERS:
         raise DeriveError(f"format の fmt {fmt!r} は未知です(使えるのは {', '.join(FORMATTERS)})")
-    return _map_non_null(col, lambda v: format_value(fmt, v))
+    use_abs = _arg(d, "abs", False)
+    lo = _arg(d, "min_abs", None)
+    hi = _arg(d, "max_abs", None)
+
+    def f(v: Any) -> str | None:
+        x = _to_number(v)
+        if x is None:
+            return format_value(fmt, v)
+        if (lo is not None and abs(x) < lo) or (hi is not None and abs(x) > hi):
+            return None
+        return format_value(fmt, abs(x) if use_abs else x)
+
+    return _map_non_null(col, f)
+
+
+def _to_number(v: Any) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, int | float):
+        return None
+    return float(v)
+
+
+@derive_op("sign_label")
+def _sign_label(col: pd.Series, d: Derived) -> pd.Series:
+    """数値の符号を言葉にする(黒字・赤字など)。`positive` / `negative` / `zero` に書いた言葉を使い、
+    書いていない符号(省略した `zero` など)と数値でない値は欠損にする。"""
+    labels = {k: _arg(d, k, None) for k in ("positive", "negative", "zero")}
+    if labels["positive"] is None and labels["negative"] is None:
+        raise DeriveError("sign_label には positive か negative が必要です")
+
+    def label(v: Any) -> str | None:
+        x = _to_number(v)
+        if x is None:
+            return None
+        return labels["positive" if x > 0 else "negative" if x < 0 else "zero"]
+
+    return _map_non_null(col, label)
 
 
 # 複数の列を使う op: (DataFrame, derived の定義) → 結果の Series。`from` は省略できる
