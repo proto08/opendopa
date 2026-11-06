@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+#MISE description="/sleep の対象を機械的に洗い出す(REST のみ。LLM を使わない)。対象がなければ idle=true"
+# 使い方: mise run sleep-scan   (REPO=owner/name で対象リポジトリを指定できる)
+#
+# 状態ファイルを持たない: 「自分の最後の活動」と「他の人の活動」を GitHub から比べるだけで、
+# 対応済みかどうかが分かる。セッションが変わっても、同じ結果になる。
+#
+# 出力(標準出力に JSON 1つ):
+#   idle         対象が1件もなければ true。LLM を起こさずに終えてよい
+#   fingerprint  対象の指紋。同じなら、前回と同じ状況
+#   targets      review / merge_check / conflict / review_fix / implement
+#   waiting      needs_human / blocked_issues / merge_candidates / busy
+#
+# gh の GraphQL(gh pr list など)は使わない。Claude Code のクラウド環境で 403 になるため。
+set -euo pipefail
+
+command -v jq >/dev/null || { echo "jq が必要です" >&2; exit 1; }
+command -v gh >/dev/null || { echo "gh が必要です" >&2; exit 1; }
+
+REPO="${REPO:-$(git remote get-url origin | sed -E 's#\.git$##' | awk -F/ '{print $(NF-1)"/"$NF}')}"
+BUSY_HOURS="${BUSY_HOURS:-3}"
+
+api() { gh api --paginate "$1" | jq -s 'add // []'; }
+
+ME=$(gh api user --jq .login)
+BASE=$(gh api "repos/$REPO" --jq .default_branch)
+MAIN_SHA=$(gh api "repos/$REPO/commits/$BASE" --jq .sha)
+NOW=$(date -u +%s)
+
+prs=$(api "repos/$REPO/pulls?state=open&per_page=100")
+issues=$(api "repos/$REPO/issues?state=open&per_page=100")
+
+# 他の人が status::pr-review / merge-check / fixing / conflict を付けて作業中か(docs/kanban.md)
+busy_by_other() {
+  local n=$1 last
+  last=$(gh api --paginate "repos/$REPO/issues/$n/events?per_page=100" | jq -s -r --arg me "$ME" '
+    add // [] | map(select(.event == "labeled"
+      and (.label.name | IN("status::pr-review","status::merge-check","status::fixing","status::conflict"))))
+    | last // empty | "\(.actor.login) \(.created_at)"')
+  [ -n "$last" ] || return 1
+  local actor=${last%% *} at=${last#* }
+  [ "$actor" != "$ME" ] || return 1
+  local t
+  t=$(date -u -d "$at" +%s)
+  [ $((NOW - t)) -lt $((BUSY_HOURS * 3600)) ]
+}
+
+facts='[]'
+for n in $(jq -r '.[].number' <<<"$prs"); do
+  d=$(gh api "repos/$REPO/pulls/$n")
+  if [ "$(jq -r .mergeable_state <<<"$d")" = "unknown" ]; then
+    sleep 3
+    d=$(gh api "repos/$REPO/pulls/$n")
+  fi
+  rv=$(api "repos/$REPO/pulls/$n/reviews?per_page=100")
+  ic=$(api "repos/$REPO/issues/$n/comments?per_page=100")
+  rc=$(api "repos/$REPO/pulls/$n/comments?per_page=100")
+  cm=$(api "repos/$REPO/pulls/$n/commits?per_page=100")
+  busy=false
+  if jq -e '.labels | map(.name) | any(. == "status::pr-review" or . == "status::merge-check" or . == "status::fixing" or . == "status::conflict")' <<<"$d" >/dev/null; then
+    busy_by_other "$n" && busy=true
+  fi
+  f=$(jq -n --arg me "$ME" --argjson d "$d" --argjson rv "$rv" --argjson ic "$ic" \
+    --argjson rc "$rc" --argjson cm "$cm" --argjson busy "$busy" '
+    def human: select(.user.login != $me and .user.type != "Bot" and (.user.login | endswith("[bot]") | not));
+    def mine:  select(.user.login == $me);
+    def latest: (map(select(. != null)) | max) // "";
+    ([$rv[] | mine | .submitted_at] | latest) as $my_review
+    | ([$rv[] | mine | .submitted_at] + [$ic[] | mine | .created_at] + [$rc[] | mine | .created_at] | latest) as $my_last
+    | ([$cm[] | .commit.committer.date] | latest) as $last_commit
+    | ($d.user.login == $me) as $is_mine
+    # 他の人の PR: 自分の最後の活動のあとの、commit・コメント・レビュー。
+    # 自分の PR: 自分の最後の活動(commit を含む)のあとの、他の人のコメント・レビュー。
+    | (if $is_mine then ([$my_last, $last_commit] | latest) else $my_last end) as $since
+    | ([ ($rv[] | human | .submitted_at), ($ic[] | human | .created_at), ($rc[] | human | .created_at) ]
+        + (if $is_mine then [] else [$cm[] | .commit.committer.date] end)
+        | map(select(. != null and . > $since))) as $after
+    | {
+        pr: $d.number, title: $d.title, author: $d.user.login, draft: $d.draft,
+        sha: $d.head.sha, mergeable_state: $d.mergeable_state,
+        labels: [$d.labels[].name],
+        closes: ([($d.body // "") | scan("(?i)(?:closes|fixes|resolves|refs?) #([0-9]+)") | .[0] | tonumber]),
+        i_reviewed: ($my_review != ""), is_mine: $is_mine,
+        others_after: ($after | length), busy: $busy
+      }')
+  facts=$(jq -c --argjson f "$f" '. + [$f]' <<<"$facts")
+done
+
+# 前提(`前提: #34、#38`)を数えて、開いているものが残るかを見る
+open_issue_numbers=$(jq -c '[.[] | select(.pull_request | not) | .number]' <<<"$issues")
+issue_facts=$(jq -c --arg me "$ME" --argjson open "$open_issue_numbers" --argjson facts "$facts" '
+  [ .[] | select(.pull_request | not)
+    | select(any(.assignees[]; .login == $me))
+    | {
+        issue: .number, title: .title, labels: [.labels[].name],
+        requires: ((.body // "") | split("\n") | map(select(test("前提:"))) | first // ""
+                   | sub("^.*前提:"; "") | [scan("#([0-9]+)") | .[0] | tonumber]),
+        has_pr: (.number as $n | $facts | any(.[]; .closes | index($n)))
+      }
+    | . + { blocked_by: (.requires - (.requires - $open)) }
+  ]' <<<"$issues")
+
+result=$(jq -n --arg me "$ME" --arg main "$MAIN_SHA" --argjson facts "$facts" --argjson iss "$issue_facts" '
+  def pick: {pr, title, author, sha};
+  def human_wait: .labels | index("needs-human");
+  ($facts | map(select(.busy | not) | select(human_wait | not))) as $live
+  | {
+    me: $me, main: $main,
+    targets: {
+      review:      [$live[] | select(.is_mine | not) | select(.draft | not) | select(.i_reviewed | not) | pick],
+      merge_check: [$live[] | select(.is_mine | not) | select(.draft | not) | select(.i_reviewed)
+                           | select(.others_after > 0) | pick],
+      conflict:    [$live[] | select(.is_mine) | select(.mergeable_state == "dirty")
+                           | select(.others_after == 0) | pick],
+      review_fix:  [$live[] | select(.is_mine) | select(.others_after > 0)
+                           | pick + {issues: .closes, conflicting: (.mergeable_state == "dirty")}],
+      implement:   [$iss[] | select(.labels | index("type::tracking") | not)
+                           | select(.labels | index("needs-human") | not)
+                           | select(.has_pr | not) | select(.blocked_by | length == 0)
+                           | {issue, title}]
+    },
+    waiting: {
+      needs_human:      [$facts[] | select(human_wait) | pick],
+      busy:             [$facts[] | select(.busy) | pick],
+      merge_candidates: [$facts[] | select(.is_mine) | select(.labels | index("status::ready-to-merge"))
+                                  | select(.mergeable_state == "clean") | pick],
+      blocked_issues:   [$iss[] | select(.labels | index("type::tracking") | not)
+                               | select(.has_pr | not) | select(.blocked_by | length > 0)
+                               | {issue, title, waiting_on: .blocked_by}]
+    }
+  }
+  | .idle = ([.targets[] | length] | add == 0)')
+
+fingerprint=$(jq -S -c '.targets' <<<"$result" | sha256sum | cut -c1-16)
+jq --arg fp "$fingerprint" '. + {fingerprint: $fp}' <<<"$result"
