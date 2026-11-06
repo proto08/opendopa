@@ -20,7 +20,12 @@ MAX_SEC = 30.0
 _HOLE = re.compile(r"\{([^{}]+)\}")
 
 
+LIST_SEP = "、"
+
+
 def _text_of(v: Any) -> str | None:
+    if isinstance(v, list):  # 項目のリスト(`join_flags` など)は「、」でつなぐ
+        return LIST_SEP.join(str(x) for x in v) or None
     if v is None or (isinstance(v, float) and v != v):
         return None
     if isinstance(v, float) and v.is_integer():
