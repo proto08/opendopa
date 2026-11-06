@@ -1,0 +1,161 @@
+# 内航海運の航路(船舶輸送統計調査。docs/data.md §10.7)。1行 = 積み港 × 降ろし港 × 年
+id: naiko_route
+label: 内航海運の航路
+source_name: 船舶輸送統計調査(内航船舶輸送統計調査)
+wm_char: 港
+color: "#3A86FF"
+files: [data/raw/naiko_route/02_naikousenpakuyusoutoukeichousa.csv]
+grain: row
+# 式(filters・score)で使う列は、空白を含む名前を使えないので置き換える
+rename:
+  "LOADING PORT_NAME": FROM_PORT
+  "LOADING PORT_PREFECTURE NAME": FROM_PREF
+  "UNLOADING PORT_NAME": TO_PORT
+  "UNLOADING PORT_PREFECTURE NAME": TO_PREF
+  "SAMPLE SIZE": SAMPLE_SIZE
+  "AVERAGE_GROSS TONNAGE": GROSS_TONNAGE
+  "AVERAGE_LOADING RATIO": LOADING_RATIO
+null_values: [""]
+zero_is_null: []
+
+derived:
+  # 港の緯度経度は、欠損なら同じ港名の他の行(積み港・降ろし港のどちらの列でも)から補う
+  from_lat:
+    from: LOADING PORT_LATITUDE
+    op: fill_by_key
+    key: FROM_PORT
+    also: [{key: TO_PORT, value: DISCHARGE PORT_LATITUDE}]
+  from_lon:
+    from: LOADING PORT_LONGITUDE
+    op: fill_by_key
+    key: FROM_PORT
+    also: [{key: TO_PORT, value: DISCHARGE PORT_LONGITUDE}]
+  to_lat:
+    from: DISCHARGE PORT_LATITUDE
+    op: fill_by_key
+    key: TO_PORT
+    also: [{key: FROM_PORT, value: LOADING PORT_LATITUDE}]
+  to_lon:
+    from: DISCHARGE PORT_LONGITUDE
+    op: fill_by_key
+    key: TO_PORT
+    also: [{key: FROM_PORT, value: LOADING PORT_LONGITUDE}]
+  # 積載率(0〜1)を % にする。確かな比率なので読み上げてよい
+  ratio_pct: {from: LOADING_RATIO, op: scale, by: 100, digits: 1}
+
+# 距離(AVERAGE_TRANSPORT DISTANCE)と貨物の重さ(AVERAGE_CARGO WEIGHT)、標本数(SAMPLE_SIZE)は、
+# 単位が確認できるまで原稿に出さない(使うのは選定の点数と型の判断だけ)
+filters:
+  - "YEAR > 2016"
+  - "YEAR < 2024"
+  - "from_lat != null"
+  - "from_lon != null"
+  - "to_lat != null"
+  - "to_lon != null"
+  - "FROM_PORT != null"
+  - "TO_PORT != null"
+  - "LOADING_RATIO != null"
+  # 積載率が 1(100%)を超える行は、元データの外れ値として除く
+  - "LOADING_RATIO < 1.005"
+
+stats: []
+
+select:
+  cap: 150
+  score: [{expr: SAMPLE_SIZE, weight: 1.0}]
+  diversify_by: [FROM_PREF]
+
+big_number:
+  primary: {text: "{ratio_pct}", unit: "%", label: "平均の積載率"}
+
+kind: geo
+headline: "{FROM_PORT}から{TO_PORT}へ、内航船の航路"
+chips: ["{FROM_PREF}", "{TO_PREF}", "{YEAR}年"]
+map:
+  type: route
+  from: {name: "{FROM_PORT}", lat: from_lat, lon: from_lon}
+  to: {name: "{TO_PORT}", lat: to_lat, lon: to_lon}
+
+template_groups:
+  - id: high_load
+    label: "積載率が高い航路"
+    templates:
+      - id: high_load_std
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "平均の積載率は{ratio_pct}%。積載率が高めの航路です。"
+          - "平均の総トン数は{GROSS_TONNAGE}トンです。"
+          - {text: "積み港は{FROM_PREF}、降ろし港は{TO_PREF}にあります。", optional: true}
+      - id: high_load_short
+        short: true
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "平均の積載率は{ratio_pct}%。積載率が高めの航路です。"
+  - id: large_ship
+    label: "大きな船が走る航路"
+    templates:
+      - id: large_ship_std
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "この航路の船は、平均の総トン数が{GROSS_TONNAGE}トンと大きめです。"
+          - "平均の積載率は{ratio_pct}%です。"
+          - {text: "積み港は{FROM_PREF}、降ろし港は{TO_PREF}にあります。", optional: true}
+      - id: large_ship_short
+        short: true
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "平均の総トン数は{GROSS_TONNAGE}トン、積載率は{ratio_pct}%です。"
+  - id: busy_route
+    label: "調査の標本が多い航路"
+    templates:
+      - id: busy_route_std
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "調査の標本が多い航路です。"
+          - "平均の積載率は{ratio_pct}%です。"
+          - {text: "平均の総トン数は{GROSS_TONNAGE}トンです。", optional: true}
+          - {text: "積み港は{FROM_PREF}、降ろし港は{TO_PREF}にあります。", optional: true}
+      - id: busy_route_short
+        short: true
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "調査の標本が多い航路です。平均の積載率は{ratio_pct}%です。"
+  - id: standard
+    label: "上のどれでもない"
+    templates:
+      - id: standard_std
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "平均の積載率は{ratio_pct}%です。"
+          - "平均の総トン数は{GROSS_TONNAGE}トンです。"
+          - {text: "積み港は{FROM_PREF}、降ろし港は{TO_PREF}にあります。", optional: true}
+      - id: standard_short
+        short: true
+        lines:
+          - "{FROM_PORT}から{TO_PORT}へ。{YEAR}年の内航船の航路です。"
+          - "平均の積載率は{ratio_pct}%、平均の総トン数は{GROSS_TONNAGE}トンです。"
+
+template_select: {decision: template}
+
+# 型は積載率・総トン数・標本数の大きさだけで決まるので、規則(by_size)で決める
+decisions:
+  - id: template
+    kind: choice
+    question: "この航路は、次のどの型に一番近いですか。"
+    state: [LOADING_RATIO, GROSS_TONNAGE, SAMPLE_SIZE]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: by_size, default: standard}
+
+fallback_rules:
+  by_size:
+    - {if: "LOADING_RATIO > 0.7", then: high_load}
+    - {if: "GROSS_TONNAGE > 2000", then: large_ship}
+    - {if: "SAMPLE_SIZE > 10000", then: busy_route}
+    - {else: standard}
+
+comments:
+  pool_light: ["へえ", "船で運んでるんだ", "知らなかった", "海の物流すごい", "港行きたい"]
+
+embed_text: "内航海運 航路 {FROM_PORT} {TO_PORT} {FROM_PREF} {YEAR}年"
+required: [FROM_PORT, TO_PORT, YEAR, LOADING_RATIO, GROSS_TONNAGE]

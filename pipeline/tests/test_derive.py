@@ -123,3 +123,33 @@ def test_accident_extract_pref_null_count(make_dataset) -> None:
     )["pref"]
     assert len(df) == 194
     assert pref.isna().sum() == 3
+
+
+def test_scale_multiplies_with_decimal(make_dataset) -> None:
+    s = run(make_dataset, pd.Series([0.62, 0.625, None, "x"]), op="scale", by=100, digits=1)
+    assert list(s[:2]) == [62.0, 62.5]
+    assert s.isna().tolist() == [False, False, True, True]
+
+
+def test_fill_by_key_uses_other_rows_and_other_columns(make_dataset) -> None:
+    df = pd.DataFrame(
+        {
+            "name": ["A", "A", "B", None, "C"],
+            "lat": [1.0, None, None, None, None],
+            "to_name": ["B", "C", "A", "A", "A"],
+            "to_lat": [5.0, 3.0, None, None, None],
+        }
+    )
+    ds = make_dataset(
+        derived={
+            "v": {
+                "from": "lat",
+                "op": "fill_by_key",
+                "key": "name",
+                "also": [{"key": "to_name", "value": "to_lat"}],
+            }
+        }
+    )
+    got = derive(df, ds)["v"].tolist()
+    # A: 自分の値か、同じ名前の 1 行目の値。B と C: 降ろし側の列の値。名前が欠損の行は埋めない
+    assert got == [1.0, 1.0, 5.0, None, 3.0]

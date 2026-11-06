@@ -390,8 +390,8 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 ### 10.7 `naiko_route`(内航海運: 船舶輸送統計調査、航路)
 
 - **構造**: 1行=積み港×降ろし港×年(16,062の航路)。2017〜2023年が主。
-- **列**: `YEAR`, `LOADING PORT_NAME`, `LOADING PORT_PREFECTURE NAME`, `UNLOADING PORT_NAME`, `UNLOADING PORT_PREFECTURE NAME`(欠損あり)、`SAMPLE SIZE`(標本数。単位は隻/回など**要確認**)、`AVERAGE_GROSS TONNAGE`(平均総トン数)、`AVERAGE_DEAD WEIGHT TONNAGE`, `AVERAGE_LOADING RATIO`(積載率。0〜1)、`AVERAGE_CARGO WEIGHT`(単位:要確認。トンと推定)、`AVERAGE_TRANSPORT DISTANCE`(単位:要確認。キロメートルまたは海里)、`LOADING PORT_LATITUDE/LONGITUDE`(欠損あり。同じ港名の他の行から補完する)、`UNLOADING PORT_LATITUDE/LONGITUDE`、用途別の船の内訳(`PURPOSE_*`)。
-- **クリーニング**: `YEAR` が2017〜2023の行だけ。港の緯度経度が補完できない行は除外。
+- **列**: `YEAR`, `LOADING PORT_NAME`, `LOADING PORT_PREFECTURE NAME`, `UNLOADING PORT_NAME`, `UNLOADING PORT_PREFECTURE NAME`(欠損あり)、`SAMPLE SIZE`(標本数。単位は隻/回など**要確認**)、`AVERAGE_GROSS TONNAGE`(平均総トン数)、`AVERAGE_DEAD WEIGHT TONNAGE`, `AVERAGE_LOADING RATIO`(積載率。0〜1)、`AVERAGE_CARGO WEIGHT`(単位:要確認。トンと推定)、`AVERAGE_TRANSPORT DISTANCE`(単位:要確認。キロメートルまたは海里)、`LOADING PORT_LATITUDE/LONGITUDE`(欠損あり。同じ港名の他の行から補完する)、`DISCHARGE PORT_LATITUDE/LONGITUDE`(実データの列名。降ろし港)、用途別の船の内訳(`PURPOSE_*`)。
+- **クリーニング**: `YEAR` が2017〜2023の行だけ。港の緯度経度が補完できない行は除外(`fill_by_key`)。積載率が1を超える行は外れ値として除外。
 - **選定**: `cap=150`。標本数が多い航路を優先し、`LOADING PORT_PREFECTURE NAME` でばらす。
 - **kind**: `geo`(`route`: 港から港への弧)。
 - **大きな数字**: 積載率(「◯%」。0〜1を%に変換。単位が確かな比率なので読み上げてよい)。

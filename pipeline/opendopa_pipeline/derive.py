@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import pandas as pd
@@ -25,6 +26,9 @@ class DeriveError(ValueError):
 # op の関数: (元の列の Series, derived の定義) → 結果の Series(同じ index)
 DeriveOp = Callable[[pd.Series, Derived], pd.Series]
 _OPS: dict[str, DeriveOp] = {}
+# 他の列も見る op の関数: (DataFrame 全体, derived の定義) → 結果の Series(同じ index)
+FrameOp = Callable[[pd.DataFrame, Derived], pd.Series]
+_FRAME_OPS: dict[str, FrameOp] = {}
 
 
 def derive_op(name: str) -> Callable[[DeriveOp], DeriveOp]:
@@ -35,8 +39,18 @@ def derive_op(name: str) -> Callable[[DeriveOp], DeriveOp]:
     return deco
 
 
+def derive_frame_op(name: str) -> Callable[[FrameOp], FrameOp]:
+    """行ごとの変換ではなく、表全体を見て作る op(`fill_by_key` など)を足す。"""
+
+    def deco(fn: FrameOp) -> FrameOp:
+        _FRAME_OPS[name] = fn
+        return fn
+
+    return deco
+
+
 def known_derive_ops() -> list[str]:
-    return sorted(_OPS)
+    return sorted({*_OPS, *_FRAME_OPS})
 
 
 def _arg(d: Derived, key: str, default: Any = ...) -> Any:
@@ -148,12 +162,61 @@ def _format(col: pd.Series, d: Derived) -> pd.Series:
     return _map_non_null(col, lambda v: format_value(fmt, v))
 
 
+@derive_op("scale")
+def _scale(col: pd.Series, d: Derived) -> pd.Series:
+    """数値に `by` を掛け、小数 `digits` 桁(省略で 1)に四捨五入する。例: 比率 0.62 → 62(`by: 100`)。
+
+    Decimal で計算するので、0.62 × 100 が 62.00000000000001 にならない。数値でない値は欠損にする。
+    """
+    by = Decimal(str(_arg(d, "by")))
+    places = Decimal(1).scaleb(-int(_arg(d, "digits", 1)))
+
+    def scale(v: Any) -> float | None:
+        try:
+            return float((Decimal(str(v)) * by).quantize(places, rounding=ROUND_HALF_UP))
+        except ArithmeticError:
+            return None
+
+    return _map_non_null(col, scale)
+
+
+@derive_frame_op("fill_by_key")
+def _fill_by_key(df: pd.DataFrame, d: Derived) -> pd.Series:
+    """`from` の値(緯度など)が欠損の行を、同じ `key`(港名など)の他の行の値で埋める。
+
+    `also: [{key: 別の名前の列, value: 別の値の列}]` を足すと、積み港の列と降ろし港の列のように、
+    同じ名前が別の列に出る行からも探す。自分の行に値があればそのまま使う。
+    名前に複数の値があるときは、先に出た行の値(行の順)を使う。名前が欠損の行は埋めない。
+    """
+    key = _arg(d, "key")
+    pairs = [(key, d.from_)] + [(a["key"], a["value"]) for a in _arg(d, "also", [])]
+    for k, v in pairs:
+        for c in (k, v):
+            if c not in df.columns:
+                raise DeriveError(f"fill_by_key: 列 {c!r} がありません")
+    known: dict[Any, Any] = {}
+    for k, v in pairs:
+        for name, value in zip(df[k], df[v], strict=True):
+            if not is_missing(name) and not is_missing(value):
+                known.setdefault(name, value)
+    own = df[d.from_]
+    return pd.Series(
+        [
+            v if not is_missing(v) else (None if is_missing(n) else known.get(n))
+            for n, v in zip(df[key], own, strict=True)
+        ],
+        index=df.index,
+        dtype=object,
+    )
+
+
 def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
     """`derived` の列を足した新しい DataFrame を返す(元の DataFrame は変えない)。"""
     out = df.copy()
     for name, d in dataset.derived.items():
         op = _OPS.get(d.op)
-        if op is None:
+        frame_op = _FRAME_OPS.get(d.op)
+        if op is None and frame_op is None:
             raise DeriveError(
                 f"derived.{name}: 未知の op {d.op!r}(使えるのは {', '.join(known_derive_ops())})"
             )
@@ -164,7 +227,7 @@ def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
         if d.from_ not in df.columns:
             raise DeriveError(f"derived.{name}: 列 {d.from_!r} がありません")
         try:
-            out[name] = op(df[d.from_], d)
+            out[name] = op(df[d.from_], d) if op is not None else frame_op(df, d)  # type: ignore[misc]
         except DeriveError as e:
             raise DeriveError(f"derived.{name}: {e}") from e
     return out
