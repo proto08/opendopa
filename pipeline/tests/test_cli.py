@@ -13,7 +13,7 @@ def test_help_lists_subcommands() -> None:
 
 
 def test_unimplemented_command_fails() -> None:
-    result = runner.invoke(app, ["embed"])
+    result = runner.invoke(app, ["tts", "--dataset", "accident"])
     assert result.exit_code == 1
 
 
