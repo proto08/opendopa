@@ -18,6 +18,8 @@ export function Feed() {
   const [items, setItems] = useState<FeedItem[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [active, setActive] = useState<number | null>(null);
+  // 最後に再生中だった番号。切り替えの途中(active が null)でも Stage の window の基準にする
+  const [anchor, setAnchor] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const loadingMore = useRef(false);
   const lastActive = useRef(0);
@@ -60,6 +62,7 @@ export function Feed() {
       if (visible) {
         lastActive.current = index;
         setActive(index);
+        setAnchor(index);
       } else {
         setActive((cur) => (cur === index ? null : cur));
       }
@@ -120,7 +123,7 @@ export function Feed() {
           item={item}
           index={i}
           active={active === i}
-          mounted={active === null ? i === 0 : Math.abs(i - active) <= 1}
+          mounted={Math.abs(i - anchor) <= 1}
         />
       ))}
     </div>
