@@ -161,6 +161,15 @@ export class ScenePlayer {
     this.scheduleTick();
   }
 
+  /** 一時停止して、字幕・進行を最初に戻す(画面から外れたとき) */
+  reset(): void {
+    this.cancelFrame();
+    this.playedSec = 0;
+    this.toggles = 0;
+    this.paused = true;
+    this.publish();
+  }
+
   /** 時計を止めて破棄する */
   stop(): void {
     this.cancelFrame();
