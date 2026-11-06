@@ -13,7 +13,8 @@ from typing import Any
 
 import pandas as pd
 
-from opendopa_pipeline.fmt import FORMATTERS, format_datetime, format_value
+from opendopa_pipeline.decider.rules import PII_PATTERNS
+from opendopa_pipeline.fmt import FORMATTERS, format_datetime, format_value, parse_datetime
 from opendopa_pipeline.ingest import is_missing
 from opendopa_pipeline.spec import DatasetDef, Derived
 
@@ -22,14 +23,18 @@ class DeriveError(ValueError):
     """derived の定義の誤り(未知の op、引数の不足など)。"""
 
 
-# op の関数: (元の列の Series, derived の定義) → 結果の Series(同じ index)
-DeriveOp = Callable[[pd.Series, Derived], pd.Series]
+# op の関数: (元の列の Series, derived の定義) → 結果の Series(同じ index)。
+# `frame=True` で登録した op は、第3引数に DataFrame 全体も受け取る(別の列を見る op 用)
+DeriveOp = Callable[..., pd.Series]
 _OPS: dict[str, DeriveOp] = {}
+_FRAME_OPS: set[str] = set()
 
 
-def derive_op(name: str) -> Callable[[DeriveOp], DeriveOp]:
+def derive_op(name: str, *, frame: bool = False) -> Callable[[DeriveOp], DeriveOp]:
     def deco(fn: DeriveOp) -> DeriveOp:
         _OPS[name] = fn
+        if frame:
+            _FRAME_OPS.add(name)
         return fn
 
     return deco
@@ -139,13 +144,176 @@ def _map(col: pd.Series, d: Derived) -> pd.Series:
     return _map_non_null(col, lambda v: mapping.get(str(v), else_value))
 
 
-@derive_op("format")
-def _format(col: pd.Series, d: Derived) -> pd.Series:
-    """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`"""
+def _frame_col(df: pd.DataFrame, name: str) -> pd.Series:
+    if name not in df.columns:
+        raise DeriveError(f"列 {name!r} がありません")
+    return df[name]
+
+
+@derive_op("format", frame=True)
+def _format(col: pd.Series, d: Derived, df: pd.DataFrame) -> pd.Series:
+    """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`
+
+    `prefix_if: {col: 列, contains: 語, prefix: 文字}` を付けると、その列に語が含まれる行だけ、
+    表記の前に文字を足す(賃貸の金額に「月」を付ける、など)。
+    """
     fmt = _arg(d, "fmt")
     if fmt not in FORMATTERS:
         raise DeriveError(f"format の fmt {fmt!r} は未知です(使えるのは {', '.join(FORMATTERS)})")
-    return _map_non_null(col, lambda v: format_value(fmt, v))
+    out = _map_non_null(col, lambda v: format_value(fmt, v))
+    cond = _arg(d, "prefix_if", None)
+    if cond is None:
+        return out
+    flag = _frame_col(df, cond["col"])
+    prefix = [
+        cond["prefix"] if (not is_missing(f) and cond["contains"] in str(f)) else "" for f in flag
+    ]
+    return pd.Series(
+        [None if is_missing(v) else p + v for p, v in zip(prefix, out, strict=True)],
+        index=col.index,
+        dtype=object,
+    )
+
+
+@derive_op("pct_diff", frame=True)
+def _pct_diff(col: pd.Series, d: Derived, df: pd.DataFrame) -> pd.Series:
+    """`(元の列 - against) ÷ 元の列 × 100`(%)。両方が正のときだけ。
+
+    `fmt: percent` を付けると表記の文字列(「12.3%」)にする。`only_positive: true` なら、
+    結果が 0 以下の行は欠損にする(「◯%下がった」と言えるときだけ使うため)。
+    """
+    other = _frame_col(df, _arg(d, "against"))
+    fmt = _arg(d, "fmt", None)
+    if fmt is not None and fmt not in FORMATTERS:
+        raise DeriveError(f"pct_diff の fmt {fmt!r} は未知です(使えるのは {', '.join(FORMATTERS)})")
+    only_positive = bool(_arg(d, "only_positive", False))
+
+    def one(a: Any, b: Any) -> Any:
+        if is_missing(a) or is_missing(b):
+            return None
+        try:
+            x, y = float(a), float(b)
+        except (TypeError, ValueError):
+            return None
+        if x <= 0 or y <= 0:
+            return None
+        pct = (x - y) / x * 100
+        if only_positive and pct <= 0:
+            return None
+        return format_value(fmt, pct) if fmt else pct
+
+    return pd.Series(
+        [one(a, b) for a, b in zip(col, other, strict=True)], index=col.index, dtype=object
+    )
+
+
+@derive_op("ensure_suffix")
+def _ensure_suffix(col: pd.Series, d: Derived) -> pd.Series:
+    """文字列の末尾が `suffix` でなければ足す(「石動」→「石動駅」。「佐伯駅」はそのまま)。"""
+    suffix = _arg(d, "suffix")
+    return _map_non_null(
+        col,
+        lambda v: (
+            (str(v).strip() if str(v).strip().endswith(suffix) else str(v).strip() + suffix)
+            if str(v).strip()
+            else None
+        ),
+    )
+
+
+@derive_op("year_of")
+def _year_of(col: pd.Series, d: Derived) -> pd.Series:
+    """日付の年を文字列にする(`suffix: 年築` なら「1976年築」)。読めない日付は欠損。"""
+    suffix = _arg(d, "suffix", "年")
+
+    def year(v: Any) -> str | None:
+        dt = parse_datetime(v)
+        return None if dt is None else f"{dt.year}{suffix}"
+
+    return _map_non_null(col, year)
+
+
+@derive_op("years_since")
+def _years_since(col: pd.Series, d: Derived) -> pd.Series:
+    """日付の年から `as_of_year` までの年数(築年数)。1 未満・`max` を超える値は欠損。
+
+    今の年を使うと実行のたびに値が変わるので、基準の年は YAML に書く。
+    """
+    as_of = _arg(d, "as_of_year")
+    if not isinstance(as_of, int):
+        raise DeriveError("years_since の as_of_year は整数です")
+    upper = _arg(d, "max", 150)
+
+    def years(v: Any) -> int | None:
+        dt = parse_datetime(v)
+        if dt is None:
+            return None
+        n = as_of - dt.year
+        return n if 1 <= n <= upper else None
+
+    return _map_non_null(col, years)
+
+
+@derive_op("flag_present")
+def _flag_present(col: pd.Series, d: Derived) -> pd.Series:
+    """値があれば 1、なければ 0(選定の点数に加点するための数値)。"""
+    return pd.Series([0 if is_missing(v) else 1 for v in col], index=col.index, dtype=object)
+
+
+# 自由記述の文を、読み上げに使えるか判定するための語(広告・屋号・問い合わせの定型)
+AD_KEYWORDS = tuple(
+    """
+    株式会社 有限会社 合同会社 (株) （株） ㈱ (有) （有） ㈲ 不動産
+    ハウス ホーム 建設 工務店 商事 住宅販売 宅建 協会 お問い合わせ
+    お問合せ 問合せ 問い合せ お電話 電話 ＴＥＬ TEL ＦＡＸ FAX
+    メール お気軽 ご連絡 連絡 内覧 内見 見学 ご相談 御相談 ご案内 詳細
+    空き家バンク 空家バンク 空き家情報 ホームページ ＨＰ ＵＲＬ URL
+    http www. 仲介 担当 取扱 登録 物件番号 ご紹介 おすすめ お勧め
+    〒
+    """.split()
+)
+_AD_PUNCT = re.compile(r"[！!]{2,}")  # 「！」の連続は広告の言い回しとして使わない
+_STRIP_SYMBOLS = re.compile(r"[♪♬♡♥☆★◎]")
+_LEADING_MARK = re.compile(r"^[\s・•●■◆◇□○▲△▼▽◎※①-⑩\-ー―]+")
+_DIGIT = re.compile(r"[0-9０-９]")
+_BRACKETS = re.compile(r"[【】「」『』〈〉《》※]")
+
+
+def clean_free_sentence(text: str, max_chars: int = 40) -> str | None:
+    """自由記述から、読み上げに使える最初の1文を取り出す。使えなければ `None`。
+
+    ①広告・屋号・問い合わせの定型、個人情報らしい文字列(電話・メール・番地)、URL、括弧書きの
+    固有名詞を含む文は使わない ②記号(♪♡★など)は取り除く ③最初の1文だけ、`max_chars` 字以内
+    ④数字を含む文は使わない(自由記述の数字は、単位や時点を確かめられず、元データの列とも
+    ずれうるため)。最初の1文が使えないとき、2文目以降には進まない。
+    """
+    text = str(text)
+    if any(p.search(text) for p in PII_PATTERNS.values()):
+        return None  # 記述のどこかに個人情報らしい文字列があれば、その記述は使わない
+    # 改行は文の切れ目として扱い、最初の行の記号(箇条書きの印)を除いてから、1文目を取る
+    lines = [ln.replace("\u3000", " ").strip() for ln in re.split(r"[\r\n]+", text)]
+    line = next((_LEADING_MARK.sub("", ln) for ln in lines if _LEADING_MARK.sub("", ln)), "")
+    first = sentences(line)
+    if not first:
+        return None
+    s = first[0]
+    if _AD_PUNCT.search(s):
+        return None
+    s = _STRIP_SYMBOLS.sub("", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    s = _LEADING_MARK.sub("", s)
+    if not s or len(s) > max_chars:
+        return None
+    if _DIGIT.search(s) or _BRACKETS.search(s) or any(w in s for w in AD_KEYWORDS):
+        return None
+    return s
+
+
+@derive_op("free_sentence")
+def _free_sentence(col: pd.Series, d: Derived) -> pd.Series:
+    """自由記述の最初の1文(`clean_free_sentence`)。`max_chars`(既定 40)。"""
+    n = _arg(d, "max_chars", 40)
+    return _map_non_null(col, lambda v: clean_free_sentence(str(v), n))
 
 
 def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
@@ -164,7 +332,7 @@ def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
         if d.from_ not in df.columns:
             raise DeriveError(f"derived.{name}: 列 {d.from_!r} がありません")
         try:
-            out[name] = op(df[d.from_], d)
+            out[name] = op(df[d.from_], d, df) if d.op in _FRAME_OPS else op(df[d.from_], d)
         except DeriveError as e:
             raise DeriveError(f"derived.{name}: {e}") from e
     return out

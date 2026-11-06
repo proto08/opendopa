@@ -162,6 +162,7 @@ fallback_rules:                          # 決定モデルが使えないとき(
     - {else: other}
 ```
 
+- noul の判断は、`exclude_if_probability_above` で行を除外する代わりに、`drop: <列名>` と `drop_if_probability_above` を書くと、確率が超えた行の列の値だけを欠損にできる(広告らしい文だけ使わない、など。行は除外せず、記録に `dropped: true`)。例は `datasets/akiya_reg.yaml` の `stronger_ad`。
 - 選択肢は、`options_from` の型のうち、**その行で、少なくとも1つのテンプレートが埋められるもの**だけにする(決定モデルが、埋められない型を選ぶことはない)。
 - 選択肢の `label` は、判断モデルへの質問に出す日本語。`id` はコード用。
 - 型の数は、4〜6つに抑える(小さなモデルは、選択肢が多いと精度が落ちる)。
@@ -349,6 +350,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 
 ### 10.3 `akiya_reg`(空き家バンク: 登録物件)
 
+- **実装**: `datasets/akiya_reg.yaml`(判断の実装メモと実測は ADR-0051)。
 - **列(主なもの)**: `PROPERTY_NUMBER_ID`(使わない), `PROPERTY_CATEGORY`(売買居住用21,919/売買土地5,441/賃貸居住用4,191/賃貸土地264/賃貸事業用212/売買事業用146)、`PREFECTURE`, `CITY`, `NEAREST_TRAIN_LINE`, `NEAREST_STATION`, `DISTANCE_TO_NEAREST_STATION_ON_FOOT`(単位:要確認。分と推定)、`AMOUNT/RENT`(円。売買は価格、賃貸は賃料。0や欠損、極端な値あり)、`DATE_OF_CONSTRUCTION`(`1980/3/1`。欠損多)、`CONSTRUCTION`(構造)、`OCCUPATION_AREA`(㎡と推定。**単位:要確認**)、`LAYOUT`(間取り。`R` などの略記あり)、`SIZE_OF_LOT`(敷地面積。㎡と推定。**単位:要確認**)、`STRONG_POINTS`(自由記述。61%が記入、最長133字)。
 - **クリーニング**: `AMOUNT/RENT` が0、欠損、または10億円以上は除外。賃貸は月額のため、売買と別の言い回しにする(「月◯万円」)。築年は、`DATE_OF_CONSTRUCTION` の年から計算(築◯年)。
 - **選定**: `cap=150`。`PREFECTURE` でばらして選ぶ。`STRONG_POINTS` が記入のある物件を優先(点数に加点)。
@@ -361,6 +363,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 
 ### 10.4 `akiya_sold`(空き家バンク: 成約物件)
 
+- **実装**: `datasets/akiya_sold.yaml`。成約価格の記入は約12%(約2,100行)で、欠損の行は動画にしない(ADR-0051 A2)。
 - **列**: `CONTRACT_INFO_DATE`(`2026/3/28`。欠損あり)、`CONTRACT_INFO_AMOUNT/RENT`(成約金額)、`ID`(使わない)、他は `akiya_reg` とほぼ同じ(`AMOUNT/RENT` は売り出し時の価格)。
 - **導出**: 値下げ率 = `(AMOUNT/RENT - CONTRACT_INFO_AMOUNT/RENT) / AMOUNT/RENT`。両方が正のときだけ。外れ値(±50%超)は除外。
 - **kind**: `event`(「成約しました」)。
