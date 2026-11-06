@@ -52,6 +52,12 @@ variable "token" {
   description = "内部 API の認証トークン(STRANDS_DECIDER_TOKEN と同じ値)"
   type        = string
   sensitive   = true
+
+  # このモジュールは decider_enabled = true のときだけ作られるので、空のシークレットでの配備をここで止める
+  validation {
+    condition     = length(var.token) >= 16
+    error_message = "decider を有効にするときは decider_token(16 文字以上)が必要。TF_VAR_decider_token で渡す。"
+  }
 }
 
 variable "env" {
