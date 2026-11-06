@@ -1,0 +1,139 @@
+# 鉄軌道: 営業損益(鉄道事業)(docs/data.md §8.3 と §10.12)
+id: rail_pl
+label: 鉄道の営業損益
+source_name: 鉄軌道統計年報 営業損益(鉄道事業)
+wm_char: 鉄
+color: "#4C9AFF"
+files: [data/raw/rail_pl/04_tetsudou_eigyousoneki.csv]
+grain: row
+rename: {}
+null_values: [""]
+# 営業収益・営業損益の 0 は「記載なし」とみなす(0 の行は黒字とも赤字とも言えない)
+zero_is_null:
+  - RAILWAY_OPERATING_REVENUE_TOTAL_TOTAL_THOUSAND_YEN
+  - RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN
+  - OPERATING_RATIO_POST_DEPR_PERCENT
+filters: [{col: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, not_null: true}]
+
+derived:
+  sign: {from: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, op: sign_label, positive: 黒字, negative: 赤字}
+  # 金額は千円の列。符号は sign に任せ、大きさだけを億円・兆円で読む
+  profit_amt: {from: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, op: format, fmt: sen_yen, abs: true}
+  revenue_amt: {from: RAILWAY_OPERATING_REVENUE_TOTAL_TOTAL_THOUSAND_YEN, op: format, fmt: sen_yen}
+  # 桁が極端な営業係数(収益がほぼない事業者)は読まない
+  ratio_text: {from: OPERATING_RATIO_POST_DEPR_PERCENT, op: format, fmt: percent, max_abs: 1000}
+
+stats:
+  - {name: rev_rank, op: rank_in_group, value: RAILWAY_OPERATING_REVENUE_TOTAL_TOTAL_THOUSAND_YEN, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: first_profit, op: is_first_time, value: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, group_by: CORPORATION_NAME, order: YEAR, condition: positive}
+  - {name: first_loss, op: is_first_time, value: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, group_by: CORPORATION_NAME, order: YEAR, condition: negative}
+  - {name: prev_sign, op: prev_year_label, value: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, group_by: CORPORATION_NAME, year: YEAR, positive: 黒字, negative: 赤字}
+  - {name: profit_series, op: series, value: RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, group_by: CORPORATION_NAME, order: YEAR}
+
+# 最新年度(2023)を中心に、規模の大きい事業者と、初めて黒字・赤字になった事業者を選ぶ。区分でばらす
+select:
+  cap: 150
+  order_by: YEAR
+  score:
+    - {expr: YEAR, weight: 1.0}
+    - {expr: rank_desc(RAILWAY_OPERATING_REVENUE_TOTAL_TOTAL_THOUSAND_YEN), weight: 0.5}
+    - {expr: first_profit, weight: 0.3}
+    - {expr: first_loss, weight: 0.3}
+  diversify_by: CATEGORY
+
+kind: stat
+headline: "{CORPORATION_NAME}の{YEAR}年、鉄道事業は{sign}"
+chips: ["{CATEGORY}", "{JURISDICTION}", "{sign}"]
+sparkline: profit_series
+
+big_number:
+  primary: {text: "{profit_amt}", unit: "", label: "鉄道事業の営業損益({sign})", when: "profit_amt != null"}
+  fallback: {text: "{revenue_amt}", unit: "", label: "鉄道事業の営業収益"}
+
+template_groups:
+  - id: first_profit
+    label: "営業損益が、このデータの中で初めて黒字になった年"
+    templates:
+      - id: first_profit_std
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は黒字{profit_amt}でした。"
+          - "このデータの中で、黒字になったのはこの年が初めてです。"
+          - {text: "前年は{prev_sign}でした。", optional: true}
+          - "営業収益は{revenue_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+          - {text: "営業係数は{ratio_text}です。", optional: true}
+      - id: first_profit_short
+        short: true
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は黒字{profit_amt}でした。"
+          - "このデータの中で、黒字になったのはこの年が初めてです。"
+  - id: first_loss
+    label: "営業損益が、このデータの中で初めて赤字になった年"
+    templates:
+      - id: first_loss_std
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は赤字{profit_amt}でした。"
+          - "このデータの中で、赤字になったのはこの年が初めてです。"
+          - {text: "前年は{prev_sign}でした。", optional: true}
+          - "営業収益は{revenue_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+          - {text: "営業係数は{ratio_text}です。", optional: true}
+      - id: first_loss_short
+        short: true
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は赤字{profit_amt}でした。"
+          - "このデータの中で、赤字になったのはこの年が初めてです。"
+  - id: profit
+    label: "営業損益が黒字だった年"
+    templates:
+      - id: profit_std
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は黒字{profit_amt}でした。"
+          - {text: "前年は{prev_sign}でした。", optional: true}
+          - "営業収益は{revenue_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+          - {text: "営業係数は{ratio_text}です。", optional: true}
+      - id: profit_short
+        short: true
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は黒字{profit_amt}でした。"
+          - "営業収益は{revenue_amt}です。"
+  - id: loss
+    label: "営業損益が赤字だった年"
+    templates:
+      - id: loss_std
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は赤字{profit_amt}でした。"
+          - {text: "前年は{prev_sign}でした。", optional: true}
+          - "営業収益は{revenue_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+          - {text: "営業係数は{ratio_text}です。", optional: true}
+      - id: loss_short
+        short: true
+        lines:
+          - "{CORPORATION_NAME}の{YEAR}年、鉄道事業の営業損益は赤字{profit_amt}でした。"
+          - "営業収益は{revenue_amt}です。"
+
+# 型は、営業損益の符号と、初めて黒字・赤字になった年かどうかで決まる(数字の判断なので、ルールで選ぶ)
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この事業者の営業損益は、次のどの型に当たりますか。"
+    state: [sign, first_profit, first_loss]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: sign, default: profit}
+
+fallback_rules:
+  sign:
+    - {if: "first_profit", then: first_profit}
+    - {if: "first_loss", then: first_loss}
+    - {if: "sign == '黒字'", then: profit}
+    - {if: "sign == '赤字'", then: loss}
+    - {else: profit}
+
+comments:
+  pool_light: ["ほう", "なるほど", "数字えぐい", "へえ", "知らなかった", "これは気になる"]
+  rule: "sign == '赤字' -> calm; else light"
+  pool_calm: ["なるほど", "落ち着いて見たい", "そうなんだ", "地域の足だね"]
+
+embed_text: "鉄道 営業損益 {CORPORATION_NAME} {CATEGORY} {sign} {YEAR}年"
+required: [CORPORATION_NAME, YEAR, RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN, RAILWAY_OPERATING_REVENUE_TOTAL_TOTAL_THOUSAND_YEN]

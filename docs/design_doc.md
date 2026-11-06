@@ -197,7 +197,7 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 
 | 層 | 採用 |
 | --- | --- |
-| Web | Next.js 15 以降(App Router)、TypeScript、React、Tailwind CSS は使わず素のCSS(モックのCSSを移植) |
+| Web | Next.js 15 以降(App Router。実際の版は 16.4。`apps/web/AGENTS.md` を参照)、TypeScript、React、Tailwind CSS は使わず素のCSS(モックのCSSを移植) |
 | BFF | Next.js Route Handlers(Node.js ランタイム)。Cookie、入力の検証、**DBの読み書きのすべて**(`pg`)、シーンJSONの整形。**ベクトル計算はしない** |
 | ベクトル計算 | Rust(`services/recsys`)。axum + tokio。状態を持たず、DBに書き込まない(起動時に、埋め込みを読み取りのみ。sqlx)。Cargo workspace で、計算の核(`recsys-core`。axum・sqlx に依存しない)と、HTTP・DB の読み込み(`recsys-server`)の2つの crate に分ける |
 | パイプライン | Python 3.13、`uv` で管理。CLI は Typer。`pandas`、`pydantic`、`pyyaml`、`umap-learn`、`scikit-learn`、`openai`(Azure用) |
@@ -215,6 +215,10 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 opendopa/
 ├─ mise.toml                   # バージョン、環境変数(.env.local を読む)、タスク(mise run dev / infra-apply / deploy などの入口)
 ├─ lefthook.yml                # commit 前の軽いチェック
+├─ Makefile                    # infra の入口(infra-init / plan / apply。mise run infra-* が呼ぶ。ADR-0016 A3)
+├─ docker-compose.yml          # ローカルの DB(PostgreSQL + pgvector。mise run db-up)
+├─ mise-tasks/                 # 長いタスクのスクリプト(db-check, db-test)
+├─ scripts/                    # decisions_index.py(mise run decisions-index)
 ├─ .env.example                # 環境変数の一覧(§12.3)。実際の値は .env.local(git管理外)
 ├─ CLAUDE.md                   # 実装エージェント向けの案内
 ├─ .claude/                    # Claude Code の設定(settings.json、hooks)
@@ -229,15 +233,17 @@ opendopa/
 ├─ pipeline/                   # Python
 │   ├─ opendopa_pipeline/      # profile, ingest, scriptgen, embed, project, cluster, tts, publish
 │   └─ tests/
-├─ datasets/                   # データセット別の列定義YAML(§10)
+├─ datasets/                   # データセット別の列定義YAML(§10)。README.md に書き方
 │   ├─ accident.yaml  ...
 ├─ packages/shared/            # 共有の型。schema/*.json(JSON Schema)が正で、TS の型と pydantic のモデルはここから生成する
 ├─ db/migrations/              # DBのマイグレーション(素のSQL。dbmate)
+├─ db/init/                    # DB の初回起動で流す SQL(recsys 用の読み取り専用ロールの作成)
 ├─ data/raw/                   # 元CSV(git管理外。§10のファイル名で置く)
 └─ docs/
     ├─ adr/                    # Issue 単位の決定(ADR)
     ├─ decisions/              # 小さな決定(1決定1ファイル。一覧は mise run decisions-index)
-    └─ DECISIONS.md            # 2026-11-05 までの小さな決定と、ADR の索引(以降は decisions/)
+    ├─ DECISIONS.md            # 2026-11-05 までの小さな決定と、ADR の索引(以降は decisions/)
+    └─ kanban.md               # 状態ラベル(status::*)の定義と遷移
 ```
 
 ---
@@ -401,6 +407,7 @@ CREATE INDEX ON like_events (anon_id, created_at);
 - エラーは `{ "error": "message" }` と適切なHTTPステータス。
 - `/api/*` はすべて `Cache-Control: no-store`。
 - 簡単なレート制限(匿名IDごとに1秒あたり10リクエスト)を入れる。
+- `GET /api/health` は DB だけで 200/503 を決める。`GET /api/health/recsys` は recsys の `/internal/ping` を呼んで疎通を返す(DB には依存しない。ADR-0013 A4)。
 
 ---
 
@@ -421,7 +428,8 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 | `POST /internal/feed` | `{events, seenIds, recentDatasets, count}` | `{picks:[{videoId, reason}], seenReset, taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/taste` | `{events}` | `{taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/reload` | なし | 動画の索引を、DBから読み直す(公開のあとに呼ぶ) |
-| `GET /healthz` | なし | 200(索引の件数を含む) |
+| `GET /healthz` | なし | 200(索引の件数を含む)。認証なし |
+| `GET /internal/ping` | なし | 200。認証つきの疎通確認(ADR-0013 A4) |
 
 - `seenIds`: 配信済みの動画ID。`recentDatasets`: 配信済みのデータセットを新しい順に。
 - `seenReset`: 未視聴が尽きたので、`seenIds` を空として扱って選んだ印。`true` なら Next.js が、そのユーザーの `impressions` を削除する(recsys は書き込まない。ADR-0040 A1)。
@@ -532,7 +540,7 @@ uv run opendopa all                            # 上を順に
 ### 8.2 処理の流れ(`generate`)
 
 1. **読み込み**: 文字コード(UTF-8 BOM付き)を処理し、列名の揺れを直す(YAMLの `rename`)。数値の `0` を欠損として扱う列を指定できる。
-2. **クリーニング**: 欠損、外れ値、除外条件(YAMLの `filters`)で行を落とす。落とした行は理由つきで `out/<id>/excluded.csv` に記録。
+2. **派生列と除外**: YAMLの `derived` で行ごとの列(日付の整形、都道府県の抽出など)を作ってから、欠損、外れ値、除外条件(YAMLの `filters`)で行を落とす。`filters` の式は `derived` の名前を使える(ADR-0030 A1)。落とした行は理由つきで `out/<id>/excluded.csv` に記録。
 3. **集計の追加**: YAMLの `stats` で、順位、前年比、合計などを計算して列に足す(§8.5)。
 4. **選定**: `select`(§8.4)で、動画にする行を絞る。
 5. **判断**: `decisions`(§8.3a)を行ごとに実行し、どの型のテンプレートにするかを決める(決定モデル)。安全チェックもここで行う。結果は `decisions` に記録する。
@@ -741,7 +749,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | # | タスク | 受け入れ条件 |
 | --- | --- | --- |
 | M0 | リポジトリの雛形、Terraform、空のNext.jsをContainer Appsにデプロイ | `mise run infra-apply` と `mise run deploy` でURLが開く。DBに接続できる(`/api/health` が200) |
-| M1 | パイプラインの核(`profile`, `generate`)を `accident` で動かす | 試作と同じ傾向(191行前後を生成、No.20は除外、数字の不一致0)。すべての行が推定15〜30秒に収まる(収まらない行は理由つきで除外) |
+| M1 | パイプラインの核(`profile`, `generate`)を `accident` で動かす | 試作と同じ傾向(191行前後を生成。実測は189本で、No.20 の除外と、概要の引用が禁止表現に当たる2行の除外を含む。数字の不一致0)。すべての行が推定15〜30秒に収まる(収まらない行は理由つきで除外) |
 | M1b | 判断モデルの土台(`Decider` のインターフェース、`rules` の実装、YAMLの `decisions`、キャッシュ、記録)を、事故データに入れる | `rules` で動き、`decisions` が記録される。判断モデルを足してもコードが変わらない |
 | M2 | DBのマイグレーション、`embed`、`publish`(ローカル) | `videos` と `embeddings` に191本前後が入る。`clusters` が作られる |
 | M3 | Webのフィード(モックのUIを移植)。まずはDB直読みのダミーAPIで | モックと同じ見た目と操作。字幕、カウントアップ、コメント、一時停止、キーボード操作 |

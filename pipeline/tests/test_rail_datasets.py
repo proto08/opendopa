@@ -1,273 +1,248 @@
-"""鉄軌道 3 データセット(rail_traffic1 / rail_traffic2 / rail_km)の generate(#53)。
+"""鉄軌道の損益・貸借(rail_pl / rail_income / rail_bs)の列定義 YAML。
 
-元の CSV は git に入れないので、小さなフィクスチャで品質ゲートを通ることを確かめる。
-実データがあれば、数字の不一致が 0 であることも確かめる。
+小さなフィクスチャで、黒字・赤字の言い方、初めて黒字・赤字になった年の強調、任意の行の省略、
+品質ゲートを調べる。実データ(`data/raw/`)があれば、件数と数字の不一致も調べる。
 """
 
 import csv
 import json
-import re
 import shutil
 from pathlib import Path
 
 import pytest
 
+from opendopa_pipeline.fmt import format_sen_yen, parse_yen
 from opendopa_pipeline.generate import run_generate
 from opendopa_pipeline.spec import load_dataset
 
 REPO = Path(__file__).parents[2]
 
-# (事業者, 区分, 管轄) 。「公営の1社」は、区分に1事業者しかないので選ばれない
-OPERATORS = [
-    ("甲鉄道", "中小", "関東運輸局"),
-    ("乙電鉄", "中小", "関東運輸局"),
-    ("丙電気鉄道", "中小", "近畿運輸局"),
-    ("新規鉄道", "中小", "近畿運輸局"),  # 2023 年だけ(前年比が出ない)
-    ("丁急行電鉄", "大手", "関東運輸局"),
-    ("戊鉄道", "大手", "近畿運輸局"),
-    ("市営地下鉄", "公営", "関東運輸局"),
-]
+PL_REV = "RAILWAY_OPERATING_REVENUE_TOTAL_TOTAL_THOUSAND_YEN"
+PL_PROFIT = "RAILWAY_OPERATING_PROFIT_LOSS_THOUSAND_YEN"
 
 
-def _write(root: Path, rel: str, header: list[str], rows: list[list]) -> None:
-    path = root / rel
-    path.parent.mkdir(parents=True, exist_ok=True)
+def _generate(tmp_path: Path, dataset_id: str, rows: list[dict]):
+    """rows(列名 → 値)を CSV にして、YAML の `files` に置き、generate する。"""
+    dataset = load_dataset(REPO / "datasets" / f"{dataset_id}.yaml")
+    path = tmp_path / dataset.files[0]
+    path.parent.mkdir(parents=True)
+    header = list(rows[0])
     with path.open("w", encoding="utf-8-sig", newline="") as f:
-        w = csv.writer(f)
-        w.writerow(header)
+        w = csv.DictWriter(f, fieldnames=header)
+        w.writeheader()
         w.writerows(rows)
+    res = run_generate(dataset, tmp_path, tmp_path / "out" / dataset_id)
+    return {v.row_id: v for v in res.videos}, res
 
 
-def _rows(make):
-    """`make(i, name, year, is_2023)` が値の列を返す。"""
-    out = []
-    for i, (name, cat, jur) in enumerate(OPERATORS, start=1):
-        for year in (2022, 2023):
-            if name == "新規鉄道" and year == 2022:
-                continue
-            out.append([year, name, jur, cat, *make(i, name, year)])
-    return out
+def _lines(video) -> list[str]:
+    return [x["text"] for x in video.scene["lines"]]
 
 
-def _traffic1(i, name, year):
-    total = 123456 * i + (1000 * i if year == 2023 else 0)
-    ratio = 40 + 7 * i
-    tonnage = 777 * i if name in ("丁急行電鉄", "戊鉄道") else 0
-    return [total, ratio, total * 2, tonnage]
-
-
-def _traffic2(i, name, year):
-    # 2023 年に増える事業者と、減る事業者がある
-    k = 1 if year == 2023 and i % 2 else (-1 if year == 2023 else 0)
-    return [4000 + 100 * i + 20 * k, 6.5 + i + 0.3 * k, 90000 * i + 3000 * k]
-
-
-def _km(i, name, year):
-    km = round(10.3 * i + 0.5, 1)
-    cargo = round(5.5 * i, 1) if name in ("丁急行電鉄", "戊鉄道") else 0
-    return [
-        km,
-        cargo,
-        100 * i + (3 * i if year == 2023 else 0),
-        400 * i - (5 * i if year == 2023 else 0),
-    ]
-
-
-FIXTURES = {
-    "rail_traffic1": (
-        "data/raw/rail_traffic1/01_tetsudou_unyuseiseki1.csv",
-        [
-            "YEAR",
-            "CORPORATION_NAME",
-            "JURISDICTION",
-            "CATEGORY",
-            "TRANSPORTED_NUMBER_TOTAL",
-            "TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO",
-            "TRANSPORTED_NUMBER_NON_COMMUTER_PASS",
-            "TRANSPORTED_TONNAGE_TOTAL",
-        ],
-        _traffic1,
-    ),
-    "rail_traffic2": (
-        "data/raw/rail_traffic2/02_tetsudou_unyuseiseki2.csv",
-        [
-            "YEAR",
-            "COMPANY_NAME",
-            "JURISDICTION",
-            "CATEGORY",
-            "AVERAGE_PASSAGE_AMOUNT_PASSENGER",
-            "AVERAGE_TRANSPORTED_KILOMETER_PASSENGER",
-            "TOTAL_DAY_KILOMETER_PASSENGER",
-        ],
-        _traffic2,
-    ),
-    "rail_km": (
-        "data/raw/rail_km/03_tetsudou_eigyoukiro.csv",
-        [
-            "YEAR",
-            "OPERATOR_NAME",
-            "JURISDICTION",
-            "CATEGORY",
-            "FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER",
-            "FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_CARGO",
-            "TOTAL_TRAIN_TOTAL",
-            "TOTAL_CARS_TOTAL",
-        ],
-        _km,
-    ),
-}
-
-
-@pytest.fixture
-def root(tmp_path):
-    for rel, header, make in FIXTURES.values():
-        _write(tmp_path, rel, header, _rows(make))
-    return tmp_path
-
-
-def run(root: Path, dataset_id: str):
-    ds = load_dataset(REPO / "datasets" / f"{dataset_id}.yaml")
-    return run_generate(ds, root, root / "out" / dataset_id)
-
-
-def _text(v) -> str:
-    return "".join(x["text"] for x in v.scene["lines"])
-
-
-def _ok(res):
-    return [v for v in res.videos if v.status == "ok"]
-
-
-@pytest.mark.parametrize("dataset_id", list(FIXTURES))
-def test_gate_passes_on_fixture(root, dataset_id):
-    res = run(root, dataset_id)
-    ok = _ok(res)
-    # 2023 年の 6 社(区分に1社の公営を除く)。新規鉄道も、前年比なしで通る
-    assert {v.scene["headline"].split("の")[0] for v in ok} >= {"新規鉄道", "甲鉄道", "丁急行電鉄"}
-    assert len(ok) == 6
-    s = res.report["summary"]
-    assert s["excluded_by_reason"].get("number_mismatch", 0) == 0
-    assert s["excluded_by_reason"].get("unreplaced", 0) == 0
-    for v in ok:
-        assert 15 <= v.scene["durationSec"] <= 30
-        assert v.scene["kind"] == "event"  # grain: row の既定
-    assert not res.report["warnings"]
-
-
-@pytest.mark.parametrize("dataset_id", list(FIXTURES))
-def test_rank_is_per_category(root, dataset_id):
-    """順位は区分ごと。大手(2社)の最大は 1 位、中小(4社)の最大も 1 位になる。"""
-    res = run(root, dataset_id)
-    frame_csv = {v.scene["headline"].split("の")[0]: v for v in _ok(res) if v.scene["numbers"]}
-    rank_names = {
-        "rail_traffic1": "traffic_rank",
-        "rail_traffic2": "passage_rank",
-        "rail_km": "km_rank",
+def _pl(year, name, profit, revenue=1_000_000, category="中小", ratio=95.0):
+    return {
+        "YEAR": year,
+        "CORPORATION_NAME": name,
+        "JURISDICTION": "関東運輸局",
+        "CATEGORY": category,
+        PL_REV: revenue,
+        PL_PROFIT: profit,
+        "OPERATING_RATIO_POST_DEPR_PERCENT": ratio,
     }
-    ranks = {}
-    for name, v in frame_csv.items():
-        rec = next(n for n in v.scene["numbers"] if n["name"] == rank_names[dataset_id])
-        ranks[name] = rec["value"]
-    # 値は i が大きいほど大きい(戊鉄道 > 丁急行電鉄、丙電気鉄道 > 乙電鉄 > 甲鉄道)
-    assert ranks["戊鉄道"] == 1 and ranks["丁急行電鉄"] == 2
-    assert ranks["丙電気鉄道"] in (1, 2)  # 新規鉄道(i=4)が中小で最大
-    assert ranks["新規鉄道"] == 1 and ranks["甲鉄道"] == 4
-    # 公営は1社しかなく、選ばれない
-    assert "市営地下鉄" not in ranks
 
 
-def test_traffic1_has_no_absolute_value(root):
-    res = run(root, "rail_traffic1")
-    for v in _ok(res):
-        text = _text(v)
-        digits = re.findall(r"\d[\d,]*(?:\.\d+)?", text)
-        # 輸送人員(123456 の倍数)も貨物のトン数(777 の倍数)も出ない
-        for d in digits:
-            n = d.replace(",", "")
-            assert not (n.isdigit() and len(n) >= 4 and n != "2023"), (v.video_id, text)
-        assert "万" not in text and "億" not in text
+# ---- rail_pl ----
 
 
-def test_traffic2_has_no_absolute_value(root):
-    res = run(root, "rail_traffic2")
-    for v in _ok(res):
-        text = _text(v)
-        for d in re.findall(r"\d[\d,]*(?:\.\d+)?", text):
-            n = d.replace(",", "")
-            assert not (n.isdigit() and len(n) >= 4 and n != "2023"), (v.video_id, text)
+def test_rail_pl_sign_first_time_and_previous_year(tmp_path):
+    rows = [
+        _pl(2021, "甲鉄道", -100_000),  # 1: 最初の年(前年なし)
+        _pl(2022, "甲鉄道", -50_000),  # 2
+        _pl(2023, "甲鉄道", 300_000),  # 3: 初めて黒字
+        _pl(2021, "乙鉄道", 100_000),  # 4: 最初から黒字(初めてとは言わない)
+        _pl(2022, "乙鉄道", 120_000),  # 5
+        _pl(2023, "乙鉄道", -40_000),  # 6: 初めて赤字
+        _pl(2022, "丙鉄道", 5_000),  # 7
+        _pl(2023, "丙鉄道", 10_000),  # 8: 黒字が続く
+        _pl(2023, "丁鉄道", 0),  # 9: 0 は黒字とも赤字とも言わない
+    ]
+    by, res = _generate(tmp_path, "rail_pl", rows)
+    ok = {i for i, v in by.items() if v.status == "ok"}
+    assert ok == {1, 2, 3, 4, 5, 6, 7, 8}
+    assert res.report["summary"]["excluded_by_reason"] == {"filter": 1}
+
+    choice = {i: by[i].decisions["template"]["choice"] for i in ok}
+    # 符号どおり。初めて黒字になった年(前年が赤字・当年が黒字)だけが first_profit になる
+    assert choice == {
+        1: "loss",
+        2: "loss",
+        3: "first_profit",
+        4: "profit",
+        5: "profit",
+        6: "first_loss",
+        7: "profit",
+        8: "profit",
+    }
+    assert _lines(by[3])[0] == "甲鉄道の2023年、鉄道事業の営業損益は黒字3億円でした。"
+    assert any("初めてです" in x and "黒字" in x for x in _lines(by[3]))
+    assert any("初めてです" in x and "赤字" in x for x in _lines(by[6]))
+    assert not any("初めて" in x for i in (1, 2, 4, 5, 7, 8) for x in _lines(by[i]))
+
+    # 前年の黒字・赤字。最初の年は、任意の行として省かれる
+    assert "前年は赤字でした。" in _lines(by[3])
+    assert "前年は黒字でした。" in _lines(by[6])
+    assert not any("前年" in x for x in _lines(by[1]))
+
+    # 赤字の額は大きさだけを読む(符号は「赤字」)。大きな数字・見出し・出典
+    assert "赤字4,000万円" in _lines(by[6])[0]
+    assert by[6].scene["bigNumber"]["text"] == "4,000万円"
+    assert by[3].scene["headline"] == "甲鉄道の2023年、鉄道事業は黒字"
+    assert [p["y"] for p in by[3].scene["sparkline"]] == [-100_000, -50_000, 300_000]
+    assert by[3].scene["kind"] == "stat"
+    for v in by.values():
+        if v.scene:
+            assert 15 <= v.scene["durationSec"] <= 30
 
 
-def test_rail_km_reads_operating_km(root):
-    res = run(root, "rail_km")
-    by_name = {v.scene["headline"].split("の")[0]: v for v in _ok(res)}
-    # 営業キロの絶対値を読み上げる(列は km。10.3 * 1 + 0.5 = 10.8)
-    kou = by_name["甲鉄道"]
-    assert kou.decisions["template"]["choice"] == "km" and "10.8キロ" in _text(kou)
-    km_videos = [v for v in _ok(res) if v.decisions["template"]["choice"] == "km"]
-    assert km_videos
-    for v in km_videos:
-        assert "営業キロは" in _text(v) and "キロです" in _text(v)
-        assert v.scene["bigNumber"]["unit"] == "キロ"
-    # 列車数・車両数の型は、絶対値(100〜 の台数)を出さず、営業キロ以外の4桁以上もない
-    for v in _ok(res):
-        if v.decisions["template"]["choice"] in ("trains", "cars"):
-            text = _text(v).replace("2023", "")
-            assert not re.search(r"\d{3,}", text), (v.video_id, text)
+def test_rail_pl_amounts_and_extreme_ratio(tmp_path):
+    rows = [
+        # JR 東日本 2018 年のような、約 2 兆円の営業収益
+        _pl(2022, "大会社", 285_711_829, revenue=2_008_428_041, category="JR"),
+        _pl(2023, "大会社", 285_711_829, revenue=2_008_428_041, category="JR", ratio=729_792.9),
+    ]
+    by, _ = _generate(tmp_path, "rail_pl", rows)
+    lines = _lines(by[2])
+    assert any("営業収益は約2兆円" in x for x in lines)
+    assert "同じ区分の1社中1位です。" in "".join(lines)
+    # 桁が極端な営業係数は、読まない(任意の行が省かれる)
+    assert not any("営業係数" in x for x in lines)
+    assert any("営業係数は95%" in x for x in _lines(by[1]))
 
 
-@pytest.mark.parametrize("dataset_id", ["rail_traffic1", "rail_km"])
-def test_no_yoy_sentence_without_previous_year(root, dataset_id):
-    """2022 年の行がない事業者(新規鉄道)の原稿に、前年比の文が出ない(任意の行が省かれる)。"""
-    res = run(root, dataset_id)
-    new = next(v for v in _ok(res) if v.scene["headline"].startswith("新規鉄道"))
-    assert "前年" not in _text(new)
-    assert not any(
-        n["name"].endswith("yoy_ratio") or n["name"].endswith("_yoy") for n in new.scene["numbers"]
-    )
-    # 前年がある事業者には前年比の文がある型もある
-    assert any("前年" in _text(v) for v in _ok(res) if v is not new)
+# ---- rail_income ----
 
 
-def test_traffic1_yoy_sentence_has_direction(root):
-    res = run(root, "rail_traffic1")
-    texts = [_text(v) for v in _ok(res) if "前年" in _text(v)]
-    assert texts
-    for t in texts:
-        assert (
-            re.search(r"前年に比べて\d+(?:\.\d+)?%(増えました|減りました)", t)
-            or "前年に比べて、" in t
-        )
+def _income(year, name, net, revenue=5_000_000, rail=None, bus=None, re=None, ordinary=None):
+    return {
+        "YEAR": year,
+        "COMPANY_NAME": name,
+        "SUPERVISORY_OFFICE": "関東運輸局",
+        "COMPANY_SIZE": "大手",
+        "TOTAL_OPERATING_REVENUE_THOUSANDJPY": revenue,
+        "ORDINARY_PROFITLOSS_THOUSANDJPY": ordinary if ordinary is not None else net,
+        "NET_PROFITLOSS_THOUSANDJPY": net,
+        "RAILWAY_OPERATING_PROFITLOSS_THOUSANDJPY": rail,
+        "BUS_OPERATING_PROFITLOSS_THOUSANDJPY": bus,
+        "REALESTATE_OPERATING_PROFITLOSS_THOUSANDJPY": re,
+    }
 
 
-def test_traffic1_freight_type(root):
-    """貨物のある事業者が区分に複数あり、順位が上位なら freight 型になる(トン数は出さない)。"""
-    res = run(root, "rail_traffic1")
-    v = next(v for v in _ok(res) if v.scene["headline"].startswith("丁急行電鉄"))
-    assert v.decisions["template"]["choice"] == "freight"
-    assert "貨物" in _text(v) and "777" not in _text(v)
+def test_rail_income_business_lines_are_optional(tmp_path):
+    rows = [
+        _income(2023, "多角化鉄道", 500_000, rail=900_000, bus=-30_000, re=200_000),  # 1
+        _income(2023, "鉄道だけ", -200_000, rail=-150_000),  # 2: バス・不動産の列が空
+        _income(2023, "路線のみ", 120_000, rail=100_000, bus=0, re=-5_000),  # 3: バスは 0=事業なし
+        _income(2023, "赤字多角化", -900_000, rail=-1, bus=-2, re=3),  # 4
+        _income(2023, "純損益なし", None),  # 5: 純損益が空
+    ]
+    by, res = _generate(tmp_path, "rail_income", rows)
+    assert {i for i, v in by.items() if v.status == "ok"} == {1, 2, 3, 4}
+    assert res.report["summary"]["excluded_by_reason"] == {"filter": 1}
+
+    assert [by[i].decisions["template"]["choice"] for i in (1, 2, 3, 4)] == [
+        "profit_diversified",
+        "loss_rail",
+        "profit_diversified",
+        "loss_diversified",
+    ]
+    assert _lines(by[1])[0] == "多角化鉄道の2023年、当期純利益は5億円でした。"
+    assert "鉄道事業の営業損益は黒字です。" in _lines(by[1])
+    assert "バス事業の営業損益は赤字です。" in _lines(by[1])
+    assert "不動産事業の営業損益は黒字です。" in _lines(by[1])
+    assert _lines(by[2])[0] == "鉄道だけの2023年、当期純損失は2億円でした。"
+    # 空(または 0)の事業の行だけが省かれる
+    assert not any("バス" in x or "不動産" in x for x in _lines(by[2]))
+    assert not any("バス" in x for x in _lines(by[3]))
+    assert "不動産事業の営業損益は赤字です。" in _lines(by[3])
+    assert by[2].scene["bigNumber"] == {
+        "value": 2,
+        "text": "2億円",
+        "unit": "",
+        "label": "当期純損失",
+        "countUp": False,
+    }
 
 
-def test_outputs_are_written(root):
-    res = run(root, "rail_km")
-    out = root / "out" / "rail_km"
-    assert len((out / "scenes.jsonl").read_text().splitlines()) == len(_ok(res))
-    report = json.loads((out / "decisions_report.json").read_text())
-    assert report["summary"]["generated"] == len(_ok(res))
+# ---- rail_bs ----
 
 
-@pytest.mark.parametrize(
-    ("dataset_id", "rel"),
-    [(k, v[0]) for k, v in FIXTURES.items()],
-)
-def test_real_data(tmp_path, dataset_id, rel):
-    src = REPO / rel
+def _bs(year, name, pct, assets=1_000_000, liabilities=600_000, category="公営"):
+    return {
+        "YEAR": year,
+        "OPERATOR_NAME": name,
+        "JURISDICTION": "近畿運輸局",
+        "CATEGORY": category,
+        "TOTAL_ASSETS": assets,
+        "TOTAL_LIABILITIES": liabilities,
+        "TOTAL_EQUITY_PERCENT": pct,
+    }
+
+
+def test_rail_bs_ratio_only_and_extremes(tmp_path):
+    rows = [
+        _bs(2023, "高比率", 75.5),  # 1
+        _bs(2023, "低比率", 25.0),  # 2
+        _bs(2023, "マイナス", -7.2, liabilities=1_072_000),  # 3
+        _bs(2023, "超過", 187.6, liabilities=0),  # 4
+        _bs(2023, "資産ゼロ", 0, assets=0, liabilities=0),  # 5: 比率が空
+        _bs(2023, "小さな資産", 40.0, assets=500),  # 6: 絶対額は読まない
+    ]
+    by, res = _generate(tmp_path, "rail_bs", rows)
+    assert {i for i, v in by.items() if v.status == "ok"} == {1, 2, 3, 4, 6}
+    assert [by[i].decisions["template"]["choice"] for i in (1, 2, 3, 4, 6)] == [
+        "equity_high",
+        "equity_low",
+        "equity_negative",
+        "equity_over",
+        "equity_low",
+    ]
+    assert _lines(by[1])[0] == "高比率の2023年、自己資本は総資産の75.5%でした。"
+    assert "同じ区分の5社中、自己資本の比率が高い順で2位です。" in _lines(by[1])
+    assert "負債は総資産の60%です。" in _lines(by[1])
+    assert "総資産は10億円です。" in _lines(by[1])
+    # マイナスは符号を言葉にする。総資産を上回る行は、順位・割合に切り替える
+    assert "自己資本は総資産のマイナス7.2%でした。" in _lines(by[3])[0]
+    assert not any("総資産は" in x for x in _lines(by[4]))
+    assert "自己資本が、総資産を上回っています。" in _lines(by[4])
+    # 総資産が極端に小さい行は、絶対額の行を省く
+    assert not any("総資産は" in x for x in _lines(by[6]))
+    assert by[1].scene["bigNumber"]["text"] == "75.5%"
+
+
+# ---- 3データセット共通 ----
+
+
+def test_format_sen_yen_for_headline_metrics():
+    # 千円の列を億円・兆円にして、誤差 0.5% 以内
+    for sen_yen in (2_008_428_041, 285_711_829, 38_916_061, 6_938_290, 104_000_000):
+        text = format_sen_yen(sen_yen)
+        assert abs(parse_yen(text) - sen_yen * 1000) / (sen_yen * 1000) <= 0.005
+
+
+@pytest.mark.parametrize("dataset_id", ["rail_pl", "rail_income", "rail_bs"])
+def test_real_data_passes_quality_gate(tmp_path, dataset_id):
+    src = REPO / "data" / "raw" / dataset_id
     if not src.exists():
-        pytest.skip(f"{rel} がありません")
-    dst = tmp_path / rel
-    dst.parent.mkdir(parents=True)
-    shutil.copy(src, dst)
-    res = run(tmp_path, dataset_id)
+        pytest.skip(f"data/raw/{dataset_id} がありません")
+    shutil.copytree(src, tmp_path / "data" / "raw" / dataset_id)
+    res = run_generate(
+        load_dataset(REPO / "datasets" / f"{dataset_id}.yaml"), tmp_path, tmp_path / "out"
+    )
     s = res.report["summary"]
-    assert s["generated"] > 0
+    assert 140 <= s["generated"] <= 150
     assert s["excluded_by_reason"].get("number_mismatch", 0) == 0
-    assert s["estimated_sec"]["max"] <= 30
+    assert res.report["warnings"] == []
+    for v in res.videos:
+        if v.scene:
+            assert 15 <= v.scene["durationSec"] <= 30
+            json.dumps(v.scene, ensure_ascii=False)

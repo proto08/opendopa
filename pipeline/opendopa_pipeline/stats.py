@@ -332,6 +332,22 @@ def _is_first_time(df: pd.DataFrame, s: Stat) -> StatOutput:
     )
 
 
+@stat_op("prev_year_label")
+def _prev_year_label(df: pd.DataFrame, s: Stat) -> StatOutput:
+    """前年(`year - 1`)の同じ主体の `value` の符号を言葉にする(「前年は黒字でした」)。"""
+    value, group_by, year, prev = _prev_year(df, s)
+    positive = _param(s, "positive")
+    negative = _param(s, "negative")
+    labels = [None if is_missing(p) or p == 0 else (positive if p > 0 else negative) for p in prev]
+    return StatOutput(
+        pd.Series(labels, index=df.index, dtype=object),
+        [value, *group_by, year],
+        f"{'・'.join(group_by)} が同じ前年({year} - 1)の行の {value} の符号"
+        f"(正は「{positive}」、負は「{negative}」。前年の行がない・0 なら欠損)",
+        {value: df[value], "prev": prev},
+    )
+
+
 @stat_op("per")
 def _per(df: pd.DataFrame, s: Stat) -> StatOutput:
     num = _col(df, s, "num")

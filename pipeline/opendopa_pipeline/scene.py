@@ -86,6 +86,12 @@ def scene_map(dataset: DatasetDef, row: Mapping[str, Any]) -> dict[str, Any] | N
         assert spec.from_ is not None and spec.to is not None
         a, b = _place(spec.from_, row), _place(spec.to, row)
         return {"type": "route", "from": a, "to": b} if a and b else None
+    if spec.type == "polygon":
+        rings = row.get(spec.rings) if spec.rings else None
+        if not isinstance(rings, list) or not rings:
+            return None
+        markers = [m for m in (_place(p, row) for p in spec.markers) if m]
+        return {"type": "polygon", "rings": rings, "markers": markers}
     points = [_place(p, row) for p in spec.points]
     return {"type": "points", "points": points} if points and all(points) else None
 
@@ -96,6 +102,22 @@ def sparkline(dataset: DatasetDef, row: Mapping[str, Any]) -> list[dict[str, Any
     if not isinstance(values, list) or not values:
         return None
     return [{"x": i, "y": y} for i, y in enumerate(values[-12:])]
+
+
+_SINGLE_HOLE = re.compile(r"\{([^{}]+)\}")
+
+
+def _chips(dataset: DatasetDef, row: Mapping[str, Any]) -> list[str]:
+    """`chips` の各項目を穴埋めする。穴が 1 つだけで、その値がリストなら、1 項目ずつに分ける。"""
+    out: list[str | None] = []
+    for c in dataset.chips:
+        m = _SINGLE_HOLE.fullmatch(c)
+        value = row.get(m.group(1)) if m else None
+        if isinstance(value, list):
+            out += [str(x) for x in value]
+        else:
+            out.append(fill(c, row))
+    return [c for c in dict.fromkeys(out) if c]
 
 
 def build_scene(
@@ -112,7 +134,7 @@ def build_scene(
     """シーンJSON(設計書 §9)の dict。コメントは動画の長さで決まるので、
     先に `scene_duration` で長さを求めてから作って渡す。"""
     durations, total = line_durations(script.lines)
-    chips = [c for c in dict.fromkeys(fill(c, row) for c in dataset.chips) if c]
+    chips = _chips(dataset, row)
     return jsonable(
         {
             "videoId": video_id,
