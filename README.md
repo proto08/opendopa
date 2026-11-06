@@ -98,7 +98,7 @@ web と recsys がまとめて起動します。個別に起動するときは `
 | サービス | URL | 確認用のエンドポイント |
 | --- | --- | --- |
 | web | http://localhost:3000 | `GET /api/health`(DB に接続できれば 200、できなければ 503)、`GET /api/health/recsys`(web から recsys に内部 HTTP でつながれば 200) |
-| recsys | http://localhost:8080 | `GET /healthz`、`GET /internal/ping`(ヘッダー `X-Internal-Token` が必要) |
+| recsys | http://localhost:8080 | `GET /healthz`、`GET /internal/ping` `POST /internal/feed|taste|reload`(ヘッダー `X-Internal-Token` が必要) |
 | DB | localhost:5432 | `mise run db-check`(pgvector が入っていることと、recsys のロールが読み取り専用であることを確かめる。要 `mise run db-up`)。`mise run db-psql` でつなげる |
 | DB マイグレーション | (使い捨ての DB) | `mise run db-test`(空の DB に適用、2回流す、制約と recsys ロールの権限の確認。要 `mise run db-up`) |
 

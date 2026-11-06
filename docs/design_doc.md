@@ -427,8 +427,8 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 | --- | --- | --- |
 | `POST /internal/feed` | `{events, seenIds, recentDatasets, count}` | `{picks:[{videoId, reason}], seenReset, taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/taste` | `{events}` | `{taste:{x, y, shares:[{clusterId, pct}]}}` |
-| `POST /internal/reload` | なし | 動画の索引を、DBから読み直す(公開のあとに呼ぶ) |
-| `GET /healthz` | なし | 200(索引の件数を含む)。認証なし |
+| `POST /internal/reload` | なし | 動画の索引を、DBから読み直す(公開のあとに呼ぶ)。成功は `{status, videos}`、失敗は 502 で古い索引のまま |
+| `GET /healthz` | なし | 200(索引の件数を含む)。索引の読み込み前は 503 |
 | `GET /internal/ping` | なし | 200。認証つきの疎通確認(ADR-0013 A4) |
 
 - `seenIds`: 配信済みの動画ID。`recentDatasets`: 配信済みのデータセットを新しい順に。
@@ -436,6 +436,7 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 - `reason` は `first` / `explore_cold` / `near` / `adventure`。表示名(`reasonLabel`)は Next.js が付ける。
 - 最初の数本を偏らせる判断の `eventCount` は、`events` のうち `view` の数。
 - recsys は、起動時と `reload` のときだけ、DBから、`embeddings`(ベクトル・地図の座標)、`clusters`、`meta`(`key='centroid'`。好みの初期値 `u0`、§7.2)、`videos`(`id`、`dataset_id`、`status`)を**読み取りのみ**で全件読み込む。接続は、読み取り専用のロール(環境変数 `RECSYS_DATABASE_URL`)。
+- エラーは `{ "error": "message" }`。認証の失敗は 401、`count` が 1〜3 でない・`type` が `view` / `like` でない・JSON が不正は 400、索引が未読み込み・空は 503(ADR-0041)。
 - 動画のシーンJSON・CSV行・地図のデータは、recsys は扱わない(Next.js が、DBから直接読む)。
 
 
