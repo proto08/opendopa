@@ -245,8 +245,12 @@ def check_all(
     row: Mapping[str, Any],
     numbers: Sequence[Mapping[str, Any]],
     required: Sequence[str],
+    extra_texts: Sequence[str] = (),
 ) -> dict[str, list[str]]:
-    """行ごとの検査をまとめて実行する。不合格の検査だけ、理由コード → 説明の一覧で返す。"""
+    """行ごとの検査をまとめて実行する。不合格の検査だけ、理由コード → 説明の一覧で返す。
+
+    `extra_texts` は字幕以外の表示文(見出し・チップ・コメント)。負傷の部位の検査だけに足す。
+    """
     results = {
         "missing": check_required(required, row),
         "unreplaced": check_unreplaced(lines),
@@ -254,7 +258,7 @@ def check_all(
         "length": check_length(duration_sec),
         "pii": check_pii(lines),
         "forbidden": check_forbidden(lines),
-        "casualty_detail": check_casualty_detail(lines),
+        "casualty_detail": check_casualty_detail([*lines, *extra_texts]),
     }
     return {k: v for k, v in results.items() if v}
 

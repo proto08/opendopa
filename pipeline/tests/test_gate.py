@@ -151,6 +151,18 @@ class TestCasualtyDetail:
         )
         assert list(out) == ["casualty_detail"]
 
+    def test_check_all_checks_extra_texts(self):
+        # 見出し・チップ・コメントなど字幕以外の表示文も検査する
+        out = gate.check_all(
+            lines=["負傷者の報告があります。"],
+            duration_sec=20.0,
+            row={},
+            numbers=[],
+            required=[],
+            extra_texts=["操縦者の右肘に接触し負傷した。"],
+        )
+        assert list(out) == ["casualty_detail"]
+
 
 def test_decision_flags():
     decs = {"pii": {"excluded": True}, "template": {"choice": "other"}}
