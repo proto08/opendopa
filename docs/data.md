@@ -400,7 +400,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 ### 10.8 `naiko_ship`(内航海運: 事業概況、船)
 
 - **構造**: 1行=船1隻。事業者の財務は「ランク」区分(`..._RANK`)のみで、数値なし。住所は空欄が多い。**事業者は特定しない**(`Address`, `Business_Management_ID` は使わない)。
-- **列**: `Ship_ID`(使わない)、`Usage`(営業船など)、`Ship_Material`(鋼船など)、`Gross_Tonnage`(総トン数)、`Deadweight_Tonnage`(0は欠損)、`Length`(m)、`Horsepower`(0は欠損。単位:要確認)、`Ship_Type_1/2/3`(船種)、`Launch_Year_(20`(建造年代。例: `1980年～1999年`。列名が途中で切れているので、YAMLで `rename: {"Launch_Year_(20": LAUNCH_BAND}`)、`Supervisory_Transport_Bureau`(例: 関東)。
+- **列**: `Ship_ID`(使わない)、`Usage`(営業船など)、`Ship_Material`(鋼船など)、`Gross_Tonnage`(総トン数。0は欠損)、`Deadweight_Tonnage`(0は欠損)、`Length`(m。0は欠損。実データで約半数が0)、`Horsepower`(0は欠損。単位:要確認)、`Ship_Type_1/2/3`(船種)、`Launch_Year_(20`(建造年代。例: `1980年～1999年`。列名が途中で切れているので、YAMLで `rename: {"Launch_Year_(20": LAUNCH_BAND}`)、`Supervisory_Transport_Bureau`(例: 関東)。
 - **選定**: `cap=150`。`Supervisory_Transport_Bureau` と `Ship_Type_1` でばらす。
 - **kind**: `event`(「この船」)。
 - **大きな数字**: 総トン数(「◯トン」)。

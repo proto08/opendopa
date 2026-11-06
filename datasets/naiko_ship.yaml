@@ -9,7 +9,7 @@ grain: row
 # 列名が途中で切れている建造年代の列に、名前を付ける
 rename: {"Launch_Year_(20": LAUNCH_BAND}
 null_values: [""]
-zero_is_null: [Deadweight_Tonnage, Horsepower]
+zero_is_null: [Gross_Tonnage, Deadweight_Tonnage, Length, Horsepower]
 filters:
   - {col: Ship_Type_1, not_null: true}
   - {col: Gross_Tonnage, not_null: true}
