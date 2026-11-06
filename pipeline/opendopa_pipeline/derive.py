@@ -23,25 +23,21 @@ class DeriveError(ValueError):
     """derived の定義の誤り(未知の op、引数の不足など)。"""
 
 
-# op の関数: (元の列の Series, derived の定義) → 結果の Series(同じ index)。
-# `frame=True` で登録した op は、第3引数に DataFrame 全体も受け取る(別の列を見る op 用)
-DeriveOp = Callable[..., pd.Series]
+# op の関数: (元の列の Series, derived の定義) → 結果の Series(同じ index)
+DeriveOp = Callable[[pd.Series, Derived], pd.Series]
 _OPS: dict[str, DeriveOp] = {}
-_FRAME_OPS: set[str] = set()
 
 
-def derive_op(name: str, *, frame: bool = False) -> Callable[[DeriveOp], DeriveOp]:
+def derive_op(name: str) -> Callable[[DeriveOp], DeriveOp]:
     def deco(fn: DeriveOp) -> DeriveOp:
         _OPS[name] = fn
-        if frame:
-            _FRAME_OPS.add(name)
         return fn
 
     return deco
 
 
 def known_derive_ops() -> list[str]:
-    return sorted(_OPS)
+    return sorted({*_OPS, *_FRAME_OPS})
 
 
 def _arg(d: Derived, key: str, default: Any = ...) -> Any:
@@ -144,29 +140,51 @@ def _map(col: pd.Series, d: Derived) -> pd.Series:
     return _map_non_null(col, lambda v: mapping.get(str(v), else_value))
 
 
-def _frame_col(df: pd.DataFrame, name: str) -> pd.Series:
-    if name not in df.columns:
-        raise DeriveError(f"列 {name!r} がありません")
-    return df[name]
+# 複数の列を使う op: (DataFrame, derived の定義) → 結果の Series。`from` は省略できる
+FrameOp = Callable[[pd.DataFrame, Derived], pd.Series]
+_FRAME_OPS: dict[str, FrameOp] = {}
 
 
-@derive_op("format", frame=True)
-def _format(col: pd.Series, d: Derived, df: pd.DataFrame) -> pd.Series:
+def frame_op(name: str) -> Callable[[FrameOp], FrameOp]:
+    def deco(fn: FrameOp) -> FrameOp:
+        _FRAME_OPS[name] = fn
+        return fn
+
+    return deco
+
+
+@frame_op("format")
+def _format(df: pd.DataFrame, d: Derived) -> pd.Series:
     """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`
 
+    省略できる引数: `abs: true`(符号を除いた大きさにする。黒字・赤字の額など)、
+    `min_abs` / `max_abs`(大きさがこの範囲の外なら欠損にする。桁が極端な値を読まないため)。
     `prefix_if: {col: 列, contains: 語, prefix: 文字}` を付けると、その列に語が含まれる行だけ、
     表記の前に文字を足す(賃貸の金額に「月」を付ける、など)。
     """
+    col = _from_col(df, d)
     fmt = _arg(d, "fmt")
     if fmt not in FORMATTERS:
         raise DeriveError(f"format の fmt {fmt!r} は未知です(使えるのは {', '.join(FORMATTERS)})")
-    out = _map_non_null(col, lambda v: format_value(fmt, v))
+    use_abs = _arg(d, "abs", False)
+    lo = _arg(d, "min_abs", None)
+    hi = _arg(d, "max_abs", None)
+
+    def f(v: Any) -> str | None:
+        x = _to_number(v)
+        if x is None:
+            return format_value(fmt, v)
+        if (lo is not None and abs(x) < lo) or (hi is not None and abs(x) > hi):
+            return None
+        return format_value(fmt, abs(x) if use_abs else x)
+
+    out = _map_non_null(col, f)
     cond = _arg(d, "prefix_if", None)
     if cond is None:
         return out
     flag = _frame_col(df, cond["col"])
     prefix = [
-        cond["prefix"] if (not is_missing(f) and cond["contains"] in str(f)) else "" for f in flag
+        cond["prefix"] if (not is_missing(x) and cond["contains"] in str(x)) else "" for x in flag
     ]
     return pd.Series(
         [None if is_missing(v) else p + v for p, v in zip(prefix, out, strict=True)],
@@ -175,13 +193,86 @@ def _format(col: pd.Series, d: Derived, df: pd.DataFrame) -> pd.Series:
     )
 
 
-@derive_op("pct_diff", frame=True)
-def _pct_diff(col: pd.Series, d: Derived, df: pd.DataFrame) -> pd.Series:
+def _to_number(v: Any) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, int | float):
+        return None
+    return float(v)
+
+
+@derive_op("sign_label")
+def _sign_label(col: pd.Series, d: Derived) -> pd.Series:
+    """数値の符号を言葉にする(黒字・赤字など)。`positive` / `negative` / `zero` に書いた言葉を使い、
+    書いていない符号(省略した `zero` など)と数値でない値は欠損にする。"""
+    labels = {k: _arg(d, k, None) for k in ("positive", "negative", "zero")}
+    if labels["positive"] is None and labels["negative"] is None:
+        raise DeriveError("sign_label には positive か negative が必要です")
+
+    def label(v: Any) -> str | None:
+        x = _to_number(v)
+        if x is None:
+            return None
+        return labels["positive" if x > 0 else "negative" if x < 0 else "zero"]
+
+    return _map_non_null(col, label)
+
+
+def _frame_col(df: pd.DataFrame, name: str) -> pd.Series:
+    if name not in df.columns:
+        raise DeriveError(f"列 {name!r} がありません")
+    return df[name]
+
+
+def _from_col(df: pd.DataFrame, d: Derived) -> pd.Series:
+    if d.from_ is None:
+        raise DeriveError("from が必要です")
+    return _frame_col(df, str(d.from_))
+
+
+@frame_op("join_flags")
+def _join_flags(df: pd.DataFrame, d: Derived) -> pd.Series:
+    """フラグの列(1 なら該当)を、`labels`(列名 → ラベル)の順に拾って、ラベルのリストにする。
+
+    該当が 1 つもなければ欠損。リストは、穴に入れるときは「、」でつなぎ、`chips` では
+    1 つずつ分ける。
+    """
+    labels = _arg(d, "labels")
+    flags = {col: _frame_col(df, col) for col in labels}
+
+    def row(i: Any) -> list[str] | None:
+        hit = [
+            label
+            for col, label in labels.items()
+            if not is_missing(flags[col][i]) and flags[col][i] == 1
+        ]
+        return hit or None
+
+    return pd.Series([row(i) for i in df.index], index=df.index, dtype=object)
+
+
+@frame_op("hours_between")
+def _hours_between_frame(df: pd.DataFrame, d: Derived) -> pd.Series:
+    start = _frame_col(df, str(d.from_))
+    end = _frame_col(df, _arg(d, "to"))
+
+    def hours(a: Any, b: Any) -> float | None:
+        x, y = parse_datetime(a), parse_datetime(b)
+        if x is None or y is None or y < x:
+            return None
+        return round((y - x).total_seconds() / 3600, 1)
+
+    return pd.Series(
+        [hours(a, b) for a, b in zip(start, end, strict=True)], index=df.index, dtype=object
+    )
+
+
+@frame_op("pct_diff")
+def _pct_diff(df: pd.DataFrame, d: Derived) -> pd.Series:
     """`(元の列 - against) ÷ 元の列 × 100`(%)。両方が正のときだけ。
 
     `fmt: percent` を付けると表記の文字列(「12.3%」)にする。`only_positive: true` なら、
     結果が 0 以下の行は欠損にする(「◯%下がった」と言えるときだけ使うため)。
     """
+    col = _from_col(df, d)
     other = _frame_col(df, _arg(d, "against"))
     fmt = _arg(d, "fmt", None)
     if fmt is not None and fmt not in FORMATTERS:
@@ -320,19 +411,23 @@ def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
     """`derived` の列を足した新しい DataFrame を返す(元の DataFrame は変えない)。"""
     out = df.copy()
     for name, d in dataset.derived.items():
-        op = _OPS.get(d.op)
-        if op is None:
+        op, frame = _OPS.get(d.op), _FRAME_OPS.get(d.op)
+        if op is None and frame is None:
             raise DeriveError(
                 f"derived.{name}: 未知の op {d.op!r}(使えるのは {', '.join(known_derive_ops())})"
             )
         if name in df.columns:
             raise DeriveError(f"derived.{name}: 同じ名前の列が元データにあります")
-        if d.from_ is None:
+        if frame is None and d.from_ is None:
             raise DeriveError(f"derived.{name}: from が必要です")
-        if d.from_ not in df.columns:
+        if d.from_ is not None and d.from_ not in df.columns:
             raise DeriveError(f"derived.{name}: 列 {d.from_!r} がありません")
         try:
-            out[name] = op(df[d.from_], d, df) if d.op in _FRAME_OPS else op(df[d.from_], d)
+            if frame is not None:
+                out[name] = frame(df, d)
+            else:
+                assert op is not None and d.from_ is not None
+                out[name] = op(df[d.from_], d)
         except DeriveError as e:
             raise DeriveError(f"derived.{name}: {e}") from e
     return out

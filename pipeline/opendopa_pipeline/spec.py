@@ -106,12 +106,15 @@ class MapPlace(_Model):
 
 
 class MapSpec(_Model):
-    """シーンの `map` の作り方。`route` は from / to、`points` は points を使う(polygon は #56)。"""
+    """シーンの `map` の作り方。`route` は from / to、`points` は points、`polygon` は
+    rings(輪のリストの列名)と markers を使う。"""
 
-    type: Literal["route", "points"]
+    type: Literal["route", "points", "polygon"]
     from_: MapPlace | None = Field(default=None, alias="from")
     to: MapPlace | None = None
     points: list[MapPlace] = []
+    rings: str | None = None
+    markers: list[MapPlace] = []
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
@@ -121,10 +124,12 @@ class MapSpec(_Model):
             raise ValueError("map: route には from と to が必要です")
         if self.type == "points" and not self.points:
             raise ValueError("map: points には points が必要です")
+        if self.type == "polygon" and not self.rings:
+            raise ValueError("map: polygon には rings(輪の列名)が必要です")
         return self
 
     def places(self) -> list[MapPlace]:
-        return [p for p in (self.from_, self.to, *self.points) if p is not None]
+        return [p for p in (self.from_, self.to, *self.points, *self.markers) if p is not None]
 
 
 class Line(_Model):
@@ -276,7 +281,9 @@ class DatasetDef(_Model):
     def defined_names(self) -> set[str]:
         """`derived` と `stats` で作る名前(列名以外に、穴・式で使える名前)。"""
         names = set(self.derived) | {s.name for s in self.stats}
-        return names | {f"{s.name}_text" for s in self.stats if s.fmt}
+        names |= {f"{s.name}_text" for s in self.stats if s.fmt}
+        # rank_in_group は、順位をつけた行数の列 `<name>_n` も作る
+        return names | {f"{s.name}_n" for s in self.stats if s.op == "rank_in_group"}
 
     def exprs(self) -> list[tuple[str, str]]:
         """YAML 中の式を、(場所, 式) の一覧で返す。"""
@@ -403,6 +410,10 @@ def validate_against_columns(dataset: DatasetDef, columns: list[str] | set[str])
 
     cols = set(columns)
     if dataset.map is not None:
+        if dataset.map.rings is not None and dataset.map.rings not in known:
+            errors.append(
+                f"map: rings の列 {dataset.map.rings!r} は、列にも derived / stats にもありません"
+            )
         for p in dataset.map.places():
             for col in (p.lat, p.lon):
                 if col not in known:

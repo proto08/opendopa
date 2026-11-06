@@ -1,0 +1,171 @@
+# 無人航空機の飛行計画(docs/data.md §10.2)。GeoJSON(1 Feature = 1 行)
+id: flightplan
+label: 飛行計画
+source_name: 無人航空機の飛行計画
+wm_char: 空
+color: "#4FA3E0"
+files: [data/raw/flightplan/01_hikoukeikaku.geojson]
+grain: row
+kind: geo
+rename: {}
+null_values: ["", "不明"]
+zero_is_null: []
+# 特徴のフラグが 1 つもない行は、「特徴なし」の動画にせず除外する
+filters: ["features != null"]
+
+derived:
+  start: {from: FLIGHT_DATETIME_START, op: format_datetime, fmt: ymdhm}
+  start_ymd: {from: FLIGHT_DATETIME_START, op: format_datetime, fmt: ymd}
+  # 開始と終了の差(単位は時間。確認不要)
+  flight_hours: {from: FLIGHT_DATETIME_START, op: hours_between, to: FLIGHT_DATETIME_END}
+  # フラグ(1 なら該当)→ ラベルの対応表。リストの順がそのまま読む順
+  purpose:
+    op: join_flags
+    labels:
+      FLIGHT_PURPOSE_BUSINESS_AERIAL_PHOTOGRAPHY: 空撮
+      FLIGHT_PURPOSE_BUSINESS_NEWS_COVERAGE: 報道取材
+      FLIGHT_PURPOSE_BUSINESS_SECURITY: 警備
+      FLIGHT_PURPOSE_BUSINESS_AGRICULTURE: 農業
+      FLIGHT_PURPOSE_BUSINESS_SURVEYING: 測量
+      FLIGHT_PURPOSE_BUSINESS_ENVIRONMENTAL_RESEARCH: 環境調査
+      FLIGHT_PURPOSE_BUSINESS_EQUIPMENT_MAINTENANCE: 設備の保守
+      FLIGHT_PURPOSE_BUSINESS_INFRASTRUCTURE_INSPECTION: インフラの点検
+      FLIGHT_PURPOSE_BUSINESS_MATERIAL_MANAGEMENT: 資材の管理
+      FLIGHT_PURPOSE_BUSINESS_DELIVERY: 荷物の輸送
+      FLIGHT_PURPOSE_BUSINESS_NATURE_OBSERVATION: 自然観測
+      FLIGHT_PURPOSE_BUSINESS_DISASTER_RESPONSE: 災害対応
+      FLIGHT_PURPOSE_BUSINESS_OTHER: 業務
+      FLIGHT_PURPOSE_NON_BUSINESS_HOBBY: 趣味
+      FLIGHT_PURPOSE_NON_BUSINESS_OTHER: 業務以外
+  # 飛行方法と空域のフラグ → 特徴(chips)。意味を確認できていない NEAR_DANGER_ZONE は出さない
+  features:
+    op: join_flags
+    labels:
+      FLIGHT_METHOD_NIGHT: 夜間
+      FLIGHT_METHOD_BVLOS: 目視外
+      FLIGHT_METHOD_WITHIN_30M: 30m以内
+      FLIGHT_METHOD_EVENT: 催し場所の上空
+      FLIGHT_METHOD_OBJECT_DROPPING: 物件投下
+      FLIGHT_AIRSPACE_DID: 人口集中地区
+      FLIGHT_AIRSPACE_OVER_150M: 150m以上
+      FLIGHT_AIRSPACE_AROUND_AIRPORT: 空港周辺
+
+big_number:
+  primary: {text: "{flight_hours}", unit: "時間", label: "飛行計画の時間", when: "flight_hours != null"}
+  fallback: {text: "第{No}号", unit: "", label: "飛行計画の番号"}
+
+select: {cap: 100, order_by: "No", diversify_by: DEPARTURE_LOCATION}
+
+headline: "{DEPARTURE_LOCATION}周辺の無人航空機の飛行計画"
+chips: ["{purpose}", "{features}"]
+# ID・製造番号・登録日時は個人の特定につながりうる。高度と速度は単位が確認できるまで出さない
+hide:
+  - FLIGHT_PLAN_ID_NEW
+  - MANUFACTURING_NUMBER
+  - REGISTRATION_DATE_Y
+  - UPDATE_DATE_Y
+  - FLIGHT_ALTITUDE
+  - FLIGHT_SPEED
+  - rings
+
+# 飛行範囲(多角形)と、出発・到着の地点
+map:
+  type: polygon
+  rings: rings
+  markers:
+    - {name: "出発", lat: DEPARTURE_LATITUDE, lon: DEPARTURE_LONGITUDE}
+    - {name: "到着", lat: DESTINATION_LATITUDE, lon: DESTINATION_LONGITUDE}
+
+template_groups:
+  - id: bvlos
+    label: "目視外の飛行を含む"
+    templates:
+      - id: bvlos_std
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "目視外の飛行を含む計画です。"
+          - "特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+          - {text: "到着地は、{DESTINATION_LOCATION}です。", optional: true}
+          - {text: "使う機体は、{AIRCRAFT_TYPE}です。", optional: true}
+      - id: bvlos_short
+        short: true
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "目視外の飛行を含む計画で、特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+  - id: night
+    label: "夜間の飛行を含む"
+    templates:
+      - id: night_std
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "夜間の飛行を含む計画です。"
+          - "特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+          - {text: "到着地は、{DESTINATION_LOCATION}です。", optional: true}
+          - {text: "使う機体は、{AIRCRAFT_TYPE}です。", optional: true}
+      - id: night_short
+        short: true
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "夜間の飛行を含む計画で、特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+  - id: did
+    label: "人口集中地区の上空を含む"
+    templates:
+      - id: did_std
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "人口集中地区の上空を飛ぶ計画です。"
+          - "特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+          - {text: "到着地は、{DESTINATION_LOCATION}です。", optional: true}
+          - {text: "使う機体は、{AIRCRAFT_TYPE}です。", optional: true}
+      - id: did_short
+        short: true
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "人口集中地区の上空を飛ぶ計画で、特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+  - id: other
+    label: "上のどれでもない"
+    templates:
+      - id: other_std
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "この計画の特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+          - {text: "到着地は、{DESTINATION_LOCATION}です。", optional: true}
+          - {text: "使う機体は、{AIRCRAFT_TYPE}です。", optional: true}
+      - id: other_short
+        short: true
+        lines:
+          - "{DEPARTURE_LOCATION}周辺で、{start}から、{purpose}の飛行計画が通報されています。"
+          - "特徴は、{features}です。"
+          - "飛行時間は、{flight_hours}時間の予定です。"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この飛行計画は、次のどの型に一番近いですか。"
+    # 渡すのは、飛行方法・空域のフラグだけ(ID や座標は渡さない)
+    state: [FLIGHT_METHOD_BVLOS, FLIGHT_METHOD_NIGHT, FLIGHT_AIRSPACE_DID]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: flags, default: other}
+
+fallback_rules:
+  flags:
+    - {if: "FLIGHT_METHOD_BVLOS == 1", then: bvlos}
+    - {if: "FLIGHT_METHOD_NIGHT == 1", then: night}
+    - {if: "FLIGHT_AIRSPACE_DID == 1", then: did}
+    - {else: other}
+
+comments:
+  pool_light: ["ほう", "なるほど", "こんな計画もあるのか", "へえ", "これは気になる", "知らなかった"]
+
+embed_text: "無人航空機の飛行計画 {DEPARTURE_LOCATION} {purpose} {features}"
+required: [FLIGHT_DATETIME_START, DEPARTURE_LOCATION, purpose, features]
