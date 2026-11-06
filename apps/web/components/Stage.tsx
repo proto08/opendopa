@@ -14,11 +14,12 @@ import { Telop } from "./Telop";
 import "./stage.css";
 
 /** 9:16 の動画ステージ。1 本のシーンを再生する(タップと Space で一時停止/再開) */
-export function Stage({ scene }: { scene: Scene }) {
-  const player = useScenePlayer(scene);
+export function Stage({ scene, active = true }: { scene: Scene; active?: boolean }) {
+  const player = useScenePlayer(scene, active);
   const { toggle } = player;
 
   useEffect(() => {
+    if (!active) return; // フィードでは、見えている動画だけが Space に反応する
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return;
       const target = e.target;
@@ -36,7 +37,7 @@ export function Stage({ scene }: { scene: Scene }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggle]);
+  }, [toggle, active]);
 
   return (
     <div

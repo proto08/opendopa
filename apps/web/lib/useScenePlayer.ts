@@ -10,7 +10,11 @@ export type UseScenePlayer = PlayerSnapshot & { toggle: () => void };
  * 1 本の動画の再生状態(字幕の行・進行率・カウント・一時停止・ループ)と、行の音声。
  * 時計とループの計算は `ScenePlayer`(DOM に依存しない)に任せる。
  */
-export function useScenePlayer(scene: Pick<Scene, "videoId" | "lines">): UseScenePlayer {
+export function useScenePlayer(
+  scene: Pick<Scene, "videoId" | "lines">,
+  /** false の間は止めて最初に戻す(フィードで画面から外れている動画) */
+  active = true,
+): UseScenePlayer {
   const player = useMemo(
     // 動画が変わったら作り直す。lines の中身は videoId に対して不変とみなす
     () => new ScenePlayer(scene.lines),
@@ -19,14 +23,15 @@ export function useScenePlayer(scene: Pick<Scene, "videoId" | "lines">): UseScen
   );
 
   useEffect(() => {
-    player.start();
+    if (active) player.start();
+    else player.reset();
     return () => player.stop();
-  }, [player]);
+  }, [player, active]);
 
   const toggle = useCallback(() => player.toggle(), [player]);
   const snap = useSyncExternalStore(player.subscribe, player.getSnapshot, player.getSnapshot);
 
-  const audioUrl = scene.lines[snap.lineIndex]?.audio?.url ?? null;
+  const audioUrl = active ? (scene.lines[snap.lineIndex]?.audio?.url ?? null) : null;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   // 行が変わる、またはループするたびに、その行の音声を頭から鳴らす
   useEffect(() => {

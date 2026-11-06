@@ -151,3 +151,25 @@ describe("大きな数字の文字サイズ", () => {
     expect(bigNumberFontSizeCqw("123.4")).toBe(21);
   });
 });
+
+describe("ScenePlayer.reset", () => {
+  it("一時停止して最初に戻す", () => {
+    let t = 0;
+    const tick: { cb?: () => void } = {};
+    const p = new ScenePlayer([{ durationSec: 2 }, { durationSec: 2 }], {
+      now: () => t,
+      schedule: (f) => ((tick.cb = f), 1),
+      cancel: () => {},
+    });
+    p.start();
+    t = 200;
+    tick.cb?.();
+    expect(p.getSnapshot().playedSec).toBeGreaterThan(0);
+    p.reset();
+    const s = p.getSnapshot();
+    expect(s.paused).toBe(true);
+    expect(s.playedSec).toBe(0);
+    expect(s.lineIndex).toBe(0);
+    expect(s.progress).toBe(0);
+  });
+});
