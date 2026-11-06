@@ -144,3 +144,20 @@ module "containerapp" {
 
   tags = local.tags
 }
+
+# 判断モデル(strands_azure)。GPU が課金されるので、既定では作らない(decider_enabled)
+module "decider" {
+  source = "./modules/decider"
+  count  = var.decider_enabled ? 1 : 0
+
+  name                       = local.name
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = var.decider_location != "" ? var.decider_location : azurerm_resource_group.main.location
+  log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
+  registry_id                = module.registry.id
+  registry_login_server      = module.registry.login_server
+  image                      = var.decider_image
+  token                      = var.decider_token
+
+  tags = local.tags
+}

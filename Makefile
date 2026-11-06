@@ -2,7 +2,7 @@
 # 事前に infra/backend.hcl(infra/bootstrap/bootstrap.sh が作る)と infra/terraform.tfvars を用意する。
 TF_DIR := infra
 
-.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy
+.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy deploy-decider
 
 infra-init:
 	terraform -chdir=$(TF_DIR) init -backend-config=backend.hcl
@@ -41,3 +41,21 @@ deploy:
 	az containerapp update -g "$$rg" -n "$$recsys_app" --image "$$login_server/opendopa-recsys:$(TAG)"; \
 	az containerapp update -g "$$rg" -n "$$web_app" --image "$$login_server/opendopa-web:$(TAG)"; \
 	echo "デプロイしました: $$web_url (確認: $$web_url/api/health)"
+
+# 判断モデル(strands_azure)の API サーバーのイメージを push して更新する。
+# 事前に infra の decider_enabled = true で apply 済みであること。GPU が課金されるため、人が実行する。
+# DECIDER_DOCKERFILE: 判断モデルのサーバーの Dockerfile(モデルの入手元・ライセンスの確認後に用意する)
+DECIDER_DOCKERFILE ?= services/decider/Dockerfile
+
+deploy-decider:
+	@set -eu; \
+	test -f "$(DECIDER_DOCKERFILE)" || { echo "$(DECIDER_DOCKERFILE) がありません"; exit 1; }; \
+	login_server=$$(terraform -chdir=$(TF_DIR) output -raw registry_login_server); \
+	registry=$$(terraform -chdir=$(TF_DIR) output -raw registry_name); \
+	rg=$$(terraform -chdir=$(TF_DIR) output -raw resource_group_name); \
+	app=$$(terraform -chdir=$(TF_DIR) output -raw decider_app_name); \
+	az acr login --name "$$registry"; \
+	docker build --platform $(PLATFORM) -f "$(DECIDER_DOCKERFILE)" -t "$$login_server/opendopa-decider:$(TAG)" .; \
+	docker push "$$login_server/opendopa-decider:$(TAG)"; \
+	az containerapp update -g "$$rg" -n "$$app" --image "$$login_server/opendopa-decider:$(TAG)"; \
+	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$(terraform -chdir=$(TF_DIR) output -raw decider_internal_url)"

@@ -135,3 +135,33 @@ variable "web_max_replicas" {
   type        = number
   default     = 3
 }
+
+variable "decider_enabled" {
+  description = "判断モデル(strands_azure)の GPU 付き Container Apps を作る。GPU が課金されるので、費用の確認後に true にする(設計書 D14)"
+  type        = bool
+  default     = false
+}
+
+variable "decider_location" {
+  description = "判断モデルを置くリージョン(GPU の割り当てがあるところ。空なら本体と同じ)"
+  type        = string
+  default     = ""
+}
+
+variable "decider_image" {
+  description = "判断モデルの API サーバーのイメージ。空ならプレースホルダー"
+  type        = string
+  default     = ""
+}
+
+variable "decider_token" {
+  description = "判断モデルの内部 API の認証トークン(STRANDS_DECIDER_TOKEN)。decider_enabled のとき必須。TF_VAR_decider_token で渡す"
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.decider_token == "" || length(var.decider_token) >= 16
+    error_message = "decider_token は 16 文字以上にする。"
+  }
+}
