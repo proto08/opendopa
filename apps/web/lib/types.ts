@@ -29,6 +29,8 @@ export interface RecsysFeedRequest {
 
 export interface RecsysFeedResponse {
   picks: { videoId: string; reason: Reason }[];
+  /** 未視聴が尽きたので、`seenIds` を空として選んだ。`true` なら `impressions` を削除する(#40) */
+  seenReset?: boolean;
   taste: RecsysTaste;
 }
 
