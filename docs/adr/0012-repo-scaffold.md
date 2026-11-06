@@ -51,6 +51,7 @@
 ## A9 開発用コマンドの入口
 
 - 決定: Makefile は作らず、`mise.toml` のタスク(`mise run dev`、`mise run db-up`、`mise run test` など)に統一する。`dev` は web・recsys を並列で起動し、個別に起動するタスクも用意する。長い処理は `mise-tasks/` にスクリプトとして置く。設計書と Issue の `make xxx` の表記は `mise run xxx` に書き換える。
+- 注記(2026-11-06): infra だけは ADR-0016 A3 で上書きされた。`Makefile` を本体に置き、`mise run infra-*` はそれを呼ぶ薄いタスクにしている。それ以外は、この決定のまま。
 - 理由: A3・A8 と合わせて、`mise.toml` 1つで「バージョン・環境変数・タスク」が決まる。環境変数が自動で渡り、並列での起動も書ける。エージェントには「`mise tasks` を見ればやれることが分かる」と伝えるだけで済む。
 
 ## A10 `/api/health` の扱い(#12 と #13 の分担)
