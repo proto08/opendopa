@@ -28,3 +28,8 @@
 
 - 決定: `mise run recsys-db-test` が使い捨ての DB に migrate・シードし、環境変数 `RECSYS_TEST_DATABASE_URL`(読み取り専用ロール)つきで `cargo test --test db` を流す。この環境変数がなければテストは何もしないので、`mise run test`(DB なし)は通る。
 - 理由: `db-test` と同じく、docker の DB が要るテストは別タスクにする。
+
+## A6 ルーターとハンドラーは `lib.rs` に置く
+
+- 決定: Issue のタスクは `server.rs` と書かれているが、ルーター・ハンドラー・状態は `recsys-server/src/lib.rs` に置き、`main.rs` は起動(設定・DB 接続・listen)だけにする。DB の読み込みは `loader.rs`。
+- 理由: 統合テスト(`tests/`)が `tower::ServiceExt::oneshot` でルーターを直接呼ぶには、ライブラリ crate から公開されている必要があるため。ファイルを分ける規模でもない。
