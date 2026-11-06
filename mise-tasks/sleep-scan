@@ -80,7 +80,7 @@ for n in $(jq -r '.[].number' <<<"$prs"); do
         sha: $d.head.sha, mergeable_state: $d.mergeable_state,
         labels: [$d.labels[].name],
         closes: ([($d.body // "") | scan("(?i)(?:closes|fixes|resolves|refs?) #([0-9]+)") | .[0] | tonumber]),
-        i_reviewed: ($my_review != ""), is_mine: $is_mine,
+        i_reviewed: ($my_review != ""), is_mine: $is_mine, bot: ($d.user.type == "Bot"),
         others_after: ($after | length), busy: $busy
       }')
   facts=$(jq -c --argjson f "$f" '. + [$f]' <<<"$facts")
@@ -107,12 +107,15 @@ result=$(jq -n --arg me "$ME" --arg main "$MAIN_SHA" --argjson facts "$facts" --
   | {
     me: $me, main: $main,
     targets: {
-      review:      [$live[] | select(.is_mine | not) | select(.draft | not) | select(.i_reviewed | not) | pick],
-      merge_check: [$live[] | select(.is_mine | not) | select(.draft | not) | select(.i_reviewed)
-                           | select(.others_after > 0) | pick],
+      review:      [$live[] | select(.is_mine | not) | select(.bot | not) | select(.draft | not)
+                           | select(.i_reviewed | not) | pick],
+      merge_check: [$live[] | select(.is_mine | not) | select(.bot | not) | select(.draft | not)
+                           | select(.i_reviewed) | select(.others_after > 0) | pick],
       conflict:    [$live[] | select(.is_mine) | select(.mergeable_state == "dirty")
                            | select(.others_after == 0) | pick],
+      # 「指摘なし」(status::ready-to-merge)のあとの活動は、対応するものがない
       review_fix:  [$live[] | select(.is_mine) | select(.others_after > 0)
+                           | select(.labels | index("status::ready-to-merge") | not)
                            | pick + {issues: .closes, conflicting: (.mergeable_state == "dirty")}],
       implement:   [$iss[] | select(.labels | index("type::tracking") | not)
                            | select(.labels | index("needs-human") | not)

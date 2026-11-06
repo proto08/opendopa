@@ -5,7 +5,7 @@
 # 予約する条件(すべて):
 #   - `status::ready-to-merge` が付いている(レビュー担当が「指摘なし」のときに付ける)
 #   - `needs-human` が付いていない(実機確認や承認が要るものは、人が外すまで自動マージしない)
-#   - 作成者以外の、最後のレビューの本文に「指摘なし」がある
+#   - 作成者以外の、最後のレビューの本文に「指摘なし」があり、そのレビューがいまの head の commit に対するものである
 #   - ドラフトではない
 # 動かすには、リポジトリ側の設定が要る(dependabot-automerge.yml と同じ)。
 #   - Settings > General > Allow auto-merge を ON
@@ -36,11 +36,16 @@ jobs:
             echo "needs-human が付いているのでスキップ"; exit 0
           fi
           author=$(jq -r .user.login <<<"$pr")
-          verdict=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/reviews?per_page=100" \
-            | jq -s -r --arg author "$author" '
-                add // [] | map(select(.user.login != $author and .user.type != "Bot")) | last // empty | .body // ""')
-          if ! grep -q '指摘なし' <<<"$verdict"; then
+          head=$(jq -r .head.sha <<<"$pr")
+          last=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/reviews?per_page=100" \
+            | jq -c -s --arg author "$author" '
+                add // [] | map(select(.user.login != $author and .user.type != "Bot")) | last // {}')
+          if ! jq -e '(.body // "") | contains("指摘なし")' <<<"$last" >/dev/null; then
             echo "作成者以外の最後のレビューが「指摘なし」ではないのでスキップ"; exit 0
+          fi
+          # 「指摘なし」のあとに push されていたら、見ていない commit が混ざるのでスキップ
+          if [ "$(jq -r '.commit_id // ""' <<<"$last")" != "$head" ]; then
+            echo "「指摘なし」のレビューが、いまの head ではない commit に対するものなのでスキップ"; exit 0
           fi
           gh pr merge --auto --merge "$PR_URL"
         env:
