@@ -135,6 +135,10 @@ cd pipeline && uv run opendopa --help
 
 サブコマンド(`profile`、`generate`、`embed`、`publish` など)の中身は、これから実装します。
 
+#### publish のあとの recsys の再読み込み(Azure)
+
+Azure の recsys は内部 ingress のみのため、手元 PC や CI の `publish` から `/internal/reload` は届かず、警告(`recsys の reload に失敗しました`)だけで終わる。公開のあとは、`az login` した状態で `make recsys-reload` を実行する。recsys が再起動し、起動時に新しい索引を読み込む。
+
 ## 開発
 
 ### テストの実行
