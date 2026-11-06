@@ -238,4 +238,34 @@ def test_all_ops_are_registered() -> None:
         "seq_in_group",
         "is_first_time",
         "per",
+        "prev_year_label",
+    }
+
+
+def test_prev_year_label(make_dataset) -> None:
+    df = pd.DataFrame(
+        {
+            "co": ["A", "A", "A", "A", "B"],
+            "year": [2020, 2021, 2022, 2023, 2023],
+            "v": [-5.0, 3.0, 0.0, 4.0, 1.0],
+        }
+    )
+    out, numbers = run(
+        make_dataset,
+        df,
+        {
+            "name": "p",
+            "op": "prev_year_label",
+            "value": "v",
+            "group_by": "co",
+            "year": "year",
+            "positive": "黒字",
+            "negative": "赤字",
+        },
+    )
+    # 最初の年・前年が 0 の年・前年の行がない主体は欠損
+    assert [None if isnull(x) else x for x in out["p"]] == [None, "赤字", "黒字", None, None]
+    assert numbers[2][0]["display"] == "赤字" and numbers[2][0]["inputs"] == {
+        "v": 3.0,
+        "prev": -5.0,
     }

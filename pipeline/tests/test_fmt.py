@@ -102,3 +102,20 @@ def test_decimal() -> None:
     assert format_decimal(1234.5) == "1,234.5"
     assert format_decimal(None) is None
     assert format_value("decimal", 4.84) == "4.8"
+
+
+@pytest.mark.parametrize(
+    "sen_yen",
+    [285_711_829, 38_916_061, 6_938_290, 2_008_428_041, 663_251_400, 104_000, 12_345, 1_040_000_000]
+    + [10**k * m for k in range(1, 10) for m in (1, 12, 104, 999, 1004)],
+)
+def test_format_sen_yen_error_within_half_percent(sen_yen: int) -> None:
+    """千円の列(営業損益・営業収益など)を億円・兆円にしても、元の値から 0.5% 以内。"""
+    text = format_sen_yen(sen_yen)
+    assert abs(parse_yen(text) - sen_yen * 1000) / (sen_yen * 1000) <= 0.005, text
+
+
+def test_format_sen_yen_units() -> None:
+    assert format_sen_yen(285_711_829) == "約2,857.1億円"
+    assert format_sen_yen(38_916_061) == "約389.2億円"
+    assert format_sen_yen(-6_938_290) == "マイナス約69.4億円"
