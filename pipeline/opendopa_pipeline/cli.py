@@ -17,6 +17,7 @@ from opendopa_pipeline.decider.evaluate import (
     load_labels,
     write_labels,
 )
+from opendopa_pipeline.draft import NO_LLM_MESSAGE, draft_yaml
 from opendopa_pipeline.embed.providers import create_embedder
 from opendopa_pipeline.embed.run import DEFAULT_K, run_embed
 from opendopa_pipeline.generate import format_summary, run_generate
@@ -43,6 +44,23 @@ def _fail(message: str) -> typer.Exit:
     return typer.Exit(code=2)
 
 
+def _load_raw(dataset_id: str, file: list[Path] | None) -> tuple[pd.DataFrame, list[str]]:
+    """YAML のない新規データセットも読めるように、CSV を直接読む(profile・draft-yaml 用)。"""
+    if file:
+        df = prepare_raw(pd.concat([load_path(p) for p in file], ignore_index=True))
+        return df, [str(p) for p in file]
+    yaml_path = REPO_ROOT / "datasets" / f"{dataset_id}.yaml"
+    if yaml_path.exists():
+        definition = load_dataset(yaml_path)
+        return load_frame(definition, REPO_ROOT), definition.files
+    # 新規データセットは YAML がまだない。data/raw/<id>/ の CSV を読む
+    paths = sorted((REPO_ROOT / "data" / "raw" / dataset_id).glob("*.csv"))
+    if not paths:
+        raise IngestError(f"datasets/{dataset_id}.yaml も data/raw/{dataset_id}/*.csv もありません")
+    df = prepare_raw(pd.concat([load_path(p) for p in paths], ignore_index=True))
+    return df, [str(p.relative_to(REPO_ROOT)) for p in paths]
+
+
 @app.command()
 def profile(
     dataset: Annotated[
@@ -59,24 +77,7 @@ def profile(
         raise _fail("--dataset か --file のどちらかを指定してください")
     dataset_id = dataset or file[0].stem  # type: ignore[index]
     try:
-        if file:
-            df = prepare_raw(pd.concat([load_path(p) for p in file], ignore_index=True))
-            source = [str(p) for p in file]
-        else:
-            yaml_path = REPO_ROOT / "datasets" / f"{dataset_id}.yaml"
-            if yaml_path.exists():
-                definition = load_dataset(yaml_path)
-                df = load_frame(definition, REPO_ROOT)
-                source = definition.files
-            else:
-                # 新規データセットは YAML がまだない。data/raw/<id>/ の CSV を読む
-                paths = sorted((REPO_ROOT / "data" / "raw" / dataset_id).glob("*.csv"))
-                if not paths:
-                    raise IngestError(
-                        f"datasets/{dataset_id}.yaml も data/raw/{dataset_id}/*.csv もありません"
-                    )
-                df = prepare_raw(pd.concat([load_path(p) for p in paths], ignore_index=True))
-                source = [str(p.relative_to(REPO_ROOT)) for p in paths]
+        df, source = _load_raw(dataset_id, file)
     except (IngestError, ValueError) as e:
         raise _fail(str(e)) from e
 
@@ -86,6 +87,46 @@ def profile(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     typer.echo(f"\n書き出しました: {out_path}")
+
+
+@app.command(name="draft-yaml")
+def draft_yaml_cmd(
+    dataset: Annotated[
+        str | None, typer.Option("--dataset", help="データセットID(例: accident)")
+    ] = None,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option("--file", help="CSV を直接指定する(新規データセット用。複数可)"),
+    ] = None,
+    force: Annotated[bool, typer.Option("--force", help="既存の下書きを上書きする")] = False,
+) -> None:
+    """列定義 YAML の下書きを LLM に作らせる(datasets/<id>.draft.yaml。要 LLM_PROVIDER=azure)。"""
+    if dataset is None and not file:
+        raise _fail("--dataset か --file のどちらかを指定してください")
+    dataset_id = dataset or file[0].stem  # type: ignore[index]
+    try:
+        llm = create_llm()
+    except ValueError as e:
+        raise _fail(str(e)) from e
+    if llm is None:
+        typer.echo(NO_LLM_MESSAGE)
+        raise typer.Exit(code=1)
+    out = REPO_ROOT / "datasets" / f"{dataset_id}.draft.yaml"
+    if out.exists() and not force:
+        raise _fail(f"{out} が既にあります(人が直した内容を守るため。上書きは --force)")
+    try:
+        df, source = _load_raw(dataset_id, file)
+        text, violations = draft_yaml(llm, build_profile(dataset_id, df, source), df)
+    except (IngestError, ValueError, OSError) as e:
+        raise _fail(str(e)) from e
+    out.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
+    typer.echo(f"下書きを書き出しました: {out}")
+    if violations:
+        typer.echo(f"機械検査: {len(violations)} 件の違反(下書きの先頭にコメントで残しました)")
+        for v in violations:
+            typer.echo(f"  - {v}")
+    else:
+        typer.echo("機械検査: 違反なし。人が内容を確認して datasets/<id>.yaml に置いてください")
 
 
 @app.command()

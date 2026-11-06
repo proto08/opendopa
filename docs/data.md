@@ -469,7 +469,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 **追加の手順**(エンジンの変更なしでできること):
 1. `data/raw/<id>/` にCSVを置く。
 2. `uv run opendopa profile --dataset <id>` で列の一覧を出す。
-3. LLM(`LLM_PROVIDER=azure`)に、プロファイルとサンプル10行を渡して、列定義YAMLの案を作らせる(プロンプトは§8.9)。
+3. `uv run opendopa draft-yaml --dataset <id>` で、LLM(`LLM_PROVIDER=azure`)に、プロファイルとサンプル10行を渡して、列定義YAMLの案(`datasets/<id>.draft.yaml`)を作らせる(プロンプトは§8.9、`pipeline/prompts/draft_yaml.md`)。列名・型ごとの `short` は機械で検査し、違反は下書きの先頭にコメントで残る。
 4. 人が確認して直し、`datasets/<id>.yaml` に置く。
 5. `generate` を実行し、品質ゲートの結果を見る。
 
