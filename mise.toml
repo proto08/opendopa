@@ -97,6 +97,10 @@ run = "make infra-init"
 description = "Terraform の plan を出す(infra/tfplan に保存)"
 run = "make infra-plan"
 
+[tasks.deploy]
+description = "イメージをビルドして Container Registry に push し、Container Apps を更新する(要 az login。課金されるリソースを操作する。ADR-0018)"
+run = "make deploy"
+
 [tasks.infra-apply]
 description = "保存した plan(infra/tfplan)を apply する。リソースが作られ、課金される"
 run = "make infra-apply"
