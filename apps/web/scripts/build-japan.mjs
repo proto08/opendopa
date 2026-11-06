@@ -29,7 +29,7 @@ const ringOf = (indexes) => {
 const japan = topo.objects.countries.geometries.find((g) => g.properties.name === "Japan");
 const polygons = japan.type === "Polygon" ? [japan.arcs] : japan.arcs;
 
-// 外周だけを使い、0.05 度未満の島は落とし、座標は小数 2 桁に丸める
+// 外周だけを使い、0.15 度未満の島は落とし、座標は小数 2 桁に丸める
 const rings = [];
 for (const poly of polygons) {
   const ring = ringOf(poly[0]).map(([lon, lat]) => [+lon.toFixed(2), +lat.toFixed(2)]);
