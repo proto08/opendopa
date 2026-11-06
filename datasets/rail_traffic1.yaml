@@ -1,0 +1,117 @@
+# 鉄軌道 運輸成績 1: 輸送人員(docs/data.md §10.9)
+# 切り口は「事業者の年度ニュース」。輸送人員の絶対値は、単位が確定するまで原稿に出さない
+# (前年比・順位・定期の割合だけを語る)。
+id: rail_traffic1
+label: 鉄道の輸送人員
+source_name: 鉄道統計年報 運輸成績1
+wm_char: 鉄
+color: "#3B82F6"
+files: [data/raw/rail_traffic1/01_tetsudou_unyuseiseki1.csv]
+grain: row
+# 事業者名の列名は、ファイルによって違う(CORPORATION_NAME / COMPANY_NAME / OPERATOR_NAME)ので OPERATOR にそろえる
+rename: {CORPORATION_NAME: OPERATOR, COMPANY_NAME: OPERATOR, OPERATOR_NAME: OPERATOR}
+null_values: ["", "-", "－", "…"]
+# 0 は「その輸送がない」(貨物のない旅客鉄道など)。順位や前年比に入れない
+zero_is_null: [TRANSPORTED_NUMBER_TOTAL, TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO, TRANSPORTED_TONNAGE_TOTAL]
+filters: [{col: OPERATOR, not_null: true}, {col: YEAR, not_null: true}]
+
+derived: {}
+
+# 順位は、区分(CATEGORY)と年度ごと。中小と大手を同じ順位表に並べない
+stats:
+  - {name: traffic_rank, op: rank_in_group, value: TRANSPORTED_NUMBER_TOTAL, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: commuter_rank, op: rank_in_group, value: TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: tonnage_rank, op: rank_in_group, value: TRANSPORTED_TONNAGE_TOTAL, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: yoy_ratio, op: yoy_ratio, value: TRANSPORTED_NUMBER_TOTAL, group_by: [OPERATOR], year: YEAR, fmt: percent}
+  - {name: yoy_abs, op: abs, value: yoy_ratio, fmt: percent}
+  - {name: yoy_word, op: sign_word, value: yoy_ratio, positive: 増えました, negative: 減りました}
+  - {name: trend, op: series, value: TRANSPORTED_NUMBER_TOTAL, group_by: [OPERATOR], order: YEAR}
+
+# 最新年度(2023)の事業者。区分に1事業者しかない行は、順位を語れないので選ばない
+select:
+  cap: 150
+  filters: ["YEAR == 2023", "traffic_rank_n > 1"]
+  score:
+    - {expr: "rank_desc(TRANSPORTED_NUMBER_TOTAL)", weight: 1.0}
+    - {expr: "abs(yoy_ratio)", weight: 0.02}
+  diversify_by: [CATEGORY]
+  seed: 42
+
+big_number:
+  primary: {text: "{yoy_ratio_text}", unit: "", label: "輸送人員の前年比", when: "yoy_ratio != null"}
+  fallback: {text: "{traffic_rank_text}", unit: "", label: "同じ区分での輸送人員の順位"}
+
+headline: "{OPERATOR}の{YEAR}年度の輸送人員"
+chips: ["{CATEGORY}", "{YEAR}年度", "{JURISDICTION}"]
+sparkline: trend
+
+template_groups:
+  - id: yoy
+    label: "輸送人員が前年から増えた・減った"
+    templates:
+      - id: yoy_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度の輸送人員は、前年に比べて{yoy_abs_text}{yoy_word}。"
+          - {text: "区分「{CATEGORY}」の{traffic_rank_n}事業者のうち、輸送人員は{traffic_rank_text}です。", optional: true}
+          - {text: "定期の旅客の割合は、{TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO}%でした。", optional: true}
+      - id: yoy_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の輸送人員は、前年に比べて{yoy_abs_text}{yoy_word}。"
+  - id: commuter
+    label: "定期の旅客の割合が高い・低い"
+    templates:
+      - id: commuter_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度、定期の旅客の割合は{TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO}%でした。"
+          - "区分「{CATEGORY}」の{commuter_rank_n}事業者のうち、割合の高さは{commuter_rank_text}です。"
+          - {text: "輸送人員は、前年に比べて{yoy_abs_text}{yoy_word}。", optional: true}
+      - id: commuter_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度、定期の旅客の割合は{TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO}%でした。"
+  - id: rank
+    label: "同じ区分の中での輸送人員の順位"
+    templates:
+      - id: rank_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度の輸送人員は、区分「{CATEGORY}」の{traffic_rank_n}事業者のうち{traffic_rank_text}でした。"
+          - {text: "前年に比べて、{yoy_abs_text}{yoy_word}。", optional: true}
+          - {text: "定期の旅客の割合は、{TRANSPORTED_NUMBER_COMMUTER_PASS_RATIO}%です。", optional: true}
+      - id: rank_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の輸送人員は、区分「{CATEGORY}」の{traffic_rank_n}事業者のうち{traffic_rank_text}でした。"
+  - id: freight
+    label: "貨物の輸送(トン数)の順位"
+    templates:
+      - id: freight_std
+        lines:
+          - "{OPERATOR}は、貨物も運んでいます。{YEAR}年度の貨物の輸送量は、区分「{CATEGORY}」の{tonnage_rank_n}事業者のうち{tonnage_rank_text}です。"
+          - {text: "旅客の輸送人員は、前年に比べて{yoy_abs_text}{yoy_word}。", optional: true}
+      - id: freight_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の貨物の輸送量は、区分「{CATEGORY}」の{tonnage_rank_n}事業者のうち{tonnage_rank_text}です。"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この事業者の輸送人員の話題として、次のどの型が一番ニュースになりますか。"
+    # 渡すのは数字の列だけ(事業者名などは渡さない)
+    state: [yoy_ratio, traffic_rank, commuter_rank, tonnage_rank, tonnage_rank_n]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: pick, default: yoy}
+
+fallback_rules:
+  pick:
+    - {if: "tonnage_rank_n > 1 and tonnage_rank < 4", then: freight}
+    - {if: "commuter_rank < 4", then: commuter}
+    - {if: "traffic_rank < 4", then: rank}
+    - {else: yoy}
+
+embed_text: "鉄道の輸送人員 {OPERATOR} {YEAR}年度 {CATEGORY} {JURISDICTION}"
+required: [OPERATOR, YEAR]

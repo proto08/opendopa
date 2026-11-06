@@ -272,7 +272,9 @@ class DatasetDef(_Model):
     def defined_names(self) -> set[str]:
         """`derived` と `stats` で作る名前(列名以外に、穴・式で使える名前)。"""
         names = set(self.derived) | {s.name for s in self.stats}
-        return names | {f"{s.name}_text" for s in self.stats if s.fmt}
+        names |= {f"{s.name}_text" for s in self.stats if s.fmt}
+        # rank_in_group は、順位をつけた行数の列 `<name>_n` も作る
+        return names | {f"{s.name}_n" for s in self.stats if s.op == "rank_in_group"}
 
     def exprs(self) -> list[tuple[str, str]]:
         """YAML 中の式を、(場所, 式) の一覧で返す。"""

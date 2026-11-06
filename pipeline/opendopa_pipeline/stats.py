@@ -346,6 +346,27 @@ def _per(df: pd.DataFrame, s: Stat) -> StatOutput:
     )
 
 
+@stat_op("abs")
+def _abs(df: pd.DataFrame, s: Stat) -> StatOutput:
+    """絶対値。前年比などの符号を、語(`sign_word`)で言うときに使う。"""
+    value = _col(df, s, "value")
+    return StatOutput(df[value].abs(), [value], f"{value} の絶対値", {value: df[value]})
+
+
+@stat_op("sign_word")
+def _sign_word(df: pd.DataFrame, s: Stat) -> StatOutput:
+    """符号に応じた語。`positive` / `negative` を書く。0 と欠損は欠損(その語を使う文が省かれる)。"""
+    value = _col(df, s, "value")
+    pos, neg = _param(s, "positive"), _param(s, "negative")
+    words = [None if is_missing(v) or v == 0 else (pos if v > 0 else neg) for v in df[value]]
+    return StatOutput(
+        pd.Series(words, index=df.index, dtype=object),
+        [value],
+        f"{value} が正なら「{pos}」、負なら「{neg}」(0 は欠損)",
+        {value: df[value]},
+    )
+
+
 # ---- 実行 ----
 
 

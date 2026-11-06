@@ -1,0 +1,121 @@
+# 鉄軌道 営業キロ・車両(docs/data.md §10.11)
+# 営業キロ(km)は絶対値を読み上げる。列車数・車両数は単位が「要確認」なので、順位と前年比だけを語る。
+id: rail_km
+label: 鉄道の営業キロ
+source_name: 鉄道統計年報 営業キロ・車両
+wm_char: 線
+color: "#14B8A6"
+files: [data/raw/rail_km/03_tetsudou_eigyoukiro.csv]
+grain: row
+rename: {CORPORATION_NAME: OPERATOR, COMPANY_NAME: OPERATOR, OPERATOR_NAME: OPERATOR}
+null_values: ["", "-", "－", "…"]
+# 0 は「その事業がない」(貨物の営業キロが 0 の旅客鉄道など)。順位や前年比に入れない
+zero_is_null:
+  - FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER
+  - FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_CARGO
+  - TOTAL_TRAIN_TOTAL
+  - TOTAL_CARS_TOTAL
+filters: [{col: OPERATOR, not_null: true}, {col: YEAR, not_null: true}]
+
+derived: {}
+
+stats:
+  - {name: km_rank, op: rank_in_group, value: FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER, group: [CATEGORY, YEAR]}
+  - {name: cargo_rank, op: rank_in_group, value: FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_CARGO, group: [CATEGORY, YEAR]}
+  - {name: train_rank, op: rank_in_group, value: TOTAL_TRAIN_TOTAL, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: cars_rank, op: rank_in_group, value: TOTAL_CARS_TOTAL, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: train_yoy, op: yoy_ratio, value: TOTAL_TRAIN_TOTAL, group_by: [OPERATOR], year: YEAR, fmt: percent}
+  - {name: train_yoy_abs, op: abs, value: train_yoy, fmt: percent}
+  - {name: train_yoy_word, op: sign_word, value: train_yoy, positive: 増えました, negative: 減りました}
+  - {name: cars_yoy, op: yoy_ratio, value: TOTAL_CARS_TOTAL, group_by: [OPERATOR], year: YEAR, fmt: percent}
+  - {name: cars_yoy_abs, op: abs, value: cars_yoy, fmt: percent}
+  - {name: cars_yoy_word, op: sign_word, value: cars_yoy, positive: 増えました, negative: 減りました}
+  - {name: trend, op: series, value: FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER, group_by: [OPERATOR], order: YEAR}
+
+select:
+  cap: 150
+  filters: ["YEAR == 2023", "km_rank_n > 1"]
+  score:
+    - {expr: "rank_desc(FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER)", weight: 1.0}
+    - {expr: "abs(train_yoy)", weight: 0.02}
+  diversify_by: [CATEGORY]
+  seed: 42
+
+big_number:
+  primary: {text: "{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER}", unit: "キロ", label: "営業キロ", when: "FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER != null"}
+  fallback: {text: "{train_rank_text}", unit: "", label: "同じ区分での列車数の順位"}
+
+headline: "{OPERATOR}の{YEAR}年度の営業キロ"
+chips: ["{CATEGORY}", "{YEAR}年度", "{JURISDICTION}"]
+sparkline: trend
+
+template_groups:
+  - id: km
+    label: "営業キロと、同じ区分での順位"
+    templates:
+      - id: km_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度の営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER}キロです。"
+          - {text: "区分「{CATEGORY}」の{km_rank_n}事業者のうち、{km_rank}番目の長さです。", optional: true}
+          - {text: "貨物の営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_CARGO}キロです。", optional: true}
+      - id: km_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER}キロです。"
+  - id: cargo
+    label: "貨物の営業キロ"
+    templates:
+      - id: cargo_std
+        lines:
+          - "{OPERATOR}は、貨物も運んでいます。{YEAR}年度の貨物の営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_CARGO}キロです。"
+          - {text: "区分「{CATEGORY}」の{cargo_rank_n}事業者のうち、{cargo_rank}番目の長さです。", optional: true}
+          - {text: "旅客の営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER}キロです。", optional: true}
+      - id: cargo_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の貨物の営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_CARGO}キロです。"
+  - id: trains
+    label: "列車数の順位と前年比"
+    templates:
+      - id: trains_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度の列車数は、区分「{CATEGORY}」の{train_rank_n}事業者のうち{train_rank_text}でした。"
+          - {text: "列車数は、前年に比べて{train_yoy_abs_text}{train_yoy_word}。", optional: true}
+          - {text: "営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER}キロです。", optional: true}
+      - id: trains_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の列車数は、区分「{CATEGORY}」の{train_rank_n}事業者のうち{train_rank_text}でした。"
+  - id: cars
+    label: "車両数の順位と前年比"
+    templates:
+      - id: cars_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度の車両数は、区分「{CATEGORY}」の{cars_rank_n}事業者のうち{cars_rank_text}でした。"
+          - {text: "車両数は、前年に比べて{cars_yoy_abs_text}{cars_yoy_word}。", optional: true}
+          - {text: "営業キロは{FISCAL_YEAR_TOTAL_OPERATING_KILOMETERS_PASSENGER}キロです。", optional: true}
+      - id: cars_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度の車両数は、区分「{CATEGORY}」の{cars_rank_n}事業者のうち{cars_rank_text}でした。"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この事業者の営業キロ・車両の話題として、次のどの型が一番ニュースになりますか。"
+    state: [km_rank, cargo_rank, cargo_rank_n, train_rank, cars_rank, train_yoy, cars_yoy]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: pick, default: km}
+
+fallback_rules:
+  pick:
+    - {if: "cargo_rank_n > 1 and cargo_rank < 4", then: cargo}
+    - {if: "train_rank < 4", then: trains}
+    - {if: "cars_rank < 4", then: cars}
+    - {else: km}
+
+embed_text: "鉄道の営業キロ {OPERATOR} {YEAR}年度 {CATEGORY} {JURISDICTION}"
+required: [OPERATOR, YEAR]
