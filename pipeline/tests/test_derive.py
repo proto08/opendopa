@@ -153,3 +153,23 @@ def test_fill_by_key_uses_other_rows_and_other_columns(make_dataset) -> None:
     got = derive(df, ds)["v"].tolist()
     # A: 自分の値か、同じ名前の 1 行目の値。B と C: 降ろし側の列の値。名前が欠損の行は埋めない
     assert got == [1.0, 1.0, 5.0, None, 3.0]
+
+
+def test_format_abs_and_range(make_dataset) -> None:
+    col = pd.Series([-6_938_290.0, 285_711_829.0, 5.0, 3e12, None])
+    s = run(make_dataset, col, op="format", fmt="sen_yen", abs=True, min_abs=100, max_abs=1e10)
+    assert list(s) == ["約69.4億円", "約2,857.1億円", None, None, None]
+    # abs なしなら符号が残る
+    assert run(make_dataset, pd.Series([-6_938_290.0]), op="format", fmt="sen_yen")[0] == (
+        "マイナス約69.4億円"
+    )
+
+
+def test_sign_label(make_dataset) -> None:
+    col = pd.Series([5.0, -1.0, 0.0, None, "x"], dtype=object)
+    s = run(make_dataset, col, op="sign_label", positive="黒字", negative="赤字")
+    assert list(s) == ["黒字", "赤字", None, None, None]  # 0 は書いていないので欠損
+    s = run(make_dataset, col, op="sign_label", positive="黒字", negative="赤字", zero="ゼロ")
+    assert s[2] == "ゼロ"
+    with pytest.raises(DeriveError, match="positive か negative"):
+        run(make_dataset, col, op="sign_label")

@@ -1,0 +1,143 @@
+# 鉄軌道: 損益計算書(会社単位)(docs/data.md §8.3 と §10.13)
+id: rail_income
+label: 鉄道会社の損益
+source_name: 鉄軌道統計年報 損益計算書
+wm_char: 益
+color: "#36B37E"
+files: [data/raw/rail_income/05_tetsudou_sonekikeisansyo.csv]
+grain: row
+rename: {}
+null_values: [""]
+# 0 は「記載なし」とみなす。事業別の 0 は、その事業をしていない会社(黒字とも赤字とも言わない)
+zero_is_null:
+  - TOTAL_OPERATING_REVENUE_THOUSANDJPY
+  - ORDINARY_PROFITLOSS_THOUSANDJPY
+  - NET_PROFITLOSS_THOUSANDJPY
+  - RAILWAY_OPERATING_PROFITLOSS_THOUSANDJPY
+  - BUS_OPERATING_PROFITLOSS_THOUSANDJPY
+  - REALESTATE_OPERATING_PROFITLOSS_THOUSANDJPY
+filters: [{col: NET_PROFITLOSS_THOUSANDJPY, not_null: true}]
+
+derived:
+  # 金額は千円の列。符号は言葉(黒字・赤字、純利益・純損失)に任せ、大きさだけを億円・兆円で読む
+  net_word: {from: NET_PROFITLOSS_THOUSANDJPY, op: sign_label, positive: 当期純利益, negative: 当期純損失}
+  net_sign: {from: NET_PROFITLOSS_THOUSANDJPY, op: sign_label, positive: 黒字, negative: 赤字}
+  net_amt: {from: NET_PROFITLOSS_THOUSANDJPY, op: format, fmt: sen_yen, abs: true}
+  ord_sign: {from: ORDINARY_PROFITLOSS_THOUSANDJPY, op: sign_label, positive: 黒字, negative: 赤字}
+  ord_amt: {from: ORDINARY_PROFITLOSS_THOUSANDJPY, op: format, fmt: sen_yen, abs: true}
+  rev_amt: {from: TOTAL_OPERATING_REVENUE_THOUSANDJPY, op: format, fmt: sen_yen}
+  # 事業別の営業損益。その事業の列が空(していない会社)なら欠損になり、その行は省かれる
+  rail_sign: {from: RAILWAY_OPERATING_PROFITLOSS_THOUSANDJPY, op: sign_label, positive: 黒字, negative: 赤字}
+  bus_sign: {from: BUS_OPERATING_PROFITLOSS_THOUSANDJPY, op: sign_label, positive: 黒字, negative: 赤字}
+  re_sign: {from: REALESTATE_OPERATING_PROFITLOSS_THOUSANDJPY, op: sign_label, positive: 黒字, negative: 赤字}
+
+stats:
+  - {name: rev_rank, op: rank_in_group, value: TOTAL_OPERATING_REVENUE_THOUSANDJPY, group: [COMPANY_SIZE, YEAR], fmt: rank}
+  - {name: net_series, op: series, value: NET_PROFITLOSS_THOUSANDJPY, group_by: COMPANY_NAME, order: YEAR}
+
+# 最新年度(2023)を中心に、規模の大きい会社を選ぶ。規模の区分でばらす
+select:
+  cap: 150
+  order_by: YEAR
+  score:
+    - {expr: YEAR, weight: 1.0}
+    - {expr: rank_desc(TOTAL_OPERATING_REVENUE_THOUSANDJPY), weight: 0.5}
+  diversify_by: COMPANY_SIZE
+
+kind: stat
+headline: "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_sign}"
+chips: ["{COMPANY_SIZE}", "{SUPERVISORY_OFFICE}", "{net_sign}"]
+sparkline: net_series
+
+big_number:
+  primary: {text: "{net_amt}", unit: "", label: "{net_word}", when: "net_amt != null"}
+  fallback: {text: "{rev_amt}", unit: "", label: "営業収益"}
+
+template_groups:
+  - id: profit_diversified
+    label: "当期純利益が黒字で、鉄道のほかにバスや不動産の事業もある会社"
+    templates:
+      - id: profit_diversified_std
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - {text: "鉄道事業の営業損益は{rail_sign}です。", optional: true}
+          - {text: "バス事業の営業損益は{bus_sign}です。", optional: true}
+          - {text: "不動産事業の営業損益は{re_sign}です。", optional: true}
+          - {text: "経常損益は{ord_sign}{ord_amt}です。", optional: true}
+          - "営業収益は{rev_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+      - id: profit_diversified_short
+        short: true
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - "営業収益は{rev_amt}です。"
+  - id: loss_diversified
+    label: "当期純損失が赤字で、鉄道のほかにバスや不動産の事業もある会社"
+    templates:
+      - id: loss_diversified_std
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - {text: "鉄道事業の営業損益は{rail_sign}です。", optional: true}
+          - {text: "バス事業の営業損益は{bus_sign}です。", optional: true}
+          - {text: "不動産事業の営業損益は{re_sign}です。", optional: true}
+          - {text: "経常損益は{ord_sign}{ord_amt}です。", optional: true}
+          - "営業収益は{rev_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+      - id: loss_diversified_short
+        short: true
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - "営業収益は{rev_amt}です。"
+  - id: profit_rail
+    label: "当期純利益が黒字で、鉄道が中心の会社"
+    templates:
+      - id: profit_rail_std
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - {text: "鉄道事業の営業損益は{rail_sign}です。", optional: true}
+          - {text: "経常損益は{ord_sign}{ord_amt}です。", optional: true}
+          - "営業収益は{rev_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+      - id: profit_rail_short
+        short: true
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - "営業収益は{rev_amt}です。"
+  - id: loss_rail
+    label: "当期純損失が赤字で、鉄道が中心の会社"
+    templates:
+      - id: loss_rail_std
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - {text: "鉄道事業の営業損益は{rail_sign}です。", optional: true}
+          - {text: "経常損益は{ord_sign}{ord_amt}です。", optional: true}
+          - "営業収益は{rev_amt}で、同じ区分の{rev_rank_n}社中{rev_rank_text}です。"
+      - id: loss_rail_short
+        short: true
+        lines:
+          - "{COMPANY_NAME}の{YEAR}年、{net_word}は{net_amt}でした。"
+          - "営業収益は{rev_amt}です。"
+
+# 型は、当期純損益の符号と、バス・不動産の事業があるかで決まる(数字の判断なので、ルールで選ぶ)
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この会社の損益は、次のどの型に当たりますか。"
+    state: [net_sign, bus_sign, re_sign]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: pattern, default: profit_rail}
+
+fallback_rules:
+  pattern:
+    - {if: "net_sign == '黒字' and (bus_sign != null or re_sign != null)", then: profit_diversified}
+    - {if: "net_sign == '赤字' and (bus_sign != null or re_sign != null)", then: loss_diversified}
+    - {if: "net_sign == '赤字'", then: loss_rail}
+    - {else: profit_rail}
+
+comments:
+  pool_light: ["ほう", "なるほど", "数字えぐい", "へえ", "知らなかった", "これは気になる"]
+  pool_calm: ["なるほど", "落ち着いて見たい", "そうなんだ", "地域の足だね"]
+  rule: "net_sign == '赤字' -> calm; else light"
+
+embed_text: "鉄道会社 損益 {COMPANY_NAME} {COMPANY_SIZE} {net_sign} {YEAR}年"
+required: [COMPANY_NAME, YEAR, NET_PROFITLOSS_THOUSANDJPY, TOTAL_OPERATING_REVENUE_THOUSANDJPY]

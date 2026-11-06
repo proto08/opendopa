@@ -98,3 +98,49 @@ module "speech" {
   location            = azurerm_resource_group.main.location
   tags                = local.tags
 }
+
+locals {
+  database_url = format(
+    "postgres://%s:%s@%s:5432/%s?sslmode=require",
+    module.postgres.administrator_login,
+    urlencode(var.postgres_admin_password),
+    module.postgres.fqdn,
+    module.postgres.database_name,
+  )
+}
+
+# web と recsys。イメージは make deploy(az containerapp update)で差し替える(ADR-0018 A1)
+module "containerapp" {
+  source = "./modules/containerapp"
+
+  name                       = local.name
+  resource_group_name        = azurerm_resource_group.main.name
+  location                   = azurerm_resource_group.main.location
+  log_analytics_workspace_id = module.monitoring.log_analytics_workspace_id
+  registry_id                = module.registry.id
+  registry_login_server      = module.registry.login_server
+  web_image                  = var.web_image
+  recsys_image               = var.recsys_image
+  web_min_replicas           = var.web_min_replicas
+  web_max_replicas           = var.web_max_replicas
+
+  web_env = {
+    MEDIA_BASE_URL = module.cdn.base_url
+  }
+  web_secrets = {
+    DATABASE_URL                          = local.database_url
+    INTERNAL_TOKEN                        = var.internal_token
+    APPLICATIONINSIGHTS_CONNECTION_STRING = module.monitoring.application_insights_connection_string
+  }
+
+  recsys_env = {
+    EMBED_DIM = "1024"
+  }
+  # RECSYS_DATABASE_URL は読み取り専用ロールの接続文字列。ロールを作るマイグレーションの後に tfvars で渡す
+  recsys_secrets = merge(
+    { INTERNAL_TOKEN = var.internal_token },
+    var.recsys_database_url != "" ? { RECSYS_DATABASE_URL = var.recsys_database_url } : {},
+  )
+
+  tags = local.tags
+}

@@ -10,8 +10,19 @@ from typing import Annotated
 import pandas as pd
 import typer
 
+from opendopa_pipeline.decider.evaluate import (
+    draft_labels,
+    evaluate,
+    format_results,
+    load_labels,
+    write_labels,
+)
+from opendopa_pipeline.embed.providers import create_embedder
+from opendopa_pipeline.embed.run import DEFAULT_K, run_embed
 from opendopa_pipeline.generate import format_summary, run_generate
-from opendopa_pipeline.ingest import IngestError, load_frame, load_path
+from opendopa_pipeline.ingest import IngestError, load_frame, load_path, row_dict
+from opendopa_pipeline.llm import create_llm
+from opendopa_pipeline.prepare import prepare
 from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
 from opendopa_pipeline.spec import load_dataset
 
@@ -100,15 +111,60 @@ def generate(
 def decide(
     dataset: DatasetOpt,
     eval_labels: Annotated[Path | None, typer.Option("--eval", help="人が付けた正解のCSV")] = None,
+    draft: Annotated[
+        bool, typer.Option("--draft", help="rules の判断で、評価用ラベルの下書き(50行)を出す")
+    ] = False,
+    provider: Annotated[
+        str | None,
+        typer.Option("--provider", help="評価するプロバイダー(カンマ区切りで複数。既定は rules)"),
+    ] = None,
+    force: Annotated[
+        bool, typer.Option("--force", help="--draft で既存のファイルを上書きする")
+    ] = False,
 ) -> None:
-    """判断モデルの評価(人が付けた正解との一致率)。"""
-    _not_implemented("decide", "M1b")
+    """判断モデルの評価(人が付けた正解との一致率)と、正解の下書き。"""
+    if draft == (eval_labels is not None):
+        raise _fail("`--eval <CSV>` と `--draft` のどちらか1つを指定してください")
+    yaml_path = REPO_ROOT / "datasets" / f"{dataset}.yaml"
+    try:
+        definition = load_dataset(yaml_path)
+        rows = [row_dict(r) for _, r in prepare(definition, REPO_ROOT).frame.iterrows()]
+        if draft:
+            out = REPO_ROOT / "datasets" / f"{dataset}.labels.csv"
+            if out.exists() and not force:
+                raise _fail(f"{out} が既にあります(人が直した内容を守るため。上書きは --force)")
+            write_labels(out, draft_labels(definition, rows))
+            typer.echo(f"下書きを書き出しました: {out}\n`template` を人が確認して直してください")
+            return
+        assert eval_labels is not None
+        names = [p.strip() for p in (provider or "rules").split(",") if p.strip()]
+        labels = load_labels(eval_labels, definition, rows)
+        typer.echo(format_results(evaluate(definition, rows, labels, names)))
+    except (IngestError, ValueError, OSError) as e:  # EvalError・DatasetError は ValueError
+        raise _fail(str(e)) from e
 
 
 @app.command()
-def embed() -> None:
-    """全動画の埋め込み・2D座標・クラスタ。"""
-    _not_implemented("embed", "M2")
+def embed(
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="out/ の場所")] = REPO_ROOT / "out",
+    k: Annotated[int, typer.Option("--k", help="クラスタの数")] = DEFAULT_K,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="埋め込みのプロバイダー(既定は EMBED_PROVIDER)")
+    ] = None,
+) -> None:
+    """全動画の埋め込み・2D座標・クラスタ(常に全体をやり直す)。"""
+    try:
+        result = run_embed(out_dir, create_embedder(provider), create_llm(), k)
+    except (ValueError, OSError) as e:  # EmbedError は ValueError
+        raise _fail(str(e)) from e
+    if result.replaced_model:
+        typer.echo(
+            f"既存の出力のモデル({result.replaced_model})が違うため、全動画を埋め込み直しました"
+        )
+    typer.echo(f"{result.videos} 本を埋め込み、{len(result.clusters)} クラスタに分けました")
+    for c in result.clusters:
+        typer.echo(f"  {c['id']:>2}  {c['name']}")
+    typer.echo(f"\n書き出しました: {out_dir}/(embeddings.npz, clusters.json, centroid.json)")
 
 
 @app.command()

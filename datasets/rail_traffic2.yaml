@@ -1,0 +1,114 @@
+# 鉄軌道 運輸成績 2(docs/data.md §10.10)
+# 3 つの指標とも単位が「要確認」なので、絶対値は原稿に出さない。同じ区分の中の順位と前年比だけを語る。
+id: rail_traffic2
+label: 鉄道の運輸成績
+source_name: 鉄道統計年報 運輸成績2
+wm_char: 鉄
+color: "#6366F1"
+files: [data/raw/rail_traffic2/02_tetsudou_unyuseiseki2.csv]
+grain: row
+rename: {CORPORATION_NAME: OPERATOR, COMPANY_NAME: OPERATOR, OPERATOR_NAME: OPERATOR}
+null_values: ["", "-", "－", "…"]
+zero_is_null: [AVERAGE_PASSAGE_AMOUNT_PASSENGER, AVERAGE_TRANSPORTED_KILOMETER_PASSENGER, TOTAL_DAY_KILOMETER_PASSENGER]
+filters: [{col: OPERATOR, not_null: true}, {col: YEAR, not_null: true}]
+
+derived: {}
+
+stats:
+  - {name: passage_rank, op: rank_in_group, value: AVERAGE_PASSAGE_AMOUNT_PASSENGER, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: distance_rank, op: rank_in_group, value: AVERAGE_TRANSPORTED_KILOMETER_PASSENGER, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: daykm_rank, op: rank_in_group, value: TOTAL_DAY_KILOMETER_PASSENGER, group: [CATEGORY, YEAR], fmt: rank}
+  - {name: passage_yoy, op: yoy_ratio, value: AVERAGE_PASSAGE_AMOUNT_PASSENGER, group_by: [OPERATOR], year: YEAR, fmt: percent}
+  - {name: passage_yoy_abs, op: abs, value: passage_yoy, fmt: percent}
+  - {name: passage_yoy_word, op: sign_word, value: passage_yoy, positive: 増えました, negative: 減りました}
+  - {name: distance_yoy, op: yoy_ratio, value: AVERAGE_TRANSPORTED_KILOMETER_PASSENGER, group_by: [OPERATOR], year: YEAR, fmt: percent}
+  - {name: distance_yoy_abs, op: abs, value: distance_yoy, fmt: percent}
+  - {name: distance_yoy_word, op: sign_word, value: distance_yoy, positive: 伸びました, negative: 縮みました}
+  - {name: daykm_yoy, op: yoy_ratio, value: TOTAL_DAY_KILOMETER_PASSENGER, group_by: [OPERATOR], year: YEAR, fmt: percent}
+  - {name: daykm_yoy_abs, op: abs, value: daykm_yoy, fmt: percent}
+  - {name: daykm_yoy_word, op: sign_word, value: daykm_yoy, positive: 増えました, negative: 減りました}
+  - {name: trend, op: series, value: AVERAGE_PASSAGE_AMOUNT_PASSENGER, group_by: [OPERATOR], order: YEAR}
+
+select:
+  cap: 150
+  filters: ["YEAR == 2023", "passage_rank_n > 1"]
+  score:
+    - {expr: "rank_desc(AVERAGE_PASSAGE_AMOUNT_PASSENGER)", weight: 1.0}
+    - {expr: "abs(passage_yoy)", weight: 0.02}
+  diversify_by: [CATEGORY]
+  seed: 42
+
+big_number:
+  primary: {text: "{passage_rank_text}", unit: "", label: "平均通過人員の順位(同じ区分)", when: "passage_rank != null"}
+  fallback: {text: "{distance_rank_text}", unit: "", label: "平均乗車キロの順位(同じ区分)"}
+
+headline: "{OPERATOR}の{YEAR}年度の運輸成績"
+chips: ["{CATEGORY}", "{YEAR}年度", "{JURISDICTION}"]
+sparkline: trend
+
+template_groups:
+  - id: passage
+    label: "平均通過人員の順位と前年比"
+    templates:
+      - id: passage_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度、平均通過人員は、区分「{CATEGORY}」の{passage_rank_n}事業者のうち{passage_rank_text}でした。"
+          - {text: "平均通過人員は、前年に比べて{passage_yoy_abs_text}{passage_yoy_word}。", optional: true}
+      - id: passage_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度、平均通過人員は、区分「{CATEGORY}」の{passage_rank_n}事業者のうち{passage_rank_text}でした。"
+  - id: distance
+    label: "平均乗車キロの順位と前年比"
+    templates:
+      - id: distance_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度、平均乗車キロは、区分「{CATEGORY}」の{distance_rank_n}事業者のうち{distance_rank_text}でした。"
+          - {text: "平均乗車キロは、前年に比べて{distance_yoy_abs_text}{distance_yoy_word}。", optional: true}
+      - id: distance_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度、平均乗車キロは、区分「{CATEGORY}」の{distance_rank_n}事業者のうち{distance_rank_text}でした。"
+  - id: daykm
+    label: "延日キロの順位と前年比"
+    templates:
+      - id: daykm_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度、延日キロは、区分「{CATEGORY}」の{daykm_rank_n}事業者のうち{daykm_rank_text}でした。"
+          - {text: "延日キロは、前年に比べて{daykm_yoy_abs_text}{daykm_yoy_word}。", optional: true}
+      - id: daykm_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度、延日キロは、区分「{CATEGORY}」の{daykm_rank_n}事業者のうち{daykm_rank_text}でした。"
+  - id: overview
+    label: "3つの指標の順位をまとめて見る"
+    templates:
+      - id: overview_std
+        lines:
+          - "{OPERATOR}の{YEAR}年度の運輸成績を、区分「{CATEGORY}」の中の順位で見ます。"
+          - "平均通過人員は{passage_rank_text}、平均乗車キロは{distance_rank_text}、延日キロは{daykm_rank_text}です。"
+      - id: overview_short
+        short: true
+        lines:
+          - "{OPERATOR}の{YEAR}年度、区分「{CATEGORY}」の中の順位です。平均通過人員は{passage_rank_text}。"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この事業者の運輸成績の話題として、次のどの型が一番ニュースになりますか。"
+    state: [passage_rank, distance_rank, daykm_rank, passage_yoy, distance_yoy, daykm_yoy]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: pick, default: overview}
+
+fallback_rules:
+  pick:
+    - {if: "passage_rank < 4", then: passage}
+    - {if: "distance_rank < 4", then: distance}
+    - {if: "daykm_rank < 4", then: daykm}
+    - {else: overview}
+
+embed_text: "鉄道の運輸成績 {OPERATOR} {YEAR}年度 {CATEGORY} {JURISDICTION}"
+required: [OPERATOR, YEAR]

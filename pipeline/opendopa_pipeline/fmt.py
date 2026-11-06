@@ -100,6 +100,14 @@ def format_rank(value: float | int | None) -> str | None:
     return None if value is None else f"{int(value):,}位"
 
 
+def format_decimal(value: float | int | str | Decimal | None) -> str | None:
+    """小数1桁までの数(3.456 → 3.5、12.0 → 12、1234.5 → 1,234.5)。単位は付けない。"""
+    if value is None:
+        return None
+    q = _round(_dec(value), "0.1")
+    return f"{int(q):,}" if q == q.to_integral_value() else f"{q:,}"
+
+
 def format_count(value: float | int | None) -> str | None:
     return None if value is None else f"{int(value):,}件"
 
@@ -152,6 +160,7 @@ FORMATTERS: dict[str, Callable[[Any], str | None]] = {
     "percent": format_percent,
     "rank": format_rank,
     "count": format_count,
+    "decimal": format_decimal,
 }
 
 

@@ -40,9 +40,9 @@ def test_zero_is_null_unknown_column(tmp_path, make_dataset) -> None:
 def test_missing_file_and_loader(tmp_path, make_dataset) -> None:
     with pytest.raises(IngestError, match="ファイルがありません"):
         load_frame(make_dataset(files=["nope.csv"]), tmp_path)
-    (tmp_path / "x.geojson").write_text("{}")
+    (tmp_path / "x.shp").write_text("{}")
     with pytest.raises(IngestError, match="ローダがありません"):
-        load_frame(make_dataset(files=["x.geojson"]), tmp_path)
+        load_frame(make_dataset(files=["x.shp"]), tmp_path)
 
 
 def test_register_loader(tmp_path, make_dataset) -> None:

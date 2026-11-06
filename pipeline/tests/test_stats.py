@@ -195,6 +195,27 @@ def test_per(make_dataset) -> None:
     assert numbers[1][0]["inputs"] == {"a": 100.0, "b": 4.0}
 
 
+def test_abs_and_sign_word(make_dataset) -> None:
+    df = pd.DataFrame({"v": [-5.25, 0.0, 3.0, None]})
+    out, numbers = run(
+        make_dataset,
+        df,
+        {"name": "a", "op": "abs", "value": "v", "fmt": "percent"},
+        {
+            "name": "w",
+            "op": "sign_word",
+            "value": "v",
+            "positive": "増えました",
+            "negative": "減りました",
+        },
+    )
+    assert out["a_text"].iloc[0] == "5.3%" and isnull(out["a"].iloc[3])
+    # 0 と欠損は語がない(その語を使う文は省かれる)
+    assert list(out["w"][:3]) == ["減りました", None, "増えました"] and isnull(out["w"].iloc[3])
+    assert numbers[1][1]["value"] == "減りました"
+    assert [r["name"] for r in numbers[2]] == ["a"]  # 0 の行に sign_word の記録はない
+
+
 def test_fmt_adds_text_column(make_dataset) -> None:
     df = pd.DataFrame({"a": [2_008_428_041.0, None], "b": [1.0, 1.0]})
     out, numbers = run(
@@ -204,6 +225,11 @@ def test_fmt_adds_text_column(make_dataset) -> None:
     assert numbers[1][0]["display"] == "約2兆円"
     ds = make_dataset(stats=[{"name": "p", "op": "per", "num": "a", "den": "b", "fmt": "sen_yen"}])
     assert "p_text" in ds.defined_names()
+
+
+def test_rank_in_group_defines_n_column(make_dataset) -> None:
+    ds = make_dataset(stats=[{"name": "r", "op": "rank_in_group", "value": "v"}])
+    assert "r_n" in ds.defined_names()
 
 
 def test_errors(make_dataset) -> None:
@@ -233,4 +259,34 @@ def test_all_ops_are_registered() -> None:
         "seq_in_group",
         "is_first_time",
         "per",
+        "prev_year_label",
+    }
+
+
+def test_prev_year_label(make_dataset) -> None:
+    df = pd.DataFrame(
+        {
+            "co": ["A", "A", "A", "A", "B"],
+            "year": [2020, 2021, 2022, 2023, 2023],
+            "v": [-5.0, 3.0, 0.0, 4.0, 1.0],
+        }
+    )
+    out, numbers = run(
+        make_dataset,
+        df,
+        {
+            "name": "p",
+            "op": "prev_year_label",
+            "value": "v",
+            "group_by": "co",
+            "year": "year",
+            "positive": "黒字",
+            "negative": "赤字",
+        },
+    )
+    # 最初の年・前年が 0 の年・前年の行がない主体は欠損
+    assert [None if isnull(x) else x for x in out["p"]] == [None, "赤字", "黒字", None, None]
+    assert numbers[2][0]["display"] == "赤字" and numbers[2][0]["inputs"] == {
+        "v": 3.0,
+        "prev": -5.0,
     }

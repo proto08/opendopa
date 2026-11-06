@@ -14,7 +14,7 @@ from typing import Any
 
 import pandas as pd
 
-from opendopa_pipeline.fmt import FORMATTERS, format_datetime, format_value
+from opendopa_pipeline.fmt import FORMATTERS, format_datetime, format_value, parse_datetime
 from opendopa_pipeline.ingest import is_missing
 from opendopa_pipeline.spec import DatasetDef, Derived
 
@@ -155,11 +155,93 @@ def _map(col: pd.Series, d: Derived) -> pd.Series:
 
 @derive_op("format")
 def _format(col: pd.Series, d: Derived) -> pd.Series:
-    """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`"""
+    """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`
+
+    省略できる引数: `abs: true`(符号を除いた大きさにする。黒字・赤字の額など)、
+    `min_abs` / `max_abs`(大きさがこの範囲の外なら欠損にする。桁が極端な値を読まないため)。
+    """
     fmt = _arg(d, "fmt")
     if fmt not in FORMATTERS:
         raise DeriveError(f"format の fmt {fmt!r} は未知です(使えるのは {', '.join(FORMATTERS)})")
-    return _map_non_null(col, lambda v: format_value(fmt, v))
+    use_abs = _arg(d, "abs", False)
+    lo = _arg(d, "min_abs", None)
+    hi = _arg(d, "max_abs", None)
+
+    def f(v: Any) -> str | None:
+        x = _to_number(v)
+        if x is None:
+            return format_value(fmt, v)
+        if (lo is not None and abs(x) < lo) or (hi is not None and abs(x) > hi):
+            return None
+        return format_value(fmt, abs(x) if use_abs else x)
+
+    return _map_non_null(col, f)
+
+
+def _to_number(v: Any) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, int | float):
+        return None
+    return float(v)
+
+
+@derive_op("sign_label")
+def _sign_label(col: pd.Series, d: Derived) -> pd.Series:
+    """数値の符号を言葉にする(黒字・赤字など)。`positive` / `negative` / `zero` に書いた言葉を使い、
+    書いていない符号(省略した `zero` など)と数値でない値は欠損にする。"""
+    labels = {k: _arg(d, k, None) for k in ("positive", "negative", "zero")}
+    if labels["positive"] is None and labels["negative"] is None:
+        raise DeriveError("sign_label には positive か negative が必要です")
+
+    def label(v: Any) -> str | None:
+        x = _to_number(v)
+        if x is None:
+            return None
+        return labels["positive" if x > 0 else "negative" if x < 0 else "zero"]
+
+    return _map_non_null(col, label)
+
+
+def _frame_col(df: pd.DataFrame, name: str) -> pd.Series:
+    if name not in df.columns:
+        raise DeriveError(f"列 {name!r} がありません")
+    return df[name]
+
+
+@derive_frame_op("join_flags")
+def _join_flags(df: pd.DataFrame, d: Derived) -> pd.Series:
+    """フラグの列(1 なら該当)を、`labels`(列名 → ラベル)の順に拾って、ラベルのリストにする。
+
+    該当が 1 つもなければ欠損。リストは、穴に入れるときは「、」でつなぎ、`chips` では
+    1 つずつ分ける。
+    """
+    labels = _arg(d, "labels")
+    flags = {col: _frame_col(df, col) for col in labels}
+
+    def row(i: Any) -> list[str] | None:
+        hit = [
+            label
+            for col, label in labels.items()
+            if not is_missing(flags[col][i]) and flags[col][i] == 1
+        ]
+        return hit or None
+
+    return pd.Series([row(i) for i in df.index], index=df.index, dtype=object)
+
+
+@derive_frame_op("hours_between")
+def _hours_between_frame(df: pd.DataFrame, d: Derived) -> pd.Series:
+    start = _frame_col(df, str(d.from_))
+    end = _frame_col(df, _arg(d, "to"))
+
+    def hours(a: Any, b: Any) -> float | None:
+        x, y = parse_datetime(a), parse_datetime(b)
+        if x is None or y is None or y < x:
+            return None
+        return round((y - x).total_seconds() / 3600, 1)
+
+    return pd.Series(
+        [hours(a, b) for a, b in zip(start, end, strict=True)], index=df.index, dtype=object
+    )
 
 
 @derive_op("scale")
@@ -214,20 +296,23 @@ def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:
     """`derived` の列を足した新しい DataFrame を返す(元の DataFrame は変えない)。"""
     out = df.copy()
     for name, d in dataset.derived.items():
-        op = _OPS.get(d.op)
-        frame_op = _FRAME_OPS.get(d.op)
-        if op is None and frame_op is None:
+        op, frame = _OPS.get(d.op), _FRAME_OPS.get(d.op)
+        if op is None and frame is None:
             raise DeriveError(
                 f"derived.{name}: 未知の op {d.op!r}(使えるのは {', '.join(known_derive_ops())})"
             )
         if name in df.columns:
             raise DeriveError(f"derived.{name}: 同じ名前の列が元データにあります")
-        if d.from_ is None:
+        if frame is None and d.from_ is None:
             raise DeriveError(f"derived.{name}: from が必要です")
-        if d.from_ not in df.columns:
+        if d.from_ is not None and d.from_ not in df.columns:
             raise DeriveError(f"derived.{name}: 列 {d.from_!r} がありません")
         try:
-            out[name] = op(df[d.from_], d) if op is not None else frame_op(df, d)  # type: ignore[misc]
+            if frame is not None:
+                out[name] = frame(df, d)
+            else:
+                assert op is not None and d.from_ is not None
+                out[name] = op(df[d.from_], d)
         except DeriveError as e:
             raise DeriveError(f"derived.{name}: {e}") from e
     return out
