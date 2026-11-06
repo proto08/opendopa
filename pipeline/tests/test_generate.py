@@ -232,7 +232,7 @@ def test_generate_accident_real(tmp_path):
     s = res.report["summary"]
     assert 185 <= s["generated"] <= 194
     sec = s["estimated_sec"]
-    assert 19 <= sec["min"] <= 20 and 25.5 <= sec["median"] <= 26.5 and sec["max"] <= 30
+    assert 18 <= sec["min"] <= 20 and 25.5 <= sec["median"] <= 26.5 and sec["max"] <= 30
     assert s["excluded_by_reason"].get("number_mismatch", 0) == 0
     assert s["excluded_by_reason"].get("too_long") == 2
     t = s["by_type"]

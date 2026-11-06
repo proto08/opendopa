@@ -55,14 +55,25 @@ def kmeans(embeddings: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
     return labels, normalize(centroids)
 
 
-def mechanical_name(members: list[Meta]) -> str:
-    """「{主なデータ名}の{最頻の地域・種別}」。地域・種別がなければデータ名だけ。"""
+def mechanical_name(members: list[Meta], taken: frozenset[str] = frozenset()) -> str:
+    """「{主なデータ名}の{最頻の地域・種別}」。地域・種別がなければデータ名だけ。
+
+    `taken`(他のクラスタの名前)と重なるときは、次に多い地域・種別を足し、
+    それでも重なれば「(2)」のような番号を付ける。
+    """
     name = Counter(m.dataset_name for m in members).most_common(1)[0][0]
     chips = Counter(c for m in members for c in m.chips)
-    if not chips:
-        return name
-    top = max(chips.items(), key=lambda kv: (kv[1], kv[0]))[0]
-    return f"{name}の{top}"
+    ranked = [c for c, _ in sorted(chips.items(), key=lambda kv: (-kv[1], kv[0]))]
+    candidate = f"{name}の{ranked[0]}" if ranked else name
+    for extra in ranked[1:]:
+        if candidate not in taken:
+            return candidate
+        candidate += f"・{extra}"
+    base, n = candidate, 2
+    while candidate in taken:
+        candidate = f"{base}({n})"
+        n += 1
+    return candidate
 
 
 def clean_llm_name(text: str) -> str:
@@ -103,8 +114,9 @@ def build_clusters(
         idx = np.flatnonzero(labels == cid)
         members = [metas[i] for i in idx]
         near = idx[np.argsort(-(embeddings[idx] @ centroid), kind="stable")[:NEAREST]]
+        taken = frozenset(c["name"] for c in clusters)
         name = (llm_name(llm, [metas[i] for i in near]) if llm else None) or mechanical_name(
-            members
+            members, taken
         )
         clusters.append(
             {

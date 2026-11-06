@@ -197,3 +197,12 @@ def test_helpers() -> None:
 def test_cli_embed_error_without_videos(tmp_path: Path) -> None:
     r = CliRunner().invoke(app, ["embed", "--out-dir", str(tmp_path), "--provider", "bogus"])
     assert r.exit_code == 2
+
+
+def test_mechanical_name_avoids_taken() -> None:
+    a = Meta(dataset_name="X", chips=("東京都", "事故"))
+    b = Meta(dataset_name="X", chips=("事故", "東京都", "事故"))
+    assert mechanical_name([b]) == "Xの事故"
+    assert mechanical_name([b], frozenset({"Xの事故"})) == "Xの事故・東京都"
+    assert mechanical_name([a], frozenset({"Xの事故", "Xの事故・東京都"})) == "Xの事故・東京都(2)"
+    assert mechanical_name([Meta(dataset_name="X")], frozenset({"X"})) == "X(2)"
