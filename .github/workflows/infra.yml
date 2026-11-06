@@ -1,0 +1,118 @@
+# インフラ変更: 手動実行 → terraform plan → environment の承認 → terraform apply。設計書 §12.4、ADR-0019。
+# Azure へは OIDC で認証する(長期の Azure 資格情報は置かない)。設定手順は README の「CD(デプロイ)」。
+name: Infra
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: infra
+  cancel-in-progress: false
+
+env:
+  MISE_TRUSTED_CONFIG_PATHS: ${{ github.workspace }}
+  # azurerm プロバイダーと backend を OIDC で認証する
+  ARM_USE_OIDC: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_INFRA }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_INPUT: "false"
+  TF_IN_AUTOMATION: "true"
+  TF_VAR_env_name: ${{ vars.TF_ENV_NAME }}
+  TF_VAR_name_suffix: ${{ vars.TF_NAME_SUFFIX }}
+  # アプリの設定値(Azure の資格情報ではない)。environment の secrets に置く
+  TF_VAR_postgres_admin_password: ${{ secrets.TF_POSTGRES_ADMIN_PASSWORD }}
+  TF_VAR_internal_token: ${{ secrets.TF_INTERNAL_TOKEN }}
+  TF_VAR_recsys_database_url: ${{ secrets.TF_RECSYS_DATABASE_URL }}
+
+jobs:
+  plan:
+    name: terraform plan
+    if: vars.AZURE_CLIENT_ID_INFRA != ''
+    runs-on: ubuntu-latest
+    # 承認なし。subject は repo:<owner>/<repo>:environment:infra-plan
+    environment: infra-plan
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: terraform
+      - name: backend.hcl を作る
+        run: |
+          cat > infra/backend.hcl <<HCL
+          resource_group_name  = "${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          storage_account_name = "${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          container_name       = "tfstate"
+          key                  = "${{ vars.TF_ENV_NAME }}.terraform.tfstate"
+          use_azuread_auth     = true
+          HCL
+      - run: terraform -chdir=infra init -backend-config=backend.hcl
+      - run: terraform -chdir=infra plan -out=tfplan -lock-timeout=5m
+      # 承認する人が見る内容
+      - name: plan の内容を要約に出す
+        run: |
+          {
+            echo '## terraform plan'
+            echo '```'
+            terraform -chdir=infra show -no-color tfplan
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      # plan ファイルには sensitive な値(DB パスワードなど)が入る。このリポジトリは public で、
+      # artifact は誰でもダウンロードできるため、暗号化してから上げる。保持も1日にする
+      - name: plan ファイルを暗号化する
+        env:
+          PLAN_PASSPHRASE: ${{ secrets.TF_PLAN_PASSPHRASE }}
+        run: |
+          test -n "$PLAN_PASSPHRASE"
+          openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PLAN_PASSPHRASE \
+            -in infra/tfplan -out infra/tfplan.enc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: infra/tfplan.enc
+          retention-days: 1
+
+  apply:
+    name: terraform apply
+    needs: plan
+    runs-on: ubuntu-latest
+    # Required reviewers を設定した environment。承認されるまで止まる。
+    # subject は repo:<owner>/<repo>:environment:infra-apply
+    environment: infra-apply
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: terraform
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: infra
+      - name: plan ファイルを復号する
+        env:
+          PLAN_PASSPHRASE: ${{ secrets.TF_PLAN_PASSPHRASE }}
+        run: |
+          test -n "$PLAN_PASSPHRASE"
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:PLAN_PASSPHRASE \
+            -in infra/tfplan.enc -out infra/tfplan
+      - name: backend.hcl を作る
+        run: |
+          cat > infra/backend.hcl <<HCL
+          resource_group_name  = "${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          storage_account_name = "${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+          container_name       = "tfstate"
+          key                  = "${{ vars.TF_ENV_NAME }}.terraform.tfstate"
+          use_azuread_auth     = true
+          HCL
+      - run: terraform -chdir=infra init -backend-config=backend.hcl
+      # 承認した plan をそのまま適用する(plan 後に state が変わっていたら失敗する)
+      - run: terraform -chdir=infra apply -lock-timeout=5m tfplan
