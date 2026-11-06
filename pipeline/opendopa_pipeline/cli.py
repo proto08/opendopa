@@ -17,8 +17,11 @@ from opendopa_pipeline.decider.evaluate import (
     load_labels,
     write_labels,
 )
+from opendopa_pipeline.embed.providers import create_embedder
+from opendopa_pipeline.embed.run import DEFAULT_K, run_embed
 from opendopa_pipeline.generate import format_summary, run_generate
 from opendopa_pipeline.ingest import IngestError, load_frame, load_path, row_dict
+from opendopa_pipeline.llm import create_llm
 from opendopa_pipeline.prepare import prepare
 from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
 from opendopa_pipeline.spec import load_dataset
@@ -142,9 +145,26 @@ def decide(
 
 
 @app.command()
-def embed() -> None:
-    """全動画の埋め込み・2D座標・クラスタ。"""
-    _not_implemented("embed", "M2")
+def embed(
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="out/ の場所")] = REPO_ROOT / "out",
+    k: Annotated[int, typer.Option("--k", help="クラスタの数")] = DEFAULT_K,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="埋め込みのプロバイダー(既定は EMBED_PROVIDER)")
+    ] = None,
+) -> None:
+    """全動画の埋め込み・2D座標・クラスタ(常に全体をやり直す)。"""
+    try:
+        result = run_embed(out_dir, create_embedder(provider), create_llm(), k)
+    except (ValueError, OSError) as e:  # EmbedError は ValueError
+        raise _fail(str(e)) from e
+    if result.replaced_model:
+        typer.echo(
+            f"既存の出力のモデル({result.replaced_model})が違うため、全動画を埋め込み直しました"
+        )
+    typer.echo(f"{result.videos} 本を埋め込み、{len(result.clusters)} クラスタに分けました")
+    for c in result.clusters:
+        typer.echo(f"  {c['id']:>2}  {c['name']}")
+    typer.echo(f"\n書き出しました: {out_dir}/(embeddings.npz, clusters.json, centroid.json)")
 
 
 @app.command()

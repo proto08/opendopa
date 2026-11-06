@@ -1,0 +1,132 @@
+# レンタカーの貸渡実績(docs/data.md §10.5)。都道府県ごとに1本(grain: group)
+id: rental_result
+label: レンタカー貸渡実績
+source_name: レンタカー・カーシェアリング事業の貸渡実績報告
+wm_char: 車
+color: "#2EC4B6"
+files: [data/raw/rental_result/01_yousiki1_kashiwatashijissekihoukokusho.csv]
+grain: group
+# OPERATOR_ID(匿名の事業者 ID)と REPORTING_PERIOD(和暦の文字列)は、集計後の行に残さない
+group_by: [PREFECTURE_NAME]
+aggregate:
+  TOTAL_VEHICLE_COUNT: sum
+  TOTAL_RENTAL_TIMES: sum
+  TOTAL_RENTAL_DAYS: sum
+  TOTAL_RENTAL_FEES: sum
+  ADDRESS_LATITUDE: mean
+  ADDRESS_LONGITUDE: mean
+rename: {}
+null_values: [""]
+zero_is_null: []
+filters:
+  - "FISCAL_YEAR == 2025"
+  - "TOTAL_RENTAL_TIMES > 0"
+
+derived: {}
+
+stats:
+  # 順位は、貸出のあった都道府県の中での順位(同順位は同じ順位)
+  - {name: rank_times, op: rank_in_group, value: TOTAL_RENTAL_TIMES, fmt: rank}
+  - {name: rank_fleet, op: rank_in_group, value: TOTAL_VEHICLE_COUNT, fmt: rank}
+  - {name: rev_per_vehicle, op: per, num: TOTAL_RENTAL_FEES, den: TOTAL_VEHICLE_COUNT, fmt: yen}
+  - {name: rank_per, op: rank_in_group, value: rev_per_vehicle, fmt: rank}
+  - {name: avg_days, op: per, num: TOTAL_RENTAL_DAYS, den: TOTAL_RENTAL_TIMES, fmt: decimal}
+
+select: {cap: 47, order_by: null, diversify_by: null, score: [{expr: "rank_desc(TOTAL_RENTAL_TIMES)", weight: 1.0}]}
+
+big_number:
+  primary: {text: "{TOTAL_RENTAL_TIMES}", unit: "回", label: "年間の貸出回数"}
+
+kind: stat
+headline: "{PREFECTURE_NAME}のレンタカー、貸出は{TOTAL_RENTAL_TIMES}回"
+chips: ["{PREFECTURE_NAME}", "貸出回数 {rank_times_text}"]
+map:
+  type: points
+  points: [{name: "{PREFECTURE_NAME}", lat: ADDRESS_LATITUDE, lon: ADDRESS_LONGITUDE}]
+
+template_groups:
+  - id: top_times
+    label: "貸出回数が上位の都道府県"
+    templates:
+      - id: top_times_std
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出回数は、集計した{rank_times_n}都道府県の中で{rank_times_text}。上位に入っています。"
+          - {text: "車両あたりの売上は{rev_per_vehicle_text}で、{rank_per_text}です。", optional: true}
+          - {text: "貸出ごとの平均の日数は、{avg_days_text}日です。", optional: true}
+          - {text: "貸出に使われた車両は、合わせて{TOTAL_VEHICLE_COUNT}台です。", optional: true}
+      - id: top_times_short
+        short: true
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出回数は、集計した{rank_times_n}都道府県の中で{rank_times_text}です。"
+  - id: top_fleet
+    label: "車両の数が上位の都道府県"
+    templates:
+      - id: top_fleet_std
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出に使われた車両は合わせて{TOTAL_VEHICLE_COUNT}台。車両の数は、集計した{rank_fleet_n}都道府県の中で{rank_fleet_text}です。"
+          - "貸出回数は{rank_times_text}です。"
+          - {text: "車両あたりの売上は{rev_per_vehicle_text}で、{rank_per_text}です。", optional: true}
+          - {text: "貸出ごとの平均の日数は、{avg_days_text}日です。", optional: true}
+      - id: top_fleet_short
+        short: true
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出回数は、集計した{rank_times_n}都道府県の中で{rank_times_text}です。"
+  - id: top_per_vehicle
+    label: "車両あたりの売上が上位の都道府県"
+    templates:
+      - id: top_per_vehicle_std
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "車両あたりの売上は{rev_per_vehicle_text}。集計した{rank_per_n}都道府県の中で{rank_per_text}です。"
+          - "貸出回数は{rank_times_text}です。"
+          - {text: "貸出ごとの平均の日数は、{avg_days_text}日です。", optional: true}
+          - {text: "貸出に使われた車両は、合わせて{TOTAL_VEHICLE_COUNT}台です。", optional: true}
+      - id: top_per_vehicle_short
+        short: true
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出回数は、集計した{rank_times_n}都道府県の中で{rank_times_text}です。"
+  - id: standard
+    label: "上のどれでもない"
+    templates:
+      - id: standard_std
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出回数は、集計した{rank_times_n}都道府県の中で{rank_times_text}です。"
+          - {text: "車両あたりの売上は{rev_per_vehicle_text}で、{rank_per_text}です。", optional: true}
+          - {text: "貸出ごとの平均の日数は、{avg_days_text}日です。", optional: true}
+          - {text: "貸出に使われた車両は、合わせて{TOTAL_VEHICLE_COUNT}台です。", optional: true}
+      - id: standard_short
+        short: true
+        lines:
+          - "{PREFECTURE_NAME}のレンタカー、貸出は年間{TOTAL_RENTAL_TIMES}回です。"
+          - "貸出回数は、集計した{rank_times_n}都道府県の中で{rank_times_text}です。"
+
+template_select: {decision: template}
+
+# 型は順位だけで決まるので、規則(rules)で決める。数字は読まず、順位の列だけを渡す
+decisions:
+  - id: template
+    kind: choice
+    question: "このレンタカーの貸渡実績は、次のどの型に一番近いですか。"
+    state: [rank_times, rank_fleet, rank_per]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: by_rank, default: standard}
+
+fallback_rules:
+  by_rank:
+    - {if: "rank_times < 4", then: top_times}
+    - {if: "rank_fleet < 4", then: top_fleet}
+    - {if: "rank_per < 4", then: top_per_vehicle}
+    - {else: standard}
+
+comments:
+  pool_light: ["へえ", "意外と多い", "知らなかった", "旅行で使いたい", "数字えぐい"]
+
+embed_text: "レンタカー 貸出 {PREFECTURE_NAME} {rank_times_text}"
+required: [PREFECTURE_NAME, TOTAL_RENTAL_TIMES, ADDRESS_LATITUDE, ADDRESS_LONGITUDE]

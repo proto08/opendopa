@@ -93,3 +93,45 @@ variable "tts_provider" {
     error_message = "tts_provider は none / voicevox / azure のいずれかにする。"
   }
 }
+
+variable "internal_token" {
+  description = "web から recsys への内部 HTTP の共有トークン(INTERNAL_TOKEN)。環境変数 TF_VAR_internal_token で渡す"
+  type        = string
+  sensitive   = true
+
+  validation {
+    condition     = length(var.internal_token) >= 16
+    error_message = "internal_token は 16 文字以上にする。"
+  }
+}
+
+variable "recsys_database_url" {
+  description = "RECSYS_DATABASE_URL(recsys が起動時に読む、読み取り専用ロールの接続文字列)。空なら recsys に渡さない。TF_VAR_recsys_database_url で渡す"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "web_image" {
+  description = "web のイメージ(例: <registry>/opendopa-web:<tag>)。空なら初回用のプレースホルダー。以後の更新は make deploy が行い、Terraform は差分を無視する"
+  type        = string
+  default     = ""
+}
+
+variable "recsys_image" {
+  description = "recsys のイメージ。web_image と同じ扱い"
+  type        = string
+  default     = ""
+}
+
+variable "web_min_replicas" {
+  description = "web の最小レプリカ数"
+  type        = number
+  default     = 1
+}
+
+variable "web_max_replicas" {
+  description = "web の最大レプリカ数"
+  type        = number
+  default     = 3
+}

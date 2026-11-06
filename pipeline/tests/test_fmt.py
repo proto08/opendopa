@@ -3,6 +3,7 @@ import pytest
 from opendopa_pipeline.fmt import (
     format_count,
     format_datetime,
+    format_decimal,
     format_percent,
     format_rank,
     format_sen_yen,
@@ -93,6 +94,14 @@ def test_format_value() -> None:
     assert format_value("rank", float("nan")) is None
     with pytest.raises(ValueError):
         format_value("bogus", 1)
+
+
+def test_decimal() -> None:
+    assert format_decimal(3.456) == "3.5"
+    assert format_decimal(12.0) == "12"
+    assert format_decimal(1234.5) == "1,234.5"
+    assert format_decimal(None) is None
+    assert format_value("decimal", 4.84) == "4.8"
 
 
 @pytest.mark.parametrize(

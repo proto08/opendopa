@@ -1,0 +1,14 @@
+# Docker ビルドコンテキストから外すもの(秘密・巨大なものを含めない)
+.git
+.env*
+!.env.example
+**/node_modules
+**/.next
+**/target
+**/.venv
+data/
+out/
+pipeline/
+infra/
+docs/
+**/*.tsbuildinfo

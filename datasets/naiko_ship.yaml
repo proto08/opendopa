@@ -1,0 +1,119 @@
+# 内航海運の船(内航海運業の事業概況報告。docs/data.md §10.8)。1行 = 船 1 隻
+id: naiko_ship
+label: 内航海運の船
+source_name: 内航海運業の事業概況報告
+wm_char: 船
+color: "#2A9D8F"
+files: [data/raw/naiko_ship/01_naikoukaiungyou_jigyougaikyouhoukoku.csv]
+grain: row
+# 列名が途中で切れている建造年代の列に、名前を付ける
+rename: {"Launch_Year_(20": LAUNCH_BAND}
+null_values: [""]
+zero_is_null: [Gross_Tonnage, Deadweight_Tonnage, Length, Horsepower]
+filters:
+  - {col: Ship_Type_1, not_null: true}
+  - {col: Gross_Tonnage, not_null: true}
+
+derived: {}
+stats: []
+
+select:
+  cap: 150
+  seed: 42
+  diversify_by: [Supervisory_Transport_Bureau, Ship_Type_1]
+
+big_number:
+  primary: {text: "{Gross_Tonnage}", unit: "トン", label: "この船の総トン数"}
+
+kind: event
+headline: "内航海運の船、{Ship_Type_1}"
+chips: ["{Ship_Type_1}", "{Supervisory_Transport_Bureau}", "{LAUNCH_BAND}"]
+# 事業者は特定しない。住所・事業者の管理番号・船の番号は、原稿にも元の行の表示にも出さない
+hide: [Address, Business_Management_ID, Ship_ID]
+
+template_groups:
+  - id: large_ship
+    label: "総トン数が大きい船"
+    templates:
+      - id: large_ship_std
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "総トン数は{Gross_Tonnage}トンと、大きめの船です。"
+          - {text: "全長は{Length}メートルです。", optional: true}
+          - {text: "建造は{LAUNCH_BAND}です。", optional: true}
+          - {text: "管轄は{Supervisory_Transport_Bureau}です。", optional: true}
+      - id: large_ship_short
+        short: true
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "総トン数は{Gross_Tonnage}トンと、大きめの船です。"
+  - id: long_ship
+    label: "全長が長い船"
+    templates:
+      - id: long_ship_std
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "全長は{Length}メートルと、長い船です。"
+          - "総トン数は{Gross_Tonnage}トンです。"
+          - {text: "建造は{LAUNCH_BAND}です。", optional: true}
+          - {text: "管轄は{Supervisory_Transport_Bureau}です。", optional: true}
+      - id: long_ship_short
+        short: true
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "全長は{Length}メートル、総トン数は{Gross_Tonnage}トンです。"
+  - id: small_ship
+    label: "総トン数が小さい船"
+    templates:
+      - id: small_ship_std
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "総トン数は{Gross_Tonnage}トンと、小さめの船です。"
+          - {text: "全長は{Length}メートルです。", optional: true}
+          - {text: "建造は{LAUNCH_BAND}です。", optional: true}
+          - {text: "管轄は{Supervisory_Transport_Bureau}です。", optional: true}
+      - id: small_ship_short
+        short: true
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "総トン数は{Gross_Tonnage}トンと、小さめの船です。"
+  - id: standard
+    label: "上のどれでもない"
+    templates:
+      - id: standard_std
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "総トン数は{Gross_Tonnage}トンです。"
+          - {text: "全長は{Length}メートルです。", optional: true}
+          - {text: "建造は{LAUNCH_BAND}です。", optional: true}
+          - {text: "管轄は{Supervisory_Transport_Bureau}です。", optional: true}
+      - id: standard_short
+        short: true
+        lines:
+          - "内航海運の船を紹介します。{Ship_Type_1}です。"
+          - "総トン数は{Gross_Tonnage}トンです。"
+
+template_select: {decision: template}
+
+# 型は総トン数と全長の大きさだけで決まるので、規則(by_size)で決める
+decisions:
+  - id: template
+    kind: choice
+    question: "この船は、次のどの型に一番近いですか。"
+    state: [Gross_Tonnage, Length]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: by_size, default: standard}
+
+fallback_rules:
+  by_size:
+    - {if: "Gross_Tonnage > 1000", then: large_ship}
+    - {if: "Length > 80", then: long_ship}
+    - {if: "Gross_Tonnage < 300", then: small_ship}
+    - {else: standard}
+
+comments:
+  pool_light: ["へえ", "大きい", "船って奥が深い", "知らなかった", "海の物流すごい"]
+
+embed_text: "内航海運 船 {Ship_Type_1} {Supervisory_Transport_Bureau} {LAUNCH_BAND}"
+required: [Ship_Type_1, Gross_Tonnage]
