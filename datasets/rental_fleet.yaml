@@ -1,0 +1,117 @@
+# レンタカーの配車車両数(docs/data.md §10.6)。運輸支局ごとに1本(grain: group)
+#
+# 列の意味が確認できていない(`TOTAL_*` が運輸支局の合計らしいが、同じ運輸支局の中で値が揃わない)。
+# そのため、営業所の行の `OWNED_VEHICLES_TOTAL` を運輸支局ごとに合計した値だけを使い、
+# 原稿に出すのは順位と割合だけにする。車両数の絶対値は、原稿にも大きな数字にも出さない。
+id: rental_fleet
+label: レンタカー配車車両数
+source_name: レンタカー・カーシェアリング事業の配車車両数
+wm_char: 台
+color: "#9B5DE5"
+files: [data/raw/rental_fleet/02_yousiki2_haisyasyaryousuu.csv]
+grain: group
+group_by: [BRANCH]
+aggregate:
+  OWNED_VEHICLES_TOTAL: sum
+rename: {OFFICE_VEHICLE_ALLOCATION_LIST_TRANSPORT_BRANCH: BRANCH}
+null_values: [""]
+zero_is_null: []
+filters:
+  - {col: BRANCH, not_null: true}
+  # 車両数が欠損・0 の営業所は集計に入れない(運輸支局の全部がそうなら、動画にしない)
+  - "OWNED_VEHICLES_TOTAL > 0"
+
+derived: {}
+
+stats:
+  - {name: fleet_rank, op: rank_in_group, value: OWNED_VEHICLES_TOTAL, fmt: rank}
+  - {name: fleet_share, op: share_of_total, value: OWNED_VEHICLES_TOTAL, fmt: percent}
+
+select: {cap: 70, order_by: null, diversify_by: null, score: [{expr: "rank_desc(OWNED_VEHICLES_TOTAL)", weight: 1.0}]}
+
+# 絶対値は出さない。順位を大きな数字にする
+big_number:
+  primary: {text: "{fleet_rank}", unit: "位", label: "運輸支局ごとの車両数の順位"}
+
+kind: stat
+headline: "{BRANCH}運輸支局のレンタカー車両数は{fleet_rank_text}"
+chips: ["{BRANCH}", "車両数 {fleet_rank_text}"]
+hide: [OWNED_VEHICLES_TOTAL]
+
+template_groups:
+  - id: top
+    label: "車両数の順位が上位"
+    templates:
+      - id: top_std
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}。上位に入っています。"
+          - "全体に占める車両数の割合は、{fleet_share_text}です。"
+      - id: top_short
+        short: true
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+  - id: upper
+    label: "車両数の順位が、上位に近い"
+    templates:
+      - id: upper_std
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+          - "全体に占める車両数の割合は、{fleet_share_text}です。"
+      - id: upper_short
+        short: true
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+  - id: middle
+    label: "車両数の順位が、真ん中あたり"
+    templates:
+      - id: middle_std
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局の車両数は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+          - "全体に占める割合は、{fleet_share_text}です。"
+      - id: middle_short
+        short: true
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局の車両数は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+  - id: tail
+    label: "車両数の順位が、下の方"
+    templates:
+      - id: tail_std
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局の車両数は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+          - "全体に占める割合は、{fleet_share_text}です。"
+      - id: tail_short
+        short: true
+        lines:
+          - "レンタカーの配車車両数を、運輸支局ごとに比べました。"
+          - "{BRANCH}の運輸支局の車両数は、集計した{fleet_rank_n}の運輸支局の中で{fleet_rank_text}です。"
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "このレンタカーの配車車両数は、次のどの型に一番近いですか。"
+    state: [fleet_rank]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: by_rank, default: middle}
+
+fallback_rules:
+  by_rank:
+    - {if: "fleet_rank < 4", then: top}
+    - {if: "fleet_rank < 11", then: upper}
+    - {if: "fleet_rank < 31", then: middle}
+    - {else: tail}
+
+comments:
+  pool_light: ["へえ", "意外と多い", "知らなかった", "なるほど"]
+
+embed_text: "レンタカー 配車車両数 {BRANCH} {fleet_rank_text}"
+required: [BRANCH, OWNED_VEHICLES_TOTAL]

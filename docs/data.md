@@ -175,18 +175,25 @@ fallback_rules:                          # 決定モデルが使えないとき(
 
 ```python
 class Decider(Protocol):
-    def decide(self, kind, state: dict, question: str,
-               options: list[Option] | None = None, rubric: list[str] | None = None) -> Decision: ...
+    def decide(
+        self,
+        kind,
+        state: dict,
+        question: str,
+        options: list[Option] | None = None,
+        rubric: list[str] | None = None,
+    ) -> Decision: ...
+
 
 @dataclass
 class Decision:
-    choice: str | None             # choice のとき
-    distribution: dict[str, float] # 各選択肢の確率
-    score: float | None            # score のとき(期待値)
-    probability: float | None      # noul のとき(はいの確率)
-    confidence: float              # 分布の集中の度合い(0〜1)
-    provider: str                  # 'strands_azure' など
-    used_fallback: bool            # フォールバックしたか
+    choice: str | None  # choice のとき
+    distribution: dict[str, float]  # 各選択肢の確率
+    score: float | None  # score のとき(期待値)
+    probability: float | None  # noul のとき(はいの確率)
+    confidence: float  # 分布の集中の度合い(0〜1)
+    provider: str  # 'strands_azure' など
+    used_fallback: bool  # フォールバックしたか
 ```
 
 - **フォールバック**: 確信度が `min_confidence` 未満、またはエラー・タイムアウトのときは、YAMLの `fallback`(`fallback_rules` か既定の選択肢)を使い、`used_fallback=True` で記録する。決定モデルが動かなくても、パイプラインは止まらない。
@@ -261,6 +268,8 @@ select:
 | `seq_in_group` | `group`、`order` | 1 始まりの通し番号。`order` は日付の文字列も日付順。同じ値は元の行の順、欠損は最後 |
 | `is_first_time` | `value`、`group_by`、`order`、`condition`(`positive` 既定=黒字 / `negative`=赤字) | 真偽。グループの最初の行は偽 |
 | `per` | `num`、`den`、`scale`(省略で 1) | `num ÷ den × scale`。分母が 0 なら欠損 |
+| `abs` | `value` | 絶対値。前年比の符号を語で言うとき、`sign_word` と組み合わせる(「{abs}%{語}」) |
+| `sign_word` | `value`、`positive`、`negative`(語) | 正なら `positive`、負なら `negative` の語。0・欠損は欠損(その語を使う文は省かれる) |
 
 #### 数字の日本語表記(`fmt`)
 
@@ -268,7 +277,7 @@ select:
 - 日付: `2022年12月6日11時20分`(分が0なら「11時」)。
 - パーセント: 小数1桁まで。
 - 順位: 「○位」。件数: 「○件」。
-- 実装は `pipeline/opendopa_pipeline/fmt.py`。`fmt:` に書ける名前は `yen`(円)、`sen_yen`(千円の列)、`percent`、`rank`、`count`。derived では `op: format` で使う。
+- 実装は `pipeline/opendopa_pipeline/fmt.py`。`fmt:` に書ける名前は `yen`(円)、`sen_yen`(千円の列)、`percent`、`rank`、`count`、`decimal`(小数1桁まで。単位なし)。derived では `op: format` で使う。
 - `op: format` の省略できる引数: `abs: true`(符号を除く。黒字・赤字の額は、符号を言葉にして大きさだけ読む)、`min_abs` / `max_abs`(大きさが範囲の外なら欠損にする。桁が極端な値を読まない)。
 - `op: sign_label`(derived): 数値の符号を `positive` / `negative` / `zero` に書いた言葉(黒字・赤字など)にする。書いていない符号は欠損。
 - `op: prev_year_label`(stats): 前年の同じ主体の `value` の符号を、`positive` / `negative` の言葉にする(「前年は黒字でした」)。前年がない・0 は欠損。
@@ -284,6 +293,7 @@ select:
 | 長さ | 推定秒数が15〜30秒に入る(§8.3.1の処理後) |
 | 個人情報 | 氏名らしい文字列、番号らしい文字列(電話・メール・番地)が含まれない(§15) |
 | 禁止表現 | 「原因は」「責任は」「〜のせい」など、推測を示す言い回しが含まれない |
+| 負傷の部位 | 負傷を示す語と同じ文に、部位の語(指・腕・顔・膝など)が含まれない(`casualty_detail`。設計書 §15.2) |
 | 重複 | 同じ原稿の動画が重複しない |
 | 判断 | フォールバックした判断の割合を記録する。1つのデータセットで30%を超えたら警告(`decisions_report.json`)。`pii`(noul)の確率が上限を超えた行は除外 |
 
@@ -341,7 +351,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 - **処理**: `REMARKS` の文に「事故に該当」があれば `事故`、なければ `重大インシデント`。都道府県は先頭の `...都道府県` を正規表現で取る(194行中3行は取れない。そのときは大きな数字を「第◯号」にする)。
 - **大きな数字**: 「◯◯県で◯件目」(日付順の通し番号)。取れなければ「第◯号」。
 - **コメント**: 負傷者あり→なし。それ以外は落ち着いたコメントのみ(§3.5)。
-- **個人情報**: 負傷の部位は読まない。「負傷者の報告があります」にとどめる(§15)。
+- **個人情報**: 負傷の部位は読まない。「負傷者の報告があります」にとどめる(§15)。型 `injury` は概要の引用を使わず、品質ゲート `casualty_detail` が型を問わず部位の語を検出する(#108)。
 - **YAML**: §8.3の例のとおり。
 - **判断ポイント**: §8.3a の例のとおり(`template`、`pii`)。評価用の正解は `datasets/accident.labels.csv`(人が50行に付ける: `No.`, `template`)。
 
@@ -399,8 +409,8 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 ### 10.7 `naiko_route`(内航海運: 船舶輸送統計調査、航路)
 
 - **構造**: 1行=積み港×降ろし港×年(16,062の航路)。2017〜2023年が主。
-- **列**: `YEAR`, `LOADING PORT_NAME`, `LOADING PORT_PREFECTURE NAME`, `UNLOADING PORT_NAME`, `UNLOADING PORT_PREFECTURE NAME`(欠損あり)、`SAMPLE SIZE`(標本数。単位は隻/回など**要確認**)、`AVERAGE_GROSS TONNAGE`(平均総トン数)、`AVERAGE_DEAD WEIGHT TONNAGE`, `AVERAGE_LOADING RATIO`(積載率。0〜1)、`AVERAGE_CARGO WEIGHT`(単位:要確認。トンと推定)、`AVERAGE_TRANSPORT DISTANCE`(単位:要確認。キロメートルまたは海里)、`LOADING PORT_LATITUDE/LONGITUDE`(欠損あり。同じ港名の他の行から補完する)、`UNLOADING PORT_LATITUDE/LONGITUDE`、用途別の船の内訳(`PURPOSE_*`)。
-- **クリーニング**: `YEAR` が2017〜2023の行だけ。港の緯度経度が補完できない行は除外。
+- **列**: `YEAR`, `LOADING PORT_NAME`, `LOADING PORT_PREFECTURE NAME`, `UNLOADING PORT_NAME`, `UNLOADING PORT_PREFECTURE NAME`(欠損あり)、`SAMPLE SIZE`(標本数。単位は隻/回など**要確認**)、`AVERAGE_GROSS TONNAGE`(平均総トン数)、`AVERAGE_DEAD WEIGHT TONNAGE`, `AVERAGE_LOADING RATIO`(積載率。0〜1)、`AVERAGE_CARGO WEIGHT`(単位:要確認。トンと推定)、`AVERAGE_TRANSPORT DISTANCE`(単位:要確認。キロメートルまたは海里)、`LOADING PORT_LATITUDE/LONGITUDE`(欠損あり。同じ港名の他の行から補完する)、`DISCHARGE PORT_LATITUDE/LONGITUDE`(実データの列名。降ろし港)、用途別の船の内訳(`PURPOSE_*`)。
+- **クリーニング**: `YEAR` が2017〜2023の行だけ。港の緯度経度が補完できない行は除外(`fill_by_key`)。積載率が1を超える行は外れ値として除外。
 - **選定**: `cap=150`。標本数が多い航路を優先し、`LOADING PORT_PREFECTURE NAME` でばらす。
 - **kind**: `geo`(`route`: 港から港への弧)。
 - **大きな数字**: 積載率(「◯%」。0〜1を%に変換。単位が確かな比率なので読み上げてよい)。
@@ -409,7 +419,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 ### 10.8 `naiko_ship`(内航海運: 事業概況、船)
 
 - **構造**: 1行=船1隻。事業者の財務は「ランク」区分(`..._RANK`)のみで、数値なし。住所は空欄が多い。**事業者は特定しない**(`Address`, `Business_Management_ID` は使わない)。
-- **列**: `Ship_ID`(使わない)、`Usage`(営業船など)、`Ship_Material`(鋼船など)、`Gross_Tonnage`(総トン数)、`Deadweight_Tonnage`(0は欠損)、`Length`(m)、`Horsepower`(0は欠損。単位:要確認)、`Ship_Type_1/2/3`(船種)、`Launch_Year_(20`(建造年代。例: `1980年～1999年`。列名が途中で切れているので、YAMLで `rename: {"Launch_Year_(20": LAUNCH_BAND}`)、`Supervisory_Transport_Bureau`(例: 関東)。
+- **列**: `Ship_ID`(使わない)、`Usage`(営業船など)、`Ship_Material`(鋼船など)、`Gross_Tonnage`(総トン数。0は欠損)、`Deadweight_Tonnage`(0は欠損)、`Length`(m。0は欠損。実データで約半数が0)、`Horsepower`(0は欠損。単位:要確認)、`Ship_Type_1/2/3`(船種)、`Launch_Year_(20`(建造年代。例: `1980年～1999年`。列名が途中で切れているので、YAMLで `rename: {"Launch_Year_(20": LAUNCH_BAND}`)、`Supervisory_Transport_Bureau`(例: 関東)。
 - **選定**: `cap=150`。`Supervisory_Transport_Bureau` と `Ship_Type_1` でばらす。
 - **kind**: `event`(「この船」)。
 - **大きな数字**: 総トン数(「◯トン」)。

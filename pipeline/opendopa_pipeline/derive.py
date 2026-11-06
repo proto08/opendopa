@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import pandas as pd
@@ -26,11 +27,24 @@ class DeriveError(ValueError):
 # op の関数: (元の列の Series, derived の定義) → 結果の Series(同じ index)
 DeriveOp = Callable[[pd.Series, Derived], pd.Series]
 _OPS: dict[str, DeriveOp] = {}
+# 他の列も見る op の関数: (DataFrame 全体, derived の定義) → 結果の Series(同じ index)
+FrameOp = Callable[[pd.DataFrame, Derived], pd.Series]
+_FRAME_OPS: dict[str, FrameOp] = {}
 
 
 def derive_op(name: str) -> Callable[[DeriveOp], DeriveOp]:
     def deco(fn: DeriveOp) -> DeriveOp:
         _OPS[name] = fn
+        return fn
+
+    return deco
+
+
+def derive_frame_op(name: str) -> Callable[[FrameOp], FrameOp]:
+    """行ごとの変換ではなく、表全体を見て作る op(`fill_by_key` など)を足す。"""
+
+    def deco(fn: FrameOp) -> FrameOp:
+        _FRAME_OPS[name] = fn
         return fn
 
     return deco
@@ -140,20 +154,7 @@ def _map(col: pd.Series, d: Derived) -> pd.Series:
     return _map_non_null(col, lambda v: mapping.get(str(v), else_value))
 
 
-# 複数の列を使う op: (DataFrame, derived の定義) → 結果の Series。`from` は省略できる
-FrameOp = Callable[[pd.DataFrame, Derived], pd.Series]
-_FRAME_OPS: dict[str, FrameOp] = {}
-
-
-def frame_op(name: str) -> Callable[[FrameOp], FrameOp]:
-    def deco(fn: FrameOp) -> FrameOp:
-        _FRAME_OPS[name] = fn
-        return fn
-
-    return deco
-
-
-@frame_op("format")
+@derive_frame_op("format")
 def _format(df: pd.DataFrame, d: Derived) -> pd.Series:
     """数値を日本語の表記(fmt.py の FORMATTERS)にする。`fmt: yen | sen_yen | percent | ...`
 
@@ -228,7 +229,7 @@ def _from_col(df: pd.DataFrame, d: Derived) -> pd.Series:
     return _frame_col(df, str(d.from_))
 
 
-@frame_op("join_flags")
+@derive_frame_op("join_flags")
 def _join_flags(df: pd.DataFrame, d: Derived) -> pd.Series:
     """フラグの列(1 なら該当)を、`labels`(列名 → ラベル)の順に拾って、ラベルのリストにする。
 
@@ -249,7 +250,7 @@ def _join_flags(df: pd.DataFrame, d: Derived) -> pd.Series:
     return pd.Series([row(i) for i in df.index], index=df.index, dtype=object)
 
 
-@frame_op("hours_between")
+@derive_frame_op("hours_between")
 def _hours_between_frame(df: pd.DataFrame, d: Derived) -> pd.Series:
     start = _frame_col(df, str(d.from_))
     end = _frame_col(df, _arg(d, "to"))
@@ -265,7 +266,7 @@ def _hours_between_frame(df: pd.DataFrame, d: Derived) -> pd.Series:
     )
 
 
-@frame_op("pct_diff")
+@derive_frame_op("pct_diff")
 def _pct_diff(df: pd.DataFrame, d: Derived) -> pd.Series:
     """`(元の列 - against) ÷ 元の列 × 100`(%)。両方が正のときだけ。
 
@@ -405,6 +406,54 @@ def _free_sentence(col: pd.Series, d: Derived) -> pd.Series:
     """自由記述の最初の1文(`clean_free_sentence`)。`max_chars`(既定 40)。"""
     n = _arg(d, "max_chars", 40)
     return _map_non_null(col, lambda v: clean_free_sentence(str(v), n))
+
+
+@derive_op("scale")
+def _scale(col: pd.Series, d: Derived) -> pd.Series:
+    """数値に `by` を掛け、小数 `digits` 桁(省略で 1)に四捨五入する。例: 比率 0.62 → 62(`by: 100`)。
+
+    Decimal で計算するので、0.62 × 100 が 62.00000000000001 にならない。数値でない値は欠損にする。
+    """
+    by = Decimal(str(_arg(d, "by")))
+    places = Decimal(1).scaleb(-int(_arg(d, "digits", 1)))
+
+    def scale(v: Any) -> float | None:
+        try:
+            return float((Decimal(str(v)) * by).quantize(places, rounding=ROUND_HALF_UP))
+        except ArithmeticError:
+            return None
+
+    return _map_non_null(col, scale)
+
+
+@derive_frame_op("fill_by_key")
+def _fill_by_key(df: pd.DataFrame, d: Derived) -> pd.Series:
+    """`from` の値(緯度など)が欠損の行を、同じ `key`(港名など)の他の行の値で埋める。
+
+    `also: [{key: 別の名前の列, value: 別の値の列}]` を足すと、積み港の列と降ろし港の列のように、
+    同じ名前が別の列に出る行からも探す。自分の行に値があればそのまま使う。
+    名前に複数の値があるときは、先に出た行の値(行の順)を使う。名前が欠損の行は埋めない。
+    """
+    key = _arg(d, "key")
+    pairs = [(key, d.from_)] + [(a["key"], a["value"]) for a in _arg(d, "also", [])]
+    for k, v in pairs:
+        for c in (k, v):
+            if c not in df.columns:
+                raise DeriveError(f"fill_by_key: 列 {c!r} がありません")
+    known: dict[Any, Any] = {}
+    for k, v in pairs:
+        for name, value in zip(df[k], df[v], strict=True):
+            if not is_missing(name) and not is_missing(value):
+                known.setdefault(name, value)
+    own = df[d.from_]
+    return pd.Series(
+        [
+            v if not is_missing(v) else (None if is_missing(n) else known.get(n))
+            for n, v in zip(df[key], own, strict=True)
+        ],
+        index=df.index,
+        dtype=object,
+    )
 
 
 def derive(df: pd.DataFrame, dataset: DatasetDef) -> pd.DataFrame:

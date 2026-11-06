@@ -2,7 +2,7 @@
 # 事前に infra/backend.hcl(infra/bootstrap/bootstrap.sh が作る)と infra/terraform.tfvars を用意する。
 TF_DIR := infra
 
-.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt
+.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy
 
 infra-init:
 	terraform -chdir=$(TF_DIR) init -backend-config=backend.hcl
@@ -18,3 +18,26 @@ infra-apply:
 
 infra-fmt:
 	terraform -chdir=$(TF_DIR) fmt -recursive
+
+# イメージのビルド → Container Registry に push → Container Apps の更新(ADR-0018)。
+# 事前に `az login` と、infra の apply(Registry と Container Apps が存在すること)が要る。
+# 課金されるリソースを操作するため、人が実行する。
+TAG ?= $(shell git rev-parse --short HEAD)
+PLATFORM ?= linux/amd64
+
+deploy:
+	@set -eu; \
+	login_server=$$(terraform -chdir=$(TF_DIR) output -raw registry_login_server); \
+	registry=$$(terraform -chdir=$(TF_DIR) output -raw registry_name); \
+	rg=$$(terraform -chdir=$(TF_DIR) output -raw resource_group_name); \
+	web_app=$$(terraform -chdir=$(TF_DIR) output -raw web_app_name); \
+	recsys_app=$$(terraform -chdir=$(TF_DIR) output -raw recsys_app_name); \
+	web_url=$$(terraform -chdir=$(TF_DIR) output -raw web_url); \
+	az acr login --name "$$registry"; \
+	docker build --platform $(PLATFORM) -f services/recsys/Dockerfile -t "$$login_server/opendopa-recsys:$(TAG)" .; \
+	docker build --platform $(PLATFORM) -f apps/web/Dockerfile -t "$$login_server/opendopa-web:$(TAG)" .; \
+	docker push "$$login_server/opendopa-recsys:$(TAG)"; \
+	docker push "$$login_server/opendopa-web:$(TAG)"; \
+	az containerapp update -g "$$rg" -n "$$recsys_app" --image "$$login_server/opendopa-recsys:$(TAG)"; \
+	az containerapp update -g "$$rg" -n "$$web_app" --image "$$login_server/opendopa-web:$(TAG)"; \
+	echo "デプロイしました: $$web_url (確認: $$web_url/api/health)"
