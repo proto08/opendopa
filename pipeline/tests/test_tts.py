@@ -233,3 +233,42 @@ def test_cli_tts_none_skips(tmp_path) -> None:
     assert result.exit_code == 0
     assert "音声は作りません" in result.output
     assert not (ds / "media").exists()
+
+
+def test_tts_output_excluded_video_is_not_embedded(tmp_path) -> None:
+    # all は tts のあとに embed する。embed が読む動画は、tts の除外を反映している
+    from opendopa_pipeline.embed.run import load_videos
+
+    ok, long_ = scene_dict(["ふつうの文です" * 5]), scene_dict(["長い文です" * 20])
+    ok["videoId"], long_["videoId"] = "accident-0001", "accident-0002"
+    ds = make_out(tmp_path, [ok, long_])
+    videos = [json.loads(x) for x in (ds / "videos.jsonl").read_text().splitlines()]
+    for v in videos:
+        v["search_text"] = v["id"]
+    (ds / "videos.jsonl").write_text("".join(json.dumps(v) + "\n" for v in videos))
+    run_tts(ds, StubTts(0.4), {})
+    ids, _, _ = load_videos(ds.parent)
+    assert ids == ["accident-0001"]
+
+
+def test_all_runs_tts_before_embed(tmp_path, monkeypatch) -> None:
+    import opendopa_pipeline.cli as cli
+
+    calls: list[str] = []
+    monkeypatch.setattr(cli, "dataset_ids", lambda: ["accident"])
+    monkeypatch.setattr(cli, "provider_name_from_env", lambda: "voicevox")
+    monkeypatch.setattr(cli, "generate", lambda d, *a: calls.append("generate"))
+    monkeypatch.setattr(cli, "tts", lambda d, *a: calls.append("tts"))
+    monkeypatch.setattr(cli, "embed", lambda *a: calls.append("embed"))
+    monkeypatch.setattr(cli, "_publish", lambda *a, **k: calls.append("publish"))
+    result = CliRunner().invoke(app, ["all", "--out-dir", str(tmp_path)])
+    assert result.exit_code == 0
+    assert calls == ["generate", "tts", "embed", "publish"]
+
+
+def test_tts_result_tells_to_redo_embed_when_excluded() -> None:
+    from opendopa_pipeline.tts.run import TtsResult, format_result
+
+    out = format_result(TtsResult(voiced=1, excluded={"accident-0002": "長すぎる"}), "voicevox")
+    assert "embed を" in out and "やり直してください" in out
+    assert "embed" not in format_result(TtsResult(voiced=1), "voicevox")

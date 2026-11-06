@@ -130,4 +130,9 @@ def format_result(r: TtsResult, provider: str) -> str:
         return f"TTS_PROVIDER={provider}: 音声は作りません(字幕の秒数は 1 秒 6.5 文字の見積もり)"
     lines = [f"音声を付けた動画: {r.voiced} 本({r.files} ファイル)"]
     lines += [f"  除外 {vid}: {why}" for vid, why in r.excluded.items()]
+    if r.excluded:
+        lines.append(
+            "除外が出たので、embed を(まだなら tts のあとに)やり直してください。"
+            "除外した動画の埋め込みが残ると publish が失敗します"
+        )
     return "\n".join(lines)

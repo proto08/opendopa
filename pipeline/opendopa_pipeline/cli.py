@@ -230,17 +230,19 @@ def run_all(
         str | None, typer.Option("--provider", help="判断のプロバイダー(既定は DECIDER_PROVIDER)")
     ] = None,
 ) -> None:
-    """datasets/*.yaml のすべてを generate → embed → tts → publish の順に実行する。"""
+    """datasets/*.yaml のすべてを generate → tts → embed → publish の順に実行する。
+
+    tts が長さ超過の動画を除外するので、embed(除外後の動画だけを読む)は tts のあとに行う。"""
     for dataset_id in dataset_ids():
         typer.echo(f"== generate: {dataset_id}")
         generate(dataset_id, out_dir, provider)
-    typer.echo("== embed")
-    embed(out_dir, DEFAULT_K, None)
     if provider_name_from_env() == "none":
         typer.echo("== tts: スキップ(TTS_PROVIDER=none)")
     else:
         for dataset_id in dataset_ids():
             typer.echo(f"== tts: {dataset_id}")
             tts(dataset_id, out_dir, None)
+    typer.echo("== embed")
+    embed(out_dir, DEFAULT_K, None)
     typer.echo("== publish")
     _publish(out_dir, skip_blob, dry_run=False)
