@@ -4,10 +4,12 @@
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
+import psycopg
 import typer
 
 from opendopa_pipeline.decider.evaluate import (
@@ -24,6 +26,7 @@ from opendopa_pipeline.ingest import IngestError, load_frame, load_path, row_dic
 from opendopa_pipeline.llm import create_llm
 from opendopa_pipeline.prepare import prepare
 from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
+from opendopa_pipeline.publish import format_result, run_publish
 from opendopa_pipeline.spec import load_dataset
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -174,12 +177,51 @@ def tts(dataset: DatasetOpt) -> None:
 
 
 @app.command()
-def publish() -> None:
-    """Blob と DB へ書き込む。"""
-    _not_implemented("publish", "M2")
+def publish(
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="out/ の場所")] = REPO_ROOT / "out",
+    skip_blob: Annotated[
+        bool, typer.Option("--skip-blob", help="Blob への書き込みを飛ばす(ローカル用)")
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="件数だけ出す(DB・Blob には接続しない)")
+    ] = False,
+) -> None:
+    """Blob と DB へ書き込む(DB は 1 トランザクションで入れ替え)。"""
+    _publish(out_dir, skip_blob, dry_run)
+
+
+def _publish(out_dir: Path, skip_blob: bool, dry_run: bool) -> None:
+    try:
+        result = run_publish(REPO_ROOT, out_dir, skip_blob=skip_blob, dry_run=dry_run)
+    except (ValueError, OSError, psycopg.Error) as e:  # PublishError・DatasetError は ValueError
+        raise _fail(str(e)) from e
+    typer.echo(format_result(result, dry_run))
+
+
+def dataset_ids() -> list[str]:
+    """`datasets/*.yaml` のすべて(`_` で始まる見本を除く)。"""
+    return sorted(p.stem for p in (REPO_ROOT / "datasets").glob("*.yaml") if p.stem[0] != "_")
 
 
 @app.command(name="all")
-def run_all() -> None:
-    """上のコマンドを順に実行する。"""
-    _not_implemented("all", "M2")
+def run_all(
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
+    skip_blob: Annotated[
+        bool, typer.Option("--skip-blob", help="Blob への書き込みを飛ばす(ローカル用)")
+    ] = False,
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="判断のプロバイダー(既定は DECIDER_PROVIDER)")
+    ] = None,
+) -> None:
+    """datasets/*.yaml のすべてを generate → embed → tts → publish の順に実行する。"""
+    for dataset_id in dataset_ids():
+        typer.echo(f"== generate: {dataset_id}")
+        generate(dataset_id, out_dir, provider)
+    typer.echo("== embed")
+    embed(out_dir, DEFAULT_K, None)
+    if os.environ.get("TTS_PROVIDER", "none") == "none":
+        typer.echo("== tts: スキップ(TTS_PROVIDER=none)")
+    else:
+        typer.echo("== tts: 未実装のためスキップ(#60)", err=True)
+    typer.echo("== publish")
+    _publish(out_dir, skip_blob, dry_run=False)
