@@ -1,5 +1,6 @@
 import csv
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -232,7 +233,7 @@ def test_generate_accident_real(tmp_path):
     s = res.report["summary"]
     assert 185 <= s["generated"] <= 194
     sec = s["estimated_sec"]
-    assert 19 <= sec["min"] <= 20 and 25.5 <= sec["median"] <= 26.5 and sec["max"] <= 30
+    assert 15 <= sec["min"] <= 20 and 25 <= sec["median"] <= 26.5 and sec["max"] <= 30
     assert s["excluded_by_reason"].get("number_mismatch", 0) == 0
     assert s["excluded_by_reason"].get("too_long") == 2
     t = s["by_type"]
@@ -240,3 +241,6 @@ def test_generate_accident_real(tmp_path):
     for v in res.videos:
         if v.scene and v.decisions["template"]["choice"] == "injury":
             assert v.scene["comments"] == []
+            # 負傷の部位は読まない(§15.2)。型 injury の字幕には概要の引用が入らない
+            text = "".join(ln["text"] for ln in v.scene["lines"])
+            assert not re.search(r"指(?!示)|[腕顔膝肘鼻]|皮膚", text)

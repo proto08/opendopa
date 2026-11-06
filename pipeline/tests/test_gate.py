@@ -110,6 +110,48 @@ def test_duplicates():
     assert gate.script_text_key(["a b", "c"]) == gate.script_text_key(["ab", " c"])
 
 
+class TestCasualtyDetail:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "プロペラが補助者の足の甲に接触し負傷した。",
+            "操縦者が顔面及び右腕を負傷した。",
+            "機体が操縦者の左手に接触した。",
+            "補助者が手を伸ばし、プロペラに接触したことで負傷した。",
+            "プロペラの接触で右手背部を負傷した。",
+            "プロペラは直接皮膚に接触していないが、打撲を負った。",
+        ],
+    )
+    def test_detects(self, text):
+        assert gate.check_casualty_detail(["事故が報告されました。", text])
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "負傷者の報告があります。",
+            "機体の被害は、腕部固定金具の破損と記載されています。",
+            "機首部・主翼の損傷と記載されています。",
+            "事前の周辺確認不足により、近隣家屋に接触し、壁面を損傷させた。",
+            "操縦者が足元に気を取られ機体から目を離したことで電線に接触した。",
+            "操縦者の指が送信機に触れたことで機体が動き、窓ガラスに接触した。",
+            "運転手に接触して車両が破損した。",
+            "補助者が指示を誤り、機体が建物に接触した。",
+        ],
+    )
+    def test_clean(self, text):
+        assert gate.check_casualty_detail([text]) == []
+
+    def test_check_all_reports_it(self):
+        out = gate.check_all(
+            lines=["操縦者の右肘に接触し負傷した。"],
+            duration_sec=20.0,
+            row={},
+            numbers=[],
+            required=[],
+        )
+        assert list(out) == ["casualty_detail"]
+
+
 def test_decision_flags():
     decs = {"pii": {"excluded": True}, "template": {"choice": "other"}}
     assert gate.check_decisions(decs) == ["判断 pii で除外"]
