@@ -88,6 +88,17 @@ def infer_role(name: str, dtype: str, values: pd.Series, n_rows: int, max_len: i
 def profile_column(name: str, col: pd.Series) -> dict[str, Any]:
     n_rows = len(col)
     values = col.dropna()
+    if not values.empty and values.map(lambda v: isinstance(v, list)).all():
+        # 座標などのリストの列(GeoJSON の rings)。値の分布は出さない
+        return {
+            "name": name,
+            "dtype": "list",
+            "missing_rate": round(1 - len(values) / n_rows, 4),
+            "n_unique": 0,
+            "max_len": 0,
+            "role": "geometry",
+            "top": [],
+        }
     dtype = _dtype(col)
     max_len = int(values.map(lambda v: len(str(v))).max()) if not values.empty else 0
     counts = values.value_counts()

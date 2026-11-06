@@ -16,8 +16,8 @@
 
 ## A3 recsys 用の読み取り専用ロール
 
-- 決定: ロール `opendopa_recsys` の作成は DB の外で行う(ローカルは `db/init/01-roles.sql` を compose の初期化スクリプトとして初回だけ実行)。権限の付与はマイグレーション(`grant_recsys_readonly`)で行い、`embeddings`・`clusters`・`meta` の SELECT と、`videos` の `id`・`dataset_id` 列の SELECT だけを与える。ロールがない環境では、付与を何もせずに通す。
-- 理由: ロールはクラスター単位でパスワードを持つので、パスワードを含む作成を、全環境で流れるマイグレーションに書かない。付与だけをマイグレーションに置くと、テーブルを足したときに権限の漏れを同じ場所で見直せる。設計書 §6.6 の「起動時に読むのは、`embeddings`、`clusters`、`videos`(`id`、`dataset_id`)」に合わせ、最小の権限にした。`mise run db-check` で、SELECT できて書き込みは拒否されることを確かめる。
+- 決定: ロール `opendopa_recsys` の作成は DB の外で行う(ローカルは `db/init/01-roles.sql` を compose の初期化スクリプトとして初回だけ実行)。権限の付与はマイグレーション(`grant_recsys_readonly`)で行い、`embeddings`・`clusters`・`meta` の SELECT と、`videos` の `id`・`dataset_id` 列の SELECT だけを与える(2026-11-06 に `videos.status` 列の SELECT を足した。マイグレーション `grant_recsys_videos_status`、`docs/decisions/2026-11-06-recsys-reads-meta-and-video-status.md`)。ロールがない環境では、付与を何もせずに通す。
+- 理由: ロールはクラスター単位でパスワードを持つので、パスワードを含む作成を、全環境で流れるマイグレーションに書かない。付与だけをマイグレーションに置くと、テーブルを足したときに権限の漏れを同じ場所で見直せる。設計書 §6.6 の「起動時に読むのは、`embeddings`、`clusters`、`meta`、`videos`(`id`、`dataset_id`、`status`)」に合わせ、最小の権限にした(当初は `status` がなかった)。`mise run db-check` で、SELECT できて書き込みは拒否されることを確かめる。
 - 運用上の前提: ロールがない環境では権限が付かないまま気づけないので、本番(Azure)では「ロール作成 → `dbmate up`」の順を守り、マイグレーションの後に `db-check` 相当(ロールで SELECT できて書き込みが拒否されること)を必ず実行する。ロールの作成と、この順序・確認の手順は、インフラを作る Issue(#17、#18 など)の Terraform・デプロイ手順に書く。ローカルは初回のボリューム作成時に init が先に走るので、`db-up` のたびの確認は要らない。ロール追加前のボリュームは `mise run db-reset` で作り直す(README に記載)。
 
 ## A4 web → recsys の内部 HTTP
