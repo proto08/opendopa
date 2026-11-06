@@ -99,7 +99,7 @@ web と recsys がまとめて起動します。個別に起動するときは `
 | --- | --- | --- |
 | web | http://localhost:3000 | `GET /api/health`(DB に接続できれば 200、できなければ 503)、`GET /api/health/recsys`(web から recsys に内部 HTTP でつながれば 200) |
 | recsys | http://localhost:8080 | `GET /healthz`、`GET /internal/ping`(ヘッダー `X-Internal-Token` が必要) |
-| DB | localhost:5432 | `mise run db-psql` でつなげる(pgvector は `\dx`、テーブルは `\dt` で確認) |
+| DB | localhost:5432 | `mise run db-check`(pgvector が入っていることと、recsys のロールが読み取り専用であることを確かめる。要 `mise run db-up`)。`mise run db-psql` でつなげる |
 | DB マイグレーション | (使い捨ての DB) | `mise run db-test`(空の DB に適用、2回流す、制約と recsys ロールの権限の確認。要 `mise run db-up`) |
 
 起動できたかは、別のターミナルで次のとおり確認します。
@@ -122,6 +122,8 @@ DB のタスクは次のとおりです。
 | `mise run db-migrate` | 未適用のマイグレーションを流す |
 | `mise run db-new 名前` | マイグレーションのファイルを作る(`db/migrations/`) |
 | `mise run db-psql` | psql でつなぐ |
+| `mise run db-check` | DB の状態を確かめる(`mise-tasks/db-check`。`mise.toml` ではなくファイルタスク) |
+| `mise run db-test` | マイグレーションの検証(使い捨ての DB) |
 
 recsys 用のロール(`db/init/01-roles.sql`)は、ボリュームを最初に作るときにしか作られません。ロールを足す前に作ったボリュームを使っている場合は、`mise run db-reset` で作り直してください。
 
@@ -142,6 +144,10 @@ mise run test
 ```
 
 全言語のテストをまとめて流します。言語ごとに流すときは `mise run test:web` / `test:shared` / `test:pipeline` / `test:recsys` を使います(`mise run lint:*` も同じ並びです)。web は、変更したら `cd apps/web && mise exec -- pnpm typecheck` も通してください。テストは DB を必要としません。
+
+`data/raw/` は git に入りません(`.gitignore` 対象)。実データ(オープンデータの CSV)を `data/raw/<データセットID>/` に置くと、実データを使うテストも走ります。ファイル名は `docs/data.md` の一覧のとおりで、例は `data/raw/accident/02_jikojyouhou.csv` です。worktree では `data/raw` が空なので、メインの `data/raw` へのシンボリックリンクを張ると実データで動かせます。
+
+注意: 実データがあると、`pipeline/tests/test_generate.py::test_generate_accident_real` が main でも失敗します(推定秒数の最小 18.31 が期待の 19 未満)。CI は実データなしで skip するので影響しません。
 
 ### コマンド
 
