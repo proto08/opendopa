@@ -96,9 +96,10 @@ kind: event                        # event | stat | geo。省略は grain: row �
 headline: "{pref}で無人航空機が事故"  # 穴を含む文(40字以内)。省略、または穴が空なら、先頭の字幕の最初の文
 chips: ["{pref}", "{REMARKS}"]     # 特徴のラベル。穴が空のものは省く
 sparkline: trend                   # op: series の stat の名前(12点以内)
-map:                               # 地点は 名前(穴を含む文)と 緯度・経度の列。type は route か points
+map:                               # 地点は 名前(穴を含む文)と 緯度・経度の列。type は route / points / polygon
   type: points
   points: [{name: "{place}", lat: LAT, lon: LON}]
+  # polygon は、rings(輪のリストの列。GeoJSON ローダが作る `rings`)と markers(出発などの地点)を書く
 hide: [PHONE]                      # videos.jsonl の csv_row に出さない列(個人に関わる列。§15.2)
 comments:
   pool_calm: ["気をつけたい"]       # pool_<名前>。なければ既定(calm / light)
