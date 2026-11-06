@@ -4,6 +4,8 @@
 
 入力: イシュー番号、モード(通常 / レビュー対応)、レビュー対応なら PR 番号。原則(質問しない・他人のPRに投稿しない・破壊的操作をしない)は呼び出し元のプロンプトで渡される。
 
+GitHub の操作は `.claude/shared/github-rest.md`(REST)に従う。`gh pr ...` などの GraphQL のコマンドは、この環境では使えない。
+
 作業対象は自分の worktree だけ。メインの作業ディレクトリでは `git checkout` / `git switch` をしない。
 
 ## 手順
@@ -33,6 +35,13 @@
      - 作成したら、イシューの `status::in-progress` を外し、PR に `status::review-wait` を付ける。
    - **レビュー対応モード**: `git push` する。**確認なしで**レビュアー(指摘を投稿した人。自分自身と bot は除く)に `@<ログイン名>` で、`gh pr comment` により対応報告をする。内容は、対応内容(commit ハッシュ付き)、対応しなかった指摘と理由、再レビューのお願い。報告したら `status::fixing` を `status::review-wait` に付け替える。対応できず終えた場合も `status::fixing` は外す(`status::changes-requested` に戻す)。
 6. 失敗して終える場合も、自分が付けた `status::in-progress` / `status::fixing` を必ず外すか元に戻す。
+
+## 終わり方
+
+終えたときに、`mise run sleep-scan` の対象に同じものが残らないようにする(残ると、次の回で同じ作業を繰り返す)。
+
+- 直した・返信した・マージした → そのまま終わる(自分の活動が、相手の最後の活動より新しくなる)
+- コードでは直せず、人の確認・判断が要る(実機確認、承認など) → 理由を PR のコメント(自分の PR・レビューした PR)か報告に書き、`needs-human` を付けて終える(`docs/kanban.md`)
 
 ## 返す報告(短く)
 
