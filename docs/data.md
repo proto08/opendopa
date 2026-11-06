@@ -85,6 +85,8 @@ comments:
   pool_calm: ["気をつけたい", "無事でよかった", "安全第一"]
   rule: "casualty_sentence == '負傷者の報告があります。' -> none; else calm"
 embed_text: "事故等報告 {pref} {kind} {summary_1}"
+# 必須の列。空だと品質ゲートの「欠損」(§8.6)で除外する
+required: [INCIDENT_SUMMARY, OCCURRENCE_DATE, OCCURRENCE_LOCATION]
 ```
 
 シーンの組み立て(#33)のための、省略できるキー(実装: `pipeline/opendopa_pipeline/scene.py`, `build.py`):
@@ -209,7 +211,7 @@ class Decision:
 
 #### 事故データでの試作の結果(`rules`)
 
-事故194行のうち、191行を生成(概要が空の1行と、概要だけで30秒に収まらない2行は除外)。数字の不一致は0。推定秒数は、最小19.5、中央26.0、最大30.0。型の内訳は、`object_damage` 123、`loss_of_control` 29、`injury` 29、`other` 10。標準のテンプレートで収まり、短い版は使われなかった。
+事故194行のうち、189行を生成。除外は5行で、概要が空の1行(No.20。`filters`)、概要だけで30秒に収まらない2行(`too_long`)、概要の引用に「原因は」を含む2行(`forbidden`。元の文の引用も禁止表現の検査にかかる。`docs/decisions/2026-11-05-quality-gate-rules.md`)。数字の不一致は0。推定秒数は、最小18.31、中央25.85、最大30.0。型の内訳は、`object_damage` 123、`loss_of_control` 29、`injury` 28、`other` 9(`rules`、2026-11-06 の実測)。標準のテンプレートで収まった。
 
 
 ### 8.4 選定(`select`)
@@ -329,7 +331,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 ### 10.1 `accident`(事故等報告) — 実装済みの試作あり
 
 - **grain/kind**: 1件=1本 / `event`。
-- **試作**: (テンプレート方式、判断は `rules`)。事故194行のうち、191行を生成(概要が空の1行と、概要だけで30秒に収まらない2行を除外)、数字の不一致0、推定19.5〜30秒。型の内訳は、`object_damage` 123、`loss_of_control` 29、`injury` 29、`other` 10。これと同じ傾向を再現できること(型の割合は、決定モデルで変わる)。
+- **試作**: (テンプレート方式、判断は `rules`)。事故194行のうち、189行を生成(概要が空の1行、概要だけで30秒に収まらない2行、禁止表現を含む2行を除外)、数字の不一致0、推定18.31〜30秒。型の内訳は、`object_damage` 123、`loss_of_control` 29、`injury` 28、`other` 9(2026-11-06 の実測)。これと同じ傾向を再現できること(型の割合は、決定モデルで変わる)。
 - **列**: `No.`, `OCCURRENCE_DATE`(`2022/12/6 11:20`), `OCCURRENCE_LOCATION`(都道府県+市区町村。海外の1件は長い文)、`OPERATOR`(事業者123/個人58/行政機関11/大学1/学校1)、`MODEL_OR_MANUFACTURER`, `INCIDENT_SUMMARY`(最長165字)、`CASUALTIES_SUMMARY`(なし165。他は負傷の内容)、`AIRCRAFT_DAMAGE_SUMMARY`(全損34、プロペラの破損22、なし17など)、`RECURRENCE_PREVENTION_MEASURES`(最長327字。4件は空)、`REMARKS`(事故/重大インシデントの定型文)。
 - **処理**: `REMARKS` の文に「事故に該当」があれば `事故`、なければ `重大インシデント`。都道府県は先頭の `...都道府県` を正規表現で取る(194行中3行は取れない。そのときは大きな数字を「第◯号」にする)。
 - **大きな数字**: 「◯◯県で◯件目」(日付順の通し番号)。取れなければ「第◯号」。
