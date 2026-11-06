@@ -267,6 +267,8 @@ select:
 | `seq_in_group` | `group`、`order` | 1 始まりの通し番号。`order` は日付の文字列も日付順。同じ値は元の行の順、欠損は最後 |
 | `is_first_time` | `value`、`group_by`、`order`、`condition`(`positive` 既定=黒字 / `negative`=赤字) | 真偽。グループの最初の行は偽 |
 | `per` | `num`、`den`、`scale`(省略で 1) | `num ÷ den × scale`。分母が 0 なら欠損 |
+| `abs` | `value` | 絶対値。前年比の符号を語で言うとき、`sign_word` と組み合わせる(「{abs}%{語}」) |
+| `sign_word` | `value`、`positive`、`negative`(語) | 正なら `positive`、負なら `negative` の語。0・欠損は欠損(その語を使う文は省かれる) |
 
 #### 数字の日本語表記(`fmt`)
 

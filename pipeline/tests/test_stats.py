@@ -195,6 +195,27 @@ def test_per(make_dataset) -> None:
     assert numbers[1][0]["inputs"] == {"a": 100.0, "b": 4.0}
 
 
+def test_abs_and_sign_word(make_dataset) -> None:
+    df = pd.DataFrame({"v": [-5.25, 0.0, 3.0, None]})
+    out, numbers = run(
+        make_dataset,
+        df,
+        {"name": "a", "op": "abs", "value": "v", "fmt": "percent"},
+        {
+            "name": "w",
+            "op": "sign_word",
+            "value": "v",
+            "positive": "増えました",
+            "negative": "減りました",
+        },
+    )
+    assert out["a_text"].iloc[0] == "5.3%" and isnull(out["a"].iloc[3])
+    # 0 と欠損は語がない(その語を使う文は省かれる)
+    assert list(out["w"][:3]) == ["減りました", None, "増えました"] and isnull(out["w"].iloc[3])
+    assert numbers[1][1]["value"] == "減りました"
+    assert [r["name"] for r in numbers[2]] == ["a"]  # 0 の行に sign_word の記録はない
+
+
 def test_fmt_adds_text_column(make_dataset) -> None:
     df = pd.DataFrame({"a": [2_008_428_041.0, None], "b": [1.0, 1.0]})
     out, numbers = run(
