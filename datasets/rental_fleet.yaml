@@ -8,11 +8,14 @@ label: レンタカー配車車両数
 source_name: レンタカー・カーシェアリング事業の配車車両数
 wm_char: 台
 color: "#9B5DE5"
+tag: レンタカー
+region_from: [OFFICE_VEHICLE_ALLOCATION_LIST_LOCATION]
 files: [data/raw/rental_fleet/02_yousiki2_haisyasyaryousuu.csv]
 grain: group
 group_by: [BRANCH]
 aggregate:
   OWNED_VEHICLES_TOTAL: sum
+  OFFICE_VEHICLE_ALLOCATION_LIST_LOCATION: first
 rename: {OFFICE_VEHICLE_ALLOCATION_LIST_TRANSPORT_BRANCH: BRANCH}
 null_values: [""]
 zero_is_null: []

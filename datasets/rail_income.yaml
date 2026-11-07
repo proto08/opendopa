@@ -4,6 +4,7 @@ label: 鉄道会社の損益
 source_name: 鉄軌道統計年報 損益計算書
 wm_char: 益
 color: "#36B37E"
+tag: 鉄道
 files: [data/raw/rail_income/05_tetsudou_sonekikeisansyo.csv]
 grain: row
 rename: {}

@@ -5,6 +5,7 @@ label: 鉄道の営業キロ
 source_name: 鉄道統計年報 営業キロ・車両
 wm_char: 線
 color: "#14B8A6"
+tag: 鉄道
 files: [data/raw/rail_km/03_tetsudou_eigyoukiro.csv]
 grain: row
 rename: {CORPORATION_NAME: OPERATOR, COMPANY_NAME: OPERATOR, OPERATOR_NAME: OPERATOR}

@@ -14,6 +14,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from opendopa_pipeline.expr import ExprError, expr_columns, parse_expr
+from opendopa_pipeline.tags import DATASET_TAG_SLUGS
 
 _HOLE = re.compile(r"\{([^{}]+)\}")
 _TYPE_COUNT_RANGE = range(4, 7)
@@ -229,6 +230,10 @@ class DatasetDef(_Model):
     chips: list[str] = []  # 特徴の小さなラベル(穴を含む文。穴が空のものは省く)
     sparkline: str | None = None  # `series` の stat の名前
     map: MapSpec | None = None
+    # ハッシュタグ(docs/hashtag_design.md §3)。`tag` はデータ種別の表示名(例: レンタカー)、
+    # `region_from` は、先頭に都道府県名がある列(取れなければ地域タグを付けない)
+    tag: str | None = None
+    region_from: list[str] = []
     # 元の行を `csv_row` に出すとき、除く列(個人に関わる列など。設計書 §15.2)
     hide: list[str] = []
 
@@ -258,6 +263,9 @@ class DatasetDef(_Model):
                 "(目安は4〜6。docs/data.md §8.3.1)",
                 stacklevel=2,
             )
+
+        if self.tag is not None and self.tag not in DATASET_TAG_SLUGS:
+            errors.append(f"tag: {self.tag!r} は未定義です(tags.py の DATASET_TAG_SLUGS に足す)")
 
         if self.grain == "group" and not self.group_by:
             errors.append("grain: group には group_by が必要です")
@@ -432,6 +440,9 @@ def validate_against_columns(dataset: DatasetDef, columns: list[str] | set[str])
                 errors.append(
                     f"decisions[{d.id}]: 列 {col!r} は、列にも derived / stats にもありません"
                 )
+    for col in dataset.region_from:
+        if col not in known:
+            errors.append(f"region_from: {col!r} は、列にも derived / stats にもありません")
     for col in dataset.required:
         if col not in known:
             errors.append(f"required: {col!r} は、列にも derived / stats にもありません")

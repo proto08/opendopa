@@ -4,6 +4,8 @@ label: 空き家バンク(成約)
 source_name: 空き家バンク 成約物件
 wm_char: 成
 color: "#58A6D8"
+tag: 空き家
+region_from: [PREFECTURE]
 files: [data/raw/akiya_sold/02_seiyakubukken.csv]
 grain: row
 # 「/」を含む列名は式に書けないので置き換える。AMOUNT_RENT は売り出し時の価格

@@ -6,6 +6,7 @@ label: 鉄道会社の貸借
 source_name: 鉄軌道統計年報 貸借対照表
 wm_char: 貸
 color: "#9B6BFF"
+tag: 鉄道
 files: [data/raw/rail_bs/06_tetsudou_taisyakutaisyouhyou.csv]
 grain: row
 rename: {}

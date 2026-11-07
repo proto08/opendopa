@@ -4,6 +4,7 @@ label: 鉄道の営業損益
 source_name: 鉄軌道統計年報 営業損益(鉄道事業)
 wm_char: 鉄
 color: "#4C9AFF"
+tag: 鉄道
 files: [data/raw/rail_pl/04_tetsudou_eigyousoneki.csv]
 grain: row
 rename: {}
