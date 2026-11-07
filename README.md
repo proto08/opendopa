@@ -325,7 +325,7 @@ mise run test
 
 | コマンド | 内容 |
 | --- | --- |
-| `make infra-init` / `infra-plan` / `infra-apply` / `infra-validate` / `infra-fmt` | Terraform(`mise run infra-*` も同じ。OpenTofu なら `TF=tofu`) |
+| `make infra-init` / `infra-plan` / `infra-apply` / `infra-validate` / `infra-fmt` | Terraform(`mise run infra-init` / `infra-plan` / `infra-apply` も同じ。`infra-validate` / `infra-fmt` は make のみ。OpenTofu なら `TF=tofu`) |
 | `make deploy` | web・recsys のイメージをビルドして push し、Container Apps を更新する(`mise run deploy` も同じ) |
 | `make recsys-reload` | recsys を再起動して、`publish` 後の索引を読み直させる |
 | `make deploy-pipeline` / `make pipeline-run` | pipeline のジョブの更新 / 起動 |
