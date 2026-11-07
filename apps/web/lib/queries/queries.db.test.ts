@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { insertLike, insertView, loadDuration, loadVideoLogInfo } from "./actions";
 import { loadClusters } from "./clusters";
 import { loadEvents } from "./events";
 import { loadImpressions, recordImpressions } from "./impressions";
@@ -120,5 +121,41 @@ describe.skipIf(!url)("queries(DB)", () => {
     expect(await loadViewLog(pool, "u", 1)).toHaveLength(1);
     expect(await countViews(pool, "u")).toBe(2);
     expect(await countViews(pool, "nobody")).toBe(0);
+  });
+
+  it("actions: 視聴の保存は view_id の重複を無視し、duration は ok の動画だけ", async () => {
+    expect(await loadDuration(pool, "a")).toBe(20);
+    expect(await loadDuration(pool, "c")).toBeNull();
+    expect(await loadDuration(pool, "zzz")).toBeNull();
+    const v = { viewId: "act-v1", anonId: "act", videoId: "a", watchedSec: 30, ratio: 1 };
+    expect(await insertView(pool, v)).toBe(true);
+    expect(await insertView(pool, v)).toBe(false);
+    expect((await q(`SELECT 1 FROM view_events WHERE anon_id='act'`)).rows).toHaveLength(1);
+  });
+
+  it("actions: いいねは最新の状態と同じなら追加しない", async () => {
+    const l = (liked: boolean) => insertLike(pool, { anonId: "lk", videoId: "a", liked });
+    expect(await l(false)).toBe(false); // 履歴なしで取り消し
+    expect(await l(true)).toBe(true);
+    expect(await l(true)).toBe(false);
+    expect(await l(false)).toBe(true);
+    expect(await l(false)).toBe(false);
+    const { rows } = await q(`SELECT liked FROM like_events WHERE anon_id='lk' ORDER BY id`);
+    expect(rows.map((r) => r.liked)).toEqual([true, false]);
+    expect(await loadEvents(pool, "lk")).toEqual([
+      { type: "like", videoId: "a", liked: true },
+      { type: "like", videoId: "a", liked: false },
+    ]);
+    // 同時に送っても 1 件だけ
+    await Promise.all([1, 2, 3].map(() => insertLike(pool, { anonId: "lk2", videoId: "a", liked: true })));
+    expect((await q(`SELECT 1 FROM like_events WHERE anon_id='lk2'`)).rows).toHaveLength(1);
+  });
+
+  it("actions: loadVideoLogInfo", async () => {
+    await recordImpressions(pool, "inf", [{ videoId: "a", reason: "near" }], false);
+    await insertLike(pool, { anonId: "inf", videoId: "a", liked: true });
+    expect(await loadVideoLogInfo(pool, "inf", "a")).toEqual({ headline: "h-a", reason: "near", liked: true });
+    expect(await loadVideoLogInfo(pool, "nobody", "b")).toEqual({ headline: "h-b", reason: null, liked: false });
+    expect(await loadVideoLogInfo(pool, "inf", "zzz")).toBeNull();
   });
 });
