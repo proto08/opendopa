@@ -88,17 +88,6 @@ output "azure_openai_chat_deployment" {
   value       = "chat"
 }
 
-output "azure_speech_region" {
-  description = "AZURE_SPEECH_REGION(tts_provider=azure のときだけ)"
-  value       = one(module.speech[*].region)
-}
-
-output "azure_speech_key" {
-  description = "AZURE_SPEECH_KEY(tts_provider=azure のときだけ)"
-  value       = one(module.speech[*].primary_access_key)
-  sensitive   = true
-}
-
 output "web_url" {
   description = "web の URL。/api/health が 200 なら DB に繋がっている"
   value       = module.containerapp.web_url

@@ -44,7 +44,7 @@
 | 部品 | 既定の実装 | 代わりの実装 | 環境変数 |
 | --- | --- | --- | --- |
 | 埋め込み | ローカルの `multilingual-e5-large`(1024次元。パイプラインを動かす PC で実行) | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`。使わない方針) | `EMBED_PROVIDER=local\|azure` |
-| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | `azure`(Azure AI Speech) | `TTS_PROVIDER=none\|azure\|voicevox` |
+| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | なし(Azure AI Speech は使わない) | `TTS_PROVIDER=none\|voicevox` |
 | 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `jev_local`(パイプラインを動かす PC で動かす Jev 系 2B。失敗・低確信度のときは `rules`) | `jev_api`(TypeSafe Jev)。`strands_azure`・`azure_openai` は使わない方針 | `DECIDER_PROVIDER=rules\|jev_local\|jev_api\|strands_azure\|azure_openai` |
 | LLM(クラスタ名) | `none`(クラスタ名は機械的な名前にフォールバック)。テンプレート案(列定義 YAML の下書き)は LLM API ではなく Claude Code が書く(§8.9) | Azure OpenAI のチャットモデル(使わない方針) | `LLM_PROVIDER=none\|azure` |
 
@@ -691,14 +691,13 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | PostgreSQL Flexible Server | DB。拡張 `vector` を許可する(`azure.extensions` に `VECTOR`) |
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
-| Azure AI Speech | `TTS_PROVIDER=azure` のとき(VOICEVOX採用のため、既定では不要) |
 | Key Vault(任意) | 接続文字列とキー |
 
 地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。
 
 ### 12.2 Terraform の構成
 
-- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `speech`, `monitoring`, `registry`)。
+- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `monitoring`, `registry`)。
 - プロバイダーは `hashicorp/azurerm`。実装時に最新の安定版を選び、`versions.tf` で固定する(この文書ではバージョンを固定しない)。
 - **状態(state)** は、Azure Storage のBlobに置く(`backend "azurerm"`)。バックエンド用のStorage Accountは、最初の1回だけ手動(またはブートストラップ用の小さなスクリプト)で作る。
 - 環境は変数 `env_name`(例: `dev`)で分け、リソース名に含める。`terraform.tfvars` はコミットしない(`terraform.tfvars.example` を置く)。
@@ -713,7 +712,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | recsys のアプリ | `azurerm_container_app`(ingress は `external_enabled = false`) |
 | PostgreSQL | `azurerm_postgresql_flexible_server`, `azurerm_postgresql_flexible_server_database`, `azurerm_postgresql_flexible_server_configuration`(`azure.extensions` に `VECTOR` を許可) |
 | Blob と配信 | `azurerm_storage_account`, `azurerm_storage_container`, `azurerm_cdn_frontdoor_profile` ほか |
-| Azure AI Speech | `azurerm_cognitive_account`(kind: `SpeechServices`) |
 | 秘密の値(任意) | `azurerm_key_vault`, `azurerm_key_vault_secret` |
 
 - `CREATE EXTENSION vector;` は、Terraform ではなく、アプリのDBマイグレーション(`db/migrations/`、dbmate)で実行する。
@@ -731,7 +729,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | `RECSYS_DATABASE_URL` | recsys が、起動時に埋め込みを読むための、**読み取り専用**のDB接続(Next.js の `DATABASE_URL` とは別のロール) |
 | `EMBED_PROVIDER`, `EMBED_DIM` | §0.4 |
 | `TTS_PROVIDER`, `LLM_PROVIDER`, `DECIDER_PROVIDER` |
-| `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | Azure AI Speech |
 | `STORAGE_CONNECTION_STRING` | Blob への書き込み(パイプラインの `publish`) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | 監視 |
 

@@ -12,9 +12,9 @@ def test_help_lists_subcommands() -> None:
         assert name in result.output
 
 
-def test_unimplemented_command_fails() -> None:
-    result = runner.invoke(app, ["tts", "--dataset", "accident"])
-    assert result.exit_code == 1
+def test_tts_without_generate_fails_cleanly(tmp_path) -> None:
+    result = runner.invoke(app, ["tts", "--dataset", "nope", "--out-dir", str(tmp_path)])
+    assert result.exit_code == 2
 
 
 def test_generate_without_data_fails_cleanly(tmp_path) -> None:

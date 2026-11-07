@@ -4,7 +4,6 @@
 """
 
 import json
-import os
 from pathlib import Path
 from typing import Annotated
 
@@ -29,6 +28,10 @@ from opendopa_pipeline.prepare import prepare
 from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
 from opendopa_pipeline.publish import format_result, run_publish
 from opendopa_pipeline.spec import load_dataset
+from opendopa_pipeline.tts.providers import create_synthesizer, provider_name_from_env
+from opendopa_pipeline.tts.run import format_result as format_tts_result
+from opendopa_pipeline.tts.run import run_tts
+from opendopa_pipeline.tts.speak import load_dict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -230,9 +233,23 @@ def embed(
 
 
 @app.command()
-def tts(dataset: DatasetOpt) -> None:
-    """音声(TTS_PROVIDER が none ならスキップ)。"""
-    _not_implemented("tts", "M8")
+def tts(
+    dataset: DatasetOpt,
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
+    provider: Annotated[
+        str | None, typer.Option("--provider", help="TTS のプロバイダー(既定は TTS_PROVIDER)")
+    ] = None,
+) -> None:
+    """音声(TTS_PROVIDER が none ならスキップ)。先に generate を実行しておく。"""
+    name = provider or provider_name_from_env()
+    ds_dir = out_dir / dataset
+    try:
+        if not (ds_dir / "scenes.jsonl").exists():
+            raise ValueError(f"{ds_dir}/scenes.jsonl がありません(先に generate を実行)")
+        result = run_tts(ds_dir, create_synthesizer(name), load_dict())
+    except (ValueError, OSError) as e:  # TtsError・DatasetError は ValueError
+        raise _fail(str(e)) from e
+    typer.echo(format_tts_result(result, name))
 
 
 @app.command()
@@ -272,15 +289,19 @@ def run_all(
         str | None, typer.Option("--provider", help="判断のプロバイダー(既定は DECIDER_PROVIDER)")
     ] = None,
 ) -> None:
-    """datasets/*.yaml のすべてを generate → embed → tts → publish の順に実行する。"""
+    """datasets/*.yaml のすべてを generate → tts → embed → publish の順に実行する。
+
+    tts が長さ超過の動画を除外するので、embed(除外後の動画だけを読む)は tts のあとに行う。"""
     for dataset_id in dataset_ids():
         typer.echo(f"== generate: {dataset_id}")
         generate(dataset_id, out_dir, provider)
-    typer.echo("== embed")
-    embed(out_dir, DEFAULT_K, None)
-    if os.environ.get("TTS_PROVIDER", "none") == "none":
+    if provider_name_from_env() == "none":
         typer.echo("== tts: スキップ(TTS_PROVIDER=none)")
     else:
-        typer.echo("== tts: 未実装のためスキップ(#60)", err=True)
+        for dataset_id in dataset_ids():
+            typer.echo(f"== tts: {dataset_id}")
+            tts(dataset_id, out_dir, None)
+    typer.echo("== embed")
+    embed(out_dir, DEFAULT_K, None)
     typer.echo("== publish")
     _publish(out_dir, skip_blob, dry_run=False)
