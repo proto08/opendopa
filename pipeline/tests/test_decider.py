@@ -453,3 +453,15 @@ def test_strands_azure_no_log_on_success(stub, caplog):
     with caplog.at_level("WARNING"):
         decider.decide("noul", {"a": 1}, "q")
     assert decider.failed == 0 and not caplog.messages
+
+
+def test_strands_azure_トークンがあるとき_http_の外部_url_は拒否する(tmp_path, monkeypatch):
+    ds = make_dataset(tmp_path)
+    monkeypatch.setenv("STRANDS_DECIDER_TOKEN", "tok")
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "http://decider.example.com")
+    with pytest.raises(ValueError, match="https"):
+        create_decider("strands_azure", ds)
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "https://decider.example.com")
+    assert create_decider("strands_azure", ds).name == "strands_azure"
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "http://127.0.0.1:9")
+    assert create_decider("strands_azure", ds).name == "strands_azure"

@@ -24,6 +24,7 @@ import logging
 import os
 import urllib.request
 from typing import Any
+from urllib.parse import urlparse
 
 from opendopa_pipeline.decider.base import Decision, DecisionRequest, Kind, Option
 from opendopa_pipeline.spec import DatasetDef
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 NAME = "strands_azure"
 DEFAULT_TIMEOUT = 30.0
 PATH = "/v1/decide"
+_LOOPBACK = {"localhost", "127.0.0.1", "::1"}
 
 
 class StrandsAzureDecider:
@@ -49,8 +51,15 @@ class StrandsAzureDecider:
         url = os.environ.get("STRANDS_DECIDER_URL", "")
         if not url:
             raise ValueError("DECIDER_PROVIDER=strands_azure には STRANDS_DECIDER_URL が必要です")
+        token = os.environ.get("STRANDS_DECIDER_TOKEN", "")
+        parsed = urlparse(url)
+        # 外部 URL に Bearer トークンを平文で送らない(手元のスタブ用に loopback だけ許す)
+        if token and parsed.scheme != "https" and parsed.hostname not in _LOOPBACK:
+            raise ValueError(
+                "STRANDS_DECIDER_URL は https にしてください(トークンを平文で送らないため)"
+            )
         timeout = float(os.environ.get("STRANDS_DECIDER_TIMEOUT") or DEFAULT_TIMEOUT)
-        return cls(url, os.environ.get("STRANDS_DECIDER_TOKEN", ""), timeout)
+        return cls(url, token, timeout)
 
     def decide(
         self,
