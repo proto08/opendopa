@@ -1,8 +1,10 @@
-"""列定義 YAML の下書きを LLM に作らせる(設計書 §0.4・§8.1、docs/data.md §8.9・§10.15)。
+"""列定義 YAML の下書きの材料と機械検査(設計書 §8.1、docs/data.md §8.9・§10.15)。
 
-LLM が書くのは文章の「ひな型」だけ。数字は、あとでエンジンが元データから入れる。
-LLM の出力は、YAML として読めるか・穴の名前が列定義にあるか・型ごとに `short` があるかを
-機械で検査し、違反は下書きの先頭にコメントで残す。人が確認して `datasets/<id>.yaml` に置く。
+下書きは Claude Code が書く(実行時にも pipeline からも LLM API は呼ばない)。ここでは、
+①下書きを書くための材料(プロファイル・サンプル 10 行・スキーマの説明・禁止事項)をプロンプトに
+まとめ、②書かれた YAML を、YAML として読めるか・穴の名前が列定義にあるか・型ごとに `short` が
+あるかを機械で検査する。書くのは文章の「ひな型」だけで、数字は、あとでエンジンが元データから入れる。
+人が確認して `datasets/<id>.yaml` に置く。
 """
 
 from __future__ import annotations
@@ -17,7 +19,6 @@ import yaml
 from pydantic import ValidationError
 
 from opendopa_pipeline.ingest import row_dict
-from opendopa_pipeline.llm import LlmProvider
 from opendopa_pipeline.spec import DatasetDef, validate_against_columns
 
 PROMPT_PATH = Path(__file__).resolve().parents[1] / "prompts" / "draft_yaml.md"
@@ -27,16 +28,8 @@ SAMPLE_MAX_CHARS = 200  # サンプルの1つの値の長さの上限(自由記�
 SEPARATOR = "====="
 
 _HOLE = re.compile(r"\{([^{}]+)\}")
-_FENCE = re.compile(r"^```[a-zA-Z]*\s*\n(.*?)\n```\s*$", re.DOTALL)
 # 穴を含みうる文のあるキー(spec.DatasetDef.texts / holes と同じ範囲)
 _TEXT_KEYS = ("template_groups", "headline", "chips", "embed_text", "big_number", "map")
-
-NO_LLM_MESSAGE = (
-    "LLM が使えません(LLM_PROVIDER=none)。下書きは作りません。\n"
-    "下書きが要るときは LLM_PROVIDER=azure と Azure OpenAI の環境変数を設定してください。\n"
-    "使わない場合は、`uv run opendopa profile --dataset <id>` で列を調べ、"
-    "`datasets/_example.yaml` と docs/data.md §8.3・§10.15 を見て手で書いてください。"
-)
 
 
 def schema_text(doc: Path = SCHEMA_DOC) -> str:
@@ -91,13 +84,6 @@ def build_prompt(
     return fill(system).strip(), fill(user).strip()
 
 
-def strip_fence(text: str) -> str:
-    """LLM がコードフェンスで囲んで返したときに、中身だけにする。"""
-    text = text.strip()
-    m = _FENCE.match(text)
-    return m.group(1) if m else text
-
-
 def _strings(node: Any) -> list[str]:
     if isinstance(node, str):
         return [node]
@@ -109,7 +95,7 @@ def _strings(node: Any) -> list[str]:
 
 
 def check_draft(text: str, columns: list[str] | set[str]) -> list[str]:
-    """下書き YAML の違反を一覧で返す(空なら問題なし)。
+    """書かれた下書き YAML の違反を一覧で返す(空なら問題なし)。
 
     - YAML として不正
     - 穴 `{名前}` が、列名にも `derived` / `stats` にもない
@@ -155,27 +141,3 @@ def check_draft(text: str, columns: list[str] | set[str]) -> list[str]:
         except ValueError as e:
             errors += [ln.strip() for ln in str(e).splitlines()[1:] if ln.strip()]
     return errors
-
-
-def with_violations(text: str, violations: list[str]) -> str:
-    """違反を、下書きの先頭にコメントとして付ける。"""
-    if not violations:
-        return text
-    head = [
-        f"# 機械検査で {len(violations)} 件の違反があります。直してから datasets/ に置いてください"
-    ]
-    head += [f"# - {v}" for v in violations]
-    return "\n".join(head) + "\n\n" + text
-
-
-def draft_yaml(
-    llm: LlmProvider,
-    profile: dict[str, Any],
-    df: pd.DataFrame,
-    columns: list[str] | None = None,
-) -> tuple[str, list[str]]:
-    """LLM に下書きを作らせ、(下書きの本文, 違反の一覧) を返す。本文には違反のコメントを付ける。"""
-    system, user = build_prompt(profile, sample_rows(df))
-    text = strip_fence(llm.complete(system, user))
-    violations = check_draft(text, columns if columns is not None else list(df.columns))
-    return with_violations(text, violations), violations

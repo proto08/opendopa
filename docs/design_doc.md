@@ -529,6 +529,7 @@ summary = eventCount == 0 ? 'まだ見ていないので、好みはわかりま
 
 ```
 uv run opendopa profile  --dataset <id>        # 列のプロファイルを出す(列ごとの欠損率、種類数、最長の文字数、役割の推定、上位の値)
+uv run opendopa draft-yaml --dataset <id>      # 新しいデータセット用: 列定義YAMLの下書きの材料を out/<id>/draft_prompt.md に出す(下書きは Claude Code が書く。--check <file> で機械検査)
 uv run opendopa generate --dataset <id>        # 選定→原稿→シーン→検証→ out/<id>/scenes.jsonl
 uv run opendopa decide   --dataset <id> --eval datasets/<id>.labels.csv   # 判断モデルの評価(人が付けた正解との一致率)
 uv run opendopa embed                          # 全動画の埋め込み・2D座標・クラスタ

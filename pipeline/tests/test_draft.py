@@ -7,12 +7,10 @@ from typer.testing import CliRunner
 
 from opendopa_pipeline import cli
 from opendopa_pipeline.draft import (
-    SAMPLE_ROWS,
     build_prompt,
     check_draft,
-    draft_yaml,
+    sample_rows,
     schema_text,
-    strip_fence,
 )
 from opendopa_pipeline.profile import build_profile
 
@@ -42,16 +40,6 @@ def make_df() -> pd.DataFrame:
             "OCCURRENCE_DATE": ["2024-01-01"] * n,
         }
     )
-
-
-class StubLlm:
-    def __init__(self, reply: str) -> None:
-        self.reply = reply
-        self.calls: list[tuple[str, str]] = []
-
-    def complete(self, system: str, user: str) -> str:
-        self.calls.append((system, user))
-        return self.reply
 
 
 def test_good_draft_has_no_violations() -> None:
@@ -85,11 +73,6 @@ def test_missing_short_is_detected() -> None:
     assert any("short" in v for v in violations)
 
 
-def test_strip_fence() -> None:
-    assert strip_fence("```yaml\nid: a\n```") == "id: a"
-    assert strip_fence("id: a") == "id: a"
-
-
 def test_prompt_contains_profile_samples_and_rules() -> None:
     df = make_df()
     system, user = build_prompt(build_profile("demo", df, ["a.csv"]), [{"LOCATION": "東京都0"}])
@@ -108,13 +91,12 @@ def test_schema_text_is_section_8_3() -> None:
     assert text.startswith("### 8.3 ") and "8.3a" not in text.splitlines()[0]
 
 
-def test_draft_yaml_passes_samples_and_marks_violations() -> None:
-    llm = StubLlm("```yaml\n" + good_draft("{foo}") + "```")
-    text, violations = draft_yaml(llm, build_profile("demo", make_df(), ["a.csv"]), make_df())
-    assert len(violations) == 1
-    assert text.startswith("# 機械検査で 1 件の違反")
-    assert "{foo}" in text.splitlines()[1]
-    assert len(llm.calls[0][1].split("# サンプル 10 行")[1].strip().splitlines()) >= SAMPLE_ROWS
+def test_sample_rows_are_first_ten_and_truncated() -> None:
+    df = make_df()
+    df.loc[0, "SUMMARY"] = "あ" * 300
+    rows = sample_rows(df)
+    assert len(rows) == 10
+    assert rows[0]["SUMMARY"].endswith("…") and len(rows[0]["SUMMARY"]) == 201
 
 
 @pytest.fixture
@@ -127,22 +109,26 @@ def fake_repo(tmp_path, monkeypatch):
     return tmp_path
 
 
-def test_provider_none_prints_guidance_without_calling_llm(fake_repo, monkeypatch) -> None:
-    monkeypatch.setenv("LLM_PROVIDER", "none")
-    result = runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo"])
-    assert result.exit_code == 1
-    assert "LLM が使えません" in result.output
-    assert not (fake_repo / "datasets" / "demo.draft.yaml").exists()
-
-
-def test_cli_writes_draft_and_reports_violations(fake_repo, monkeypatch) -> None:
-    monkeypatch.setenv("LLM_PROVIDER", "azure")
-    monkeypatch.setattr(cli, "create_llm", lambda: StubLlm(good_draft("{foo}")))
-    result = runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo"])
+def test_cli_writes_prompt_without_calling_llm(fake_repo, monkeypatch) -> None:
+    monkeypatch.setattr(cli, "create_llm", lambda: pytest.fail("LLM を呼んではいけない"))
+    out_dir = fake_repo / "out"
+    result = runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo", "--out-dir", str(out_dir)])
     assert result.exit_code == 0, result.output
+    text = (out_dir / "demo" / "draft_prompt.md").read_text(encoding="utf-8")
+    assert "REMARKS" in text and "推測は書かない" in text and "{{" not in text
+    assert "--check" in result.output
+
+
+def test_cli_check_reports_violations_and_exit_code(fake_repo) -> None:
+    ok = fake_repo / "ok.yaml"
+    ok.write_text(good_draft(), encoding="utf-8")
+    assert (
+        runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo", "--check", str(ok)]).exit_code
+        == 0
+    )
+
+    bad = fake_repo / "bad.yaml"
+    bad.write_text(good_draft("{foo}"), encoding="utf-8")
+    result = runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo", "--check", str(bad)])
+    assert result.exit_code == 1
     assert "{foo}" in result.output
-    out = fake_repo / "datasets" / "demo.draft.yaml"
-    assert out.read_text(encoding="utf-8").startswith("# 機械検査で")
-    # 人が直した下書きを守る
-    assert runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo"]).exit_code == 2
-    assert runner.invoke(cli.app, ["draft-yaml", "--dataset", "demo", "--force"]).exit_code == 0

@@ -17,7 +17,7 @@ from opendopa_pipeline.decider.evaluate import (
     load_labels,
     write_labels,
 )
-from opendopa_pipeline.draft import NO_LLM_MESSAGE, draft_yaml
+from opendopa_pipeline.draft import build_prompt, check_draft, sample_rows
 from opendopa_pipeline.embed.providers import create_embedder
 from opendopa_pipeline.embed.run import DEFAULT_K, run_embed
 from opendopa_pipeline.generate import format_summary, run_generate
@@ -98,35 +98,53 @@ def draft_yaml_cmd(
         list[Path] | None,
         typer.Option("--file", help="CSV を直接指定する(新規データセット用。複数可)"),
     ] = None,
-    force: Annotated[bool, typer.Option("--force", help="既存の下書きを上書きする")] = False,
+    check: Annotated[
+        Path | None,
+        typer.Option(
+            "--check", help="書かれた下書き YAML を機械検査する(違反があれば終了コード 1)"
+        ),
+    ] = None,
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
 ) -> None:
-    """列定義 YAML の下書きを LLM に作らせる(datasets/<id>.draft.yaml。要 LLM_PROVIDER=azure)。"""
+    """列定義 YAML の下書きの材料(out/<id>/draft_prompt.md)を出す。--check で下書きを検査する。
+
+    下書きは Claude Code が、材料を読んで書く。このコマンドは LLM を呼ばない。
+    """
     if dataset is None and not file:
         raise _fail("--dataset か --file のどちらかを指定してください")
     dataset_id = dataset or file[0].stem  # type: ignore[index]
     try:
-        llm = create_llm()
-    except ValueError as e:
-        raise _fail(str(e)) from e
-    if llm is None:
-        typer.echo(NO_LLM_MESSAGE)
-        raise typer.Exit(code=1)
-    out = REPO_ROOT / "datasets" / f"{dataset_id}.draft.yaml"
-    if out.exists() and not force:
-        raise _fail(f"{out} が既にあります(人が直した内容を守るため。上書きは --force)")
-    try:
         df, source = _load_raw(dataset_id, file)
-        text, violations = draft_yaml(llm, build_profile(dataset_id, df, source), df)
-    except (IngestError, ValueError, OSError) as e:
+    except (IngestError, ValueError) as e:
         raise _fail(str(e)) from e
-    out.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
-    typer.echo(f"下書きを書き出しました: {out}")
-    if violations:
-        typer.echo(f"機械検査: {len(violations)} 件の違反(下書きの先頭にコメントで残しました)")
+
+    if check is not None:
+        try:
+            text = check.read_text(encoding="utf-8")
+        except OSError as e:
+            raise _fail(str(e)) from e
+        violations = check_draft(text, list(df.columns))
+        if not violations:
+            typer.echo("機械検査: 違反なし。人が内容を確認して datasets/<id>.yaml に置いてください")
+            return
+        typer.echo(f"機械検査: {len(violations)} 件の違反")
         for v in violations:
             typer.echo(f"  - {v}")
-    else:
-        typer.echo("機械検査: 違反なし。人が内容を確認して datasets/<id>.yaml に置いてください")
+        raise typer.Exit(code=1)
+
+    try:
+        system, user = build_prompt(build_profile(dataset_id, df, source), sample_rows(df))
+    except (ValueError, OSError) as e:
+        raise _fail(str(e)) from e
+    out = out_dir / dataset_id / "draft_prompt.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(f"{system}\n\n=====\n\n{user}\n", encoding="utf-8")
+    typer.echo(f"下書きの材料を書き出しました: {out}")
+    typer.echo(
+        f"Claude Code に、この材料を読ませて datasets/{dataset_id}.draft.yaml を書かせ、"
+        f"`opendopa draft-yaml --dataset {dataset_id} --check datasets/{dataset_id}.draft.yaml` "
+        "で検査してください"
+    )
 
 
 @app.command()
