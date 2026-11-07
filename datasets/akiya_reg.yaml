@@ -4,6 +4,8 @@ label: 空き家バンク(登録)
 source_name: 空き家バンク 登録物件
 wm_char: 家
 color: "#F2B84B"
+tag: 空き家
+region_from: [PREFECTURE]
 files: [data/raw/akiya_reg/01_tourokubukken.csv]
 grain: row
 # 「/」を含む列名は式に書けないので置き換える。CSV の LAYOUT の "R" は間取りとして読めないので欠損にする

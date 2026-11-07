@@ -465,3 +465,114 @@ def test_strands_azure_トークンがあるとき_http_の外部_url_は拒否�
     assert create_decider("strands_azure", ds).name == "strands_azure"
     monkeypatch.setenv("STRANDS_DECIDER_URL", "http://127.0.0.1:9")
     assert create_decider("strands_azure", ds).name == "strands_azure"
+
+
+# ---- strands_local(モデルはモック。重みは落とさない) ----
+
+
+class _FakeEngine:
+    """`SystemOneEngine.evaluate` の代わり。答えは `answer`、失敗させるなら `error`。"""
+
+    def __init__(self, answer=None, error=None):
+        from types import SimpleNamespace
+
+        self._ns = SimpleNamespace
+        self.answer = answer
+        self.error = error
+        self.payloads: list[dict] = []
+
+    def evaluate(self, payload):
+        self.payloads.append(payload)
+        if self.error:
+            raise self.error
+        return self._ns(answers={"q": self.answer})
+
+
+@pytest.fixture
+def local(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    from opendopa_pipeline.decider import strands_local
+
+    monkeypatch.setattr(strands_local, "_make_request", lambda payload: payload)
+
+    def make(answer=None, error=None):
+        eng = _FakeEngine(answer, error)
+        return strands_local.StrandsLocalDecider(engine=eng), eng
+
+    return make, NS
+
+
+def test_strands_local_registered_and_loads_lazily_failing_to_rules(tmp_path, monkeypatch):
+    from opendopa_pipeline.decider import strands_local
+
+    def boom(model, device):
+        raise ImportError("no extra")
+
+    monkeypatch.setattr(strands_local, "_load_engine", boom)
+    d = create_decider("strands_local", make_dataset(tmp_path))
+    assert d.name == "strands_local"
+    # 読めないときは作る時点では止めず、問いごとに例外 → エンジンが rules にする
+    with pytest.raises(RuntimeError, match="読めていません"):
+        d.decide("noul", {}, "?")
+
+
+def test_strands_local_model_env(tmp_path, monkeypatch):
+    from opendopa_pipeline.decider import strands_local
+
+    seen = {}
+    monkeypatch.setattr(
+        strands_local, "_load_engine", lambda m, dev: seen.update(m=m, dev=dev) or object()
+    )
+    create_decider("strands_local", make_dataset(tmp_path))
+    assert seen == {"m": "StrandsAgents/strands-decider-2B-hobson-v19", "dev": None}
+    monkeypatch.setenv("STRANDS_LOCAL_MODEL", "/m")
+    monkeypatch.setenv("STRANDS_LOCAL_DEVICE", "cpu")
+    create_decider("strands_local", make_dataset(tmp_path))
+    assert seen == {"m": "/m", "dev": "cpu"}
+
+
+def test_strands_local_choice_maps_label_back_to_id(local):
+    make, NS = local
+    d, eng = make(NS(probabilities={"負傷": 0.8, "その他": 0.2}))
+    opts = [Option("injury", "負傷"), Option("other", "その他")]
+    dec = d.decide("choice", {"A": "x"}, "どれ?", opts)
+    assert (dec.choice, dec.provider, dec.used_fallback) == ("injury", "strands_local", False)
+    assert dec.confidence == pytest.approx(0.8)
+    assert eng.payloads[0]["state"] == {"A": "x"}
+    assert eng.payloads[0]["questions"]["q"]["criteria"] == {"負傷": None, "その他": None}
+
+
+def test_strands_local_noul_and_score(local):
+    make, NS = local
+    dec = make(NS(noul=0.1))[0].decide("noul", {}, "?")
+    assert dec.probability == pytest.approx(0.1) and dec.confidence == pytest.approx(0.9)
+    dec = make(NS(score=2.5, confidence=0.7))[0].decide("score", {}, "?", rubric=["低", "中", "高"])
+    assert dec.score == pytest.approx(2.5) and dec.confidence == pytest.approx(0.7)
+
+
+def test_strands_local_broken_answer_has_zero_confidence(local):
+    make, NS = local
+    opts = [Option("injury", "負傷"), Option("other", "その他")]
+    assert make(NS(probabilities={"?": 1.0}))[0].decide("choice", {}, "?", opts).confidence == 0.0
+    assert make(NS(noul=2.0))[0].decide("noul", {}, "?").confidence == 0.0
+
+
+def test_strands_local_low_confidence_and_errors_fall_back_to_rules(tmp_path, local):
+    make, NS = local
+    ds = make_dataset(tmp_path)
+    rows = [row(casualties="あり"), row(casualties="あり")]
+
+    def fillable(_r):
+        return ALL
+
+    # 低確信度(0.5 < min_confidence 0.55)→ rules
+    d, _ = make(NS(probabilities={"負傷": 0.5, "その他": 0.5}))
+    eng = DecisionEngine(ds, d)
+    out = eng.run(rows[:1], fillable)[0]["template"]
+    assert out["used_fallback"] and out["provider"] == "rules" and out["choice"] == "injury"
+    # 推論の失敗 → rules(止まらない)
+    d, _ = make(error=RuntimeError("oom"))
+    out = DecisionEngine(ds, d).run(rows[:1], fillable)[0]["template"]
+    assert out["used_fallback"] and out["provider"] == "rules"
+    assert d.failed >= 1

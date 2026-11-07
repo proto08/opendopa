@@ -4,6 +4,8 @@ label: 内航海運の航路
 source_name: 船舶輸送統計調査(内航船舶輸送統計調査)
 wm_char: 港
 color: "#3A86FF"
+tag: 内航海運
+region_from: [FROM_PREF, TO_PREF]
 files: [data/raw/naiko_route/02_naikousenpakuyusoutoukeichousa.csv]
 grain: row
 # 式(filters・score)で使う列は、空白を含む名前を使えないので置き換える

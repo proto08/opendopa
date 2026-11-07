@@ -348,6 +348,8 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 次の動画を返す。`count` は1〜3。初回は `count=2&includeMap=1`(現在の動画と、先読み1本)。
 
+`tag` を足すと(複数可、4個まで。例: `tag=dataset:rental&tag=region:hokkaido`)、指定したすべてのタグを持つ動画(AND)だけから選ぶ。未知のタグ・5個以上は400。候補がなければ `items: []` と `reason: "pool_empty"`(`taste` は返す)。詳細は `docs/hashtag_design.md` §5.2。`GET /api/tags` は全タグと件数(`status='ok'` の動画だけを数える)を返す(同 §5.1)。
+
 処理:
 1. 匿名IDを確認する(Cookie。なければ発行する)。
 2. DBから、そのユーザーの `events`(`view_events` と `like_events` を時刻順)、配信済みの動画ID(`impressions`)、直近に配信したデータセットを読む。
@@ -574,6 +576,7 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 - `TTS_PROVIDER=none` のときは音声ファイルを作らない。字幕の秒数は1秒6.5文字で見積もる。
 - VOICEVOXを使う場合は、キャラクターごとの利用規約とクレジット表記(「VOICEVOX:キャラ名」)を、フィードの下部かフッターに出す。
 - 再生はアプリ全体で 1 本の `<audio>` を使い回し、`src` だけ差し替える(iOS Safari 対策)。ブラウザの自動再生制限で止められたら、最初の操作(`pointerdown` / `keydown`)で鳴らし直し、止められている間はミュートの表示を出す。
+- BGM(任意): フィード全体で 1 曲を別の `<audio>` でループさせる(音量 0.15、ミュートボタンあり)。`BGM_FILE` と `BGM_CREDIT` がそろったときだけ鳴り、クレジットはフッターに出す。音源は同梱せず、ライセンスを確認したものだけを `MEDIA_BASE_URL` 配下に置く(docs/decisions/2026-11-07-bgm-feed-wide-loop.md)。
 - 音声がある行は、音声の `ended` で次の行へ進める(音声が時間の基準。待つのは見積もりの終わりから最大 1.5 秒)。途中から再開するときは、音声の位置を行の経過秒に合わせる。
 
 ---

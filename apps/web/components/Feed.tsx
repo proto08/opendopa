@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildSlots } from "@/lib/ads";
 import {
   clampIndex,
   isEditableTarget,
@@ -18,6 +19,7 @@ import {
   toggleTag,
   withTagsInSearch,
 } from "@/lib/tagFilter";
+import { AdSlide } from "./AdSlide";
 import { CsvSheet } from "./CsvSheet";
 import { PoolEmpty } from "./PoolEmpty";
 import { SearchButton } from "./SearchButton";
@@ -85,7 +87,13 @@ export function Feed() {
       ),
     [],
   );
+  // 動画の列に広告を差し込んだ表示用の並び。active・anchor・lastActive は、この並びでの番号
+  const slots = useMemo(() => buildSlots(items), [items]);
+  // 候補が尽きたら、最後の動画のあとに案内の 1 画面を足す
+  const slideCount = slots.length + (poolEmpty ? 1 : 0);
   const rootRef = useRef<HTMLDivElement>(null);
+  // 絞り込みを変えて取り直したあと、虫眼鏡へフォーカスを戻すかどうか
+  const refocusSearch = useRef(false);
   const loadingMore = useRef(false);
   const lastActive = useRef(0);
   const tagsRef = useRef<string[]>([]);
@@ -177,6 +185,7 @@ export function Feed() {
       const at = searchAt;
       setSearchAt(null);
       if (!sameTags(next, tagsRef.current)) {
+        refocusSearch.current = true;
         applyTags(next);
         return;
       }
@@ -189,6 +198,15 @@ export function Feed() {
     },
     [searchAt, applyTags],
   );
+
+  // 取り直しのあとも、閉じたら虫眼鏡へフォーカスを戻す(先頭の画面の虫眼鏡)
+  useEffect(() => {
+    if (status !== "ready" || !refocusSearch.current) return;
+    refocusSearch.current = false;
+    rootRef.current
+      ?.querySelector<HTMLElement>('[data-index="0"] .searchButton')
+      ?.focus();
+  }, [status]);
 
   // 検索シートが開いている間に好みシートが開いたら、検索シートを閉じる
   useEffect(() => {
@@ -203,8 +221,12 @@ export function Feed() {
   // 常に「いまの次の 1 本」まで持っておく
   useEffect(() => {
     if (status !== "ready" || active === null) return;
-    if (items.length < active + 2) load(1, false);
-  }, [active, items.length, status, load]);
+    // 広告をはさんでも、次の動画が 1 本は手元にあるようにする
+    const videosAfter = slots.filter(
+      (s, i) => i > active && s.kind === "video",
+    ).length;
+    if (videosAfter < 1) load(1, false);
+  }, [active, slots, status, load]);
 
   // 60% 以上見えた動画を再生中にする
   useEffect(() => {
@@ -220,28 +242,28 @@ export function Feed() {
         setActive((cur) => (cur === index ? null : cur));
       }
     });
-  }, [items.length]);
+  }, [slideCount]);
 
   const scrollBy = useCallback(
     (delta: number) => {
       const root = rootRef.current;
       if (!root) return;
-      const to = clampIndex(lastActive.current, delta, items.length);
+      const to = clampIndex(lastActive.current, delta, slideCount);
       root
         .querySelector(`[data-index="${to}"]`)
         ?.scrollIntoView({ behavior: "smooth" });
     },
-    [items.length],
+    [slideCount],
   );
 
   const toggleLike = useCallback(() => {
-    const item = items[lastActive.current];
-    if (!item) return;
-    const id = item.videoId;
+    const slot = slots[lastActive.current];
+    if (slot?.kind !== "video") return; // 広告にはいいねしない
+    const id = slot.item.videoId;
     const next = !(liked[id] ?? false);
     setLiked((prev) => ({ ...prev, [id]: next }));
     likeSync.request(id, next);
-  }, [items, liked, likeSync]);
+  }, [slots, liked, likeSync]);
 
   // ↑ ↓ j k で前後へ(端で止まる)、l でいいね。シートが開いている間と入力欄では効かせない
   useEffect(() => {
@@ -291,7 +313,8 @@ export function Feed() {
     );
   }
 
-  const shown = items[active ?? anchor];
+  const shownSlot = slots[active ?? anchor];
+  const shown = shownSlot?.kind === "video" ? shownSlot.item : undefined;
 
   // 虫眼鏡と、開いていれば検索シート(見えている動画のステージの上)
   const overlay = (index: number) => (
@@ -314,32 +337,36 @@ export function Feed() {
 
   return (
     <div className="feed" ref={rootRef} tabIndex={-1} data-locked={searchOpen}>
-      {items.length === 0 && poolEmpty ? (
-        <section className="slide" data-index={0} aria-label="動画なし">
+      {slots.map((slot, i) =>
+        slot.kind === "ad" ? (
+          <AdSlide key={i} ad={slot.ad} index={i} onNext={() => scrollBy(1)} />
+        ) : (
+          <Slide
+            key={i}
+            item={slot.item}
+            index={i}
+            active={active === i}
+            mounted={Math.abs(i - anchor) <= 1}
+            hold={sheetOpen}
+            liked={liked[slot.item.videoId] ?? false}
+            onLike={toggleLike}
+            onCsv={() => setCsvOpen(true)}
+            onTaste={tasteSheet.openSheet}
+            onNext={() => scrollBy(1)}
+            selectedTags={tags}
+            onTag={onTag}
+            overlay={overlay(i)}
+          />
+        ),
+      )}
+      {poolEmpty ? (
+        <section className="slide" data-index={slots.length} aria-label="動画なし">
           <div className="stage" style={{ cursor: "default" }}>
             <PoolEmpty onClear={() => applyTags([])} />
-            {overlay(0)}
+            {overlay(slots.length)}
           </div>
         </section>
       ) : null}
-      {items.map((item, i) => (
-        <Slide
-          key={i}
-          item={item}
-          index={i}
-          active={active === i}
-          mounted={Math.abs(i - anchor) <= 1}
-          hold={sheetOpen}
-          liked={liked[item.videoId] ?? false}
-          onLike={toggleLike}
-          onCsv={() => setCsvOpen(true)}
-          onTaste={tasteSheet.openSheet}
-          onNext={() => scrollBy(1)}
-          selectedTags={tags}
-          onTag={onTag}
-          overlay={overlay(i)}
-        />
-      ))}
       {csvOpen && shown ? (
         <CsvSheet
           datasetName={shown.scene.source.datasetName}

@@ -1,0 +1,78 @@
+/* 広告風の画面(#147)。大きさは動画ステージと同じ 9:16 */
+.adStage {
+  --cat: #ff7a59;
+  position: relative;
+  container-type: inline-size;
+  aspect-ratio: 9 / 16;
+  width: min(100%, calc(min(var(--stage-max-height), 100dvh) * 9 / 16));
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 8cqw;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--cat) 55%, #000),
+    #111
+  );
+  color: #fff;
+  font-family: var(--font-body);
+}
+
+@media (min-width: 900px) {
+  .adStage {
+    border-radius: var(--stage-radius);
+  }
+}
+
+.adBadge {
+  position: absolute;
+  top: 4.5cqw;
+  left: 4cqw;
+  padding: 0.9cqw 2.6cqw;
+  background: #fff;
+  color: #111;
+  font-size: 3.4cqw;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+}
+
+.adTitle {
+  margin: 0 0 5cqw;
+  font-family: var(--font-display);
+  font-size: 11cqw;
+  line-height: 1.2;
+}
+
+.adText {
+  margin: 0 0 4cqw;
+  font-size: 5cqw;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.adNote {
+  margin: 0;
+  font-size: 3.8cqw;
+  opacity: 0.8;
+}
+
+.adSkip {
+  position: absolute;
+  right: 4cqw;
+  bottom: 5cqw;
+  padding: 2cqw 4.5cqw;
+  border: 1px solid rgb(255 255 255 / 60%);
+  border-radius: 999px;
+  background: rgb(0 0 0 / 35%);
+  color: #fff;
+  font: inherit;
+  font-size: 3.8cqw;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adSkip:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}

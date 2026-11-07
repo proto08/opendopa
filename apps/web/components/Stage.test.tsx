@@ -35,13 +35,15 @@ describe("必須の表示", () => {
     );
   });
 
-  it("フッターは非公式の旨を常に出し、credit があるときだけクレジットを足す", () => {
+  it("フッターは非公式の旨を常に出し、credits があるときだけクレジットを足す", () => {
     const plain = renderToStaticMarkup(<Footer />);
     expect(plain).toContain("OpenDopaは非公式のアプリです");
     expect(plain).not.toContain("VOICEVOX");
     expect(
-      renderToStaticMarkup(<Footer credit="VOICEVOX:四国めたん" />),
-    ).toContain("VOICEVOX:四国めたん");
+      renderToStaticMarkup(
+        <Footer credits={["VOICEVOX:四国めたん", "BGM:テスト音源"]} />,
+      ),
+    ).toMatch(/VOICEVOX:四国めたん.*BGM:テスト音源/);
   });
 });
 

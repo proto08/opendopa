@@ -6,6 +6,7 @@ label: 鉄道の輸送人員
 source_name: 鉄道統計年報 運輸成績1
 wm_char: 鉄
 color: "#3B82F6"
+tag: 鉄道
 files: [data/raw/rail_traffic1/01_tetsudou_unyuseiseki1.csv]
 grain: row
 # 事業者名の列名は、ファイルによって違う(CORPORATION_NAME / COMPANY_NAME / OPERATOR_NAME)ので OPERATOR にそろえる

@@ -37,11 +37,13 @@ def create_decider(name: str, dataset: DatasetDef) -> Decider:
 
 
 def _register_builtin() -> None:
+    from opendopa_pipeline.decider import strands_local
     from opendopa_pipeline.decider.rules import RulesDecider
     from opendopa_pipeline.decider.strands_azure import NAME, StrandsAzureDecider
 
     register("rules", RulesDecider.from_dataset)
     register(NAME, StrandsAzureDecider.from_dataset)
+    register(strands_local.NAME, strands_local.StrandsLocalDecider.from_dataset)
 
 
 _register_builtin()

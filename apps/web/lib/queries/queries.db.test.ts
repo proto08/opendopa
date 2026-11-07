@@ -14,6 +14,7 @@ import { loadEvents } from "./events";
 import { loadImpressions, recordImpressions } from "./impressions";
 import { countViews, loadViewLog } from "./log";
 import { loadMapPoints } from "./map";
+import { loadKnownTagIds, loadTags, loadVideoIdsWithAllTags } from "./tags";
 import { loadVideos } from "./videos";
 
 const url = process.env.TEST_DATABASE_URL;
@@ -38,6 +39,11 @@ describe.skipIf(!url)("queries(DB)", () => {
     );
     const up = readFileSync(file, "utf8").split("-- migrate:down")[0];
     await q(up);
+    const tagsFile = new URL(
+      "../../../../db/migrations/20261107000001_create_tags.sql",
+      import.meta.url,
+    );
+    await q(readFileSync(tagsFile, "utf8").split("-- migrate:down")[0]);
 
     await q(
       `INSERT INTO datasets VALUES ('d1','D1','s','あ','#111111'),('d2','D2','s','い','#222222')`,
@@ -96,6 +102,62 @@ describe.skipIf(!url)("queries(DB)", () => {
       { type: "view", videoId: "b", ratio: 1 },
       { type: "like", videoId: "a", liked: false },
       { type: "like", videoId: "b", liked: true },
+    ]);
+  });
+
+  it("tags: 件数は ok の動画だけ。AND で絞り、未知の ID を見分ける", async () => {
+    await q(
+      `INSERT INTO tags (id,kind,label,yomi,sort) VALUES
+         ('dataset:x','dataset','X','えっくす',1),
+         ('region:hokkaido','region','北海道','ほっかいどう',2),
+         ('region:empty','region','空','から',3)`,
+    );
+    // a(ok): x + 北海道、b(ok): x、c(excluded): x + 北海道
+    for (const [v, t] of [
+      ["a", "dataset:x"],
+      ["a", "region:hokkaido"],
+      ["b", "dataset:x"],
+      ["c", "dataset:x"],
+      ["c", "region:hokkaido"],
+    ])
+      await q(`INSERT INTO video_tags VALUES ($1,$2)`, [v, t]);
+
+    expect((await loadTags(pool)).map((t) => [t.id, t.count])).toEqual([
+      ["dataset:x", 2],
+      ["region:hokkaido", 1],
+      ["region:empty", 0],
+    ]);
+    expect((await loadVideoIdsWithAllTags(pool, ["dataset:x"])).sort()).toEqual(
+      ["a", "b"],
+    );
+    expect(
+      await loadVideoIdsWithAllTags(pool, ["dataset:x", "region:hokkaido"]),
+    ).toEqual(["a"]);
+    expect(
+      await loadVideoIdsWithAllTags(pool, ["dataset:x", "region:empty"]),
+    ).toEqual([]);
+    expect([...(await loadKnownTagIds(pool, ["dataset:x", "nope"]))]).toEqual([
+      "dataset:x",
+    ]);
+  });
+
+  it("impressions: scopeIds つきの reset は、範囲の外の配信済みを残す", async () => {
+    await recordImpressions(
+      pool,
+      "s",
+      [{ videoId: "a", reason: "near" }],
+      false,
+    );
+    await recordImpressions(
+      pool,
+      "s",
+      [{ videoId: "b", reason: "near" }],
+      true,
+      ["b"],
+    );
+    expect((await loadImpressions(pool, "s")).seenIds.sort()).toEqual([
+      "a",
+      "b",
     ]);
   });
 

@@ -24,6 +24,8 @@ export interface RecsysFeedRequest {
   events: RecsysEvent[];
   seenIds: string[];
   recentDatasets: string[];
+  /** あれば、その動画だけから選ぶ(絞り込み。空なら `pool_empty`)。省略は全体から */
+  candidateIds?: string[];
   count: number;
 }
 
@@ -31,6 +33,8 @@ export interface RecsysFeedResponse {
   picks: { videoId: string; reason: Reason }[];
   /** 未視聴が尽きたので、`seenIds` を空として選んだ。`true` なら `impressions` を削除する(#40) */
   seenReset?: boolean;
+  /** 候補が 1 本もないときだけ `"pool_empty"` */
+  reason?: "pool_empty";
   taste: RecsysTaste;
 }
 

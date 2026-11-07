@@ -26,6 +26,10 @@ opendopa = "opendopa_pipeline.cli:app"
 local = [
     "sentence-transformers>=6.2.0",
 ]
+# 判断モデル strands_local(手元で Strands Decider 2B を動かす。PyTorch が入る)
+decider = [
+    "strands-decider>=0.3.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.6,<0.14.0"]

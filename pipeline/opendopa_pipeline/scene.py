@@ -12,6 +12,7 @@ from jsonschema import Draft202012Validator
 from opendopa_pipeline.expr import eval_expr, parse_expr
 from opendopa_pipeline.script import Script, fill, line_durations
 from opendopa_pipeline.spec import BigNumber, DatasetDef, MapPlace
+from opendopa_pipeline.tags import scene_tags
 from opendopa_pipeline.util import jsonable
 
 SHARED = Path(__file__).resolve().parents[2] / "packages" / "shared"
@@ -153,7 +154,7 @@ def build_scene(
             "map": scene_map(dataset, row),
             "sparkline": sparkline(dataset, row),
             "chips": chips,
-            "tags": [],  # タグの付与は別 Issue(docs/hashtag_design.md §3.3)
+            "tags": scene_tags(dataset.tag, dataset.region_from, row),
             "comments": comments,
             "source": {"datasetName": dataset.source_name, "ref": source_ref},
             "numbers": numbers,
