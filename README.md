@@ -10,6 +10,8 @@ OpenDopa は**非公式のネタアプリ**です。国土交通省とは関係�
 
 使い方の流れは、(1)セットアップ、(2)DB・web・recsys の起動、(3)パイプラインで動画データを作って公開、(4)ブラウザで見る(「デモの手順」)です。Azure に載せる手順は「CD(デプロイ)とインフラ変更」「Azure 環境をゼロから作る・消す」にあります。
 
+動作確認の範囲: ローカルの手順(セットアップ、起動、パイプライン、デモ)のコマンドとタスク名は、`mise.toml`・`Makefile`・`opendopa --help` と照らして存在を確かめました。ただし、この README の更新では、DB・web・recsys を起動した通しの実行(クリーンな環境での手順の再実行)はしていません(実機未確認)。Azure 向けの手順(`make deploy`、`make recsys-reload`、`make deploy-pipeline`、`make pipeline-run`、`make deploy-decider`、CD、Terraform)は、`infra/`・`Makefile`・`.github/workflows/` の読み取りと `terraform validate` に基づいており、**実機未確認**です(Azure のサブスクリプションが書き込み禁止だったため)。該当箇所にも「実機未確認」と書いています。
+
 ## 構成図
 
 ```
@@ -131,6 +133,17 @@ curl -i http://localhost:3000/api/health
 
 `HTTP/1.1 200` と `{"status":"ok","db":"ok"}` が返れば、web と DB がつながっています。続けて `curl -i http://localhost:3000/api/health/recsys` が 200 なら、web から recsys までつながっています。
 
+web の BFF(`apps/web/app/api/`)には、次の API があります。画面から呼ばれるもので、DB の読み書きはすべてここが行い、好みの計算は recsys に任せます。
+
+| API | 内容 |
+| --- | --- |
+| `GET /api/feed` | 次の動画を返す(好みに合う動画 + 探索)。`?tag=<タグID>`(複数可、AND)で、タグで候補を絞る |
+| `GET /api/tags` | タグの一覧(動画がないタグは件数 0) |
+| `POST /api/view` / `POST /api/like` | 視聴(視聴率)・いいねを記録し、好みを更新する |
+| `GET /api/health` / `GET /api/health/recsys` | 上の表のとおり |
+
+タグの絞り込みは、BFF の API までが入っています。画面(左上の虫眼鏡など)は未実装です(`docs/hashtag_design.md`、`docs/decisions/2026-11-07-bff-tag-filter.md`)。タグは、パイプラインがタグを付けるまで空です(`docs/decisions/2026-11-07-tags-schema-empty-until-assigned.md`)。
+
 終わったら、`mise run dev` を Ctrl+C で止め、`mise run db-down` で DB を止めます。
 
 DB のタスクは次のとおりです。
@@ -171,8 +184,10 @@ mise exec -- uv run --project pipeline opendopa --help
 | `opendopa tts --dataset <ID>` | 音声を作る(`TTS_PROVIDER=none` なら何もしない) | `out/<ID>/media/` |
 | `opendopa embed` | 全動画の埋め込み・2D 座標・クラスタ(全データセットをまとめて) | `out/embeddings.npz` ほか |
 | `opendopa publish` | DB(と Blob)に公開する(1 トランザクションで入れ替え) | DB |
+| `opendopa fetch-raw` | Blob の `raw` コンテナの `<ID>/` 配下を `data/raw/<ID>/` に取り込む(`RAW_SOURCE=blob` のときの前処理。`all` は自動で行う) | `data/raw/<ID>/` |
 | `opendopa all` | `datasets/*.yaml` のすべてについて、generate → tts → embed → publish を順に行う | 上のすべて |
 
+- そのほか、`draft-yaml`(列定義 YAML の下書きの材料。新しいデータセットを足すとき)と `decide`(判断モデルの評価)があります。使い方は `pipeline/README.md` を見てください。
 - `embed` は `tts` のあとに行います。`tts` が長さ超過の動画を除外するため、`embed` は除外後の動画だけを読みます(`docs/decisions/2026-11-06-all-order-tts-before-embed.md`)。個別に流すときも、この順番です。
 - `embed` は常に全体をやり直します。データセットを足したり作り直したりしたら、`embed` と `publish` を流し直します。
 - `publish` の前に、`--dry-run` で件数だけ確かめられます(DB にも Blob にも接続しません)。
@@ -200,10 +215,13 @@ mise exec -- uv run --project pipeline opendopa all --skip-blob
 | --- | --- | --- |
 | `EMBED_PROVIDER` | `azure`(既定)/ `local` | 埋め込みモデル。`azure` は Azure OpenAI(`AZURE_OPENAI_*` が要る)。`local` は手元の `multilingual-e5-large` で、Azure なしで試せる。`local` を使うときは、先に `uv sync --project pipeline --extra local` を実行する |
 | `TTS_PROVIDER` | `none`(既定)/ `voicevox` | 音声。`none` は音声なし(字幕の秒数は文字数からの見積もり)。`voicevox` は VOICEVOX ENGINE(`VOICEVOX_URL`、既定 `http://localhost:50021`)で読み上げる |
+| `RAW_SOURCE` | `local`(既定)/ `blob` | 元 CSV の読み先。`local` は `data/raw/`(`datasets/*.yaml` の `files`)。`blob` は Blob のコンテナ `RAW_BLOB_CONTAINER`(既定 `raw`)の `<ID>/` 配下をすべて読む(Azure のジョブで使う。`STORAGE_CONNECTION_STRING` が要る) |
 | `LLM_PROVIDER` | `none`(既定)/ `azure` | クラスタ名を付ける LLM。`none` は機械的な名前。原稿の生成には使わない |
 | `DECIDER_PROVIDER` | `rules`(既定)/ `strands_azure` ほか | 型の選択などの「判断」を行うモデル。`rules` は規則のみ(LLM を使わない)。`strands_azure` は Azure 上の自前モデルで、`STRANDS_DECIDER_URL` と `STRANDS_DECIDER_TOKEN` が要る |
 
 ローカルだけで試すなら、`EMBED_PROVIDER=local`、`TTS_PROVIDER=none`、`LLM_PROVIDER=none`、`DECIDER_PROVIDER=rules` の組み合わせです。`EMBED_PROVIDER` を変えたら、ベクトルを混ぜないよう `embed` をやり直し、`publish` で DB を入れ替えます(ローカルと Azure の埋め込みはモデルが違います)。変数の全一覧は `.env.example` にあります。
+
+音声と BGM を画面で鳴らす設定(`MEDIA_BASE_URL`、`TTS_CREDIT`、`BGM_FILE`、`BGM_CREDIT`、`BGM_VOLUME`)は web が実行時に読みます。BGM は任意で、`BGM_FILE` と `BGM_CREDIT` の両方を設定したときだけ、フィード全体で 1 曲をループします(音源は同梱しません。ライセンスを確認したものだけを `MEDIA_BASE_URL` 配下に置きます。`docs/decisions/2026-11-07-bgm-feed-wide-loop.md`)。左下のボタンでミュートできます。
 
 各コマンドの `--provider` で、環境変数を上書きできます(`generate` は判断、`embed` は埋め込み、`tts` は音声)。
 
@@ -230,9 +248,22 @@ recsys は起動時に索引を読みます。ローカルでは、`publish` が
 
 Azure の recsys は内部 ingress のみのため、手元 PC や CI の `publish` から `/internal/reload` は届かず、警告(`recsys の reload に失敗しました`)だけで終わる。公開のあとは、`az login` した状態で `make recsys-reload` を実行する。recsys が再起動し、起動時に新しい索引を読み込む。
 
+### Azure でパイプラインを動かす(Container Apps Job)
+
+手元の PC ではなく、Azure の Container Apps Job で `opendopa all` を流せます(実機未確認。`terraform validate` のみ。`docs/decisions/2026-11-07-pipeline-job-raw-blob.md`)。元 CSV は Blob の非公開コンテナ `raw` の `<データセットID>/` 直下に人が置きます。ジョブは `RAW_SOURCE=blob` で、そこをすべて読みます。TTS は `none` です(VOICEVOX にジョブから届かないため。音声つきの動画は手元から公開します)。
+
+1. `infra/terraform.tfvars` に `pipeline_job_enabled = true`(`enable_storage = true` が必要)を足して `make infra-plan && make infra-apply`。判断モデルを Azure のものにするときは `pipeline_decider_provider = "strands_azure"`(`decider_enabled = true` が必要)
+2. `make deploy-pipeline`: pipeline のイメージ(`pipeline/Dockerfile`)をビルドして push し、ジョブを更新する
+3. `make pipeline-run`: ジョブを起動する。進み具合は `az containerapp job execution list -g <rg> -n <job> -o table`、ログは Log Analytics の `ContainerAppConsoleLogs_CL`
+4. ジョブの `publish` は、recsys の内部 URL に reload を POST する
+
+動画 ID は CSV の行順に依存するため、元 CSV を差し替えるときは既存の行の順序を保ちます(増やす行は末尾)。順序が変わると、`publish` が警告を出します。
+
+判断モデル(`DECIDER_PROVIDER=strands_azure`)の API サーバーは、`make deploy-decider` でイメージを push して更新します(`infra` の `decider_enabled = true` と、サーバーの Dockerfile `services/decider/Dockerfile` が要る。後者はこのリポジトリにまだありません。実機未確認。常時 1 レプリカが課金されます)。評価に合格するまでは `rules` が既定です。
+
 ## 入っているデータ
 
-デモ用に、14 のデータセットから 1,845 本の動画を作ります(2026-11-07 時点の実データでの生成結果。除外は 32 本)。件数は、データのバージョンや `datasets/*.yaml` の設定で変わります。
+デモ用に、14 のデータセットから 1,845 本の動画を作ります(2026-11-07 時点の実データでの生成結果。除外は 32 本。この README の更新では、元データがないため再生成していません)。件数は、データのバージョンや `datasets/*.yaml` の設定で変わります。
 
 | 分類 | データセット ID | 内容 | 本数 |
 | --- | --- | --- | --- |
@@ -260,7 +291,7 @@ Azure の recsys は内部 ingress のみのため、手元 PC や CI の `publi
 6. 数本見て、好みに近い種類の動画が増えていくことを確かめる(全データセットを一巡するまでの最大 14 本は、新しいデータセットも出る。一巡のあとが、収束を見せやすい。`docs/decisions/2026-11-07-recsys-discovery-and-streak.md`)。
 7. 右レールの「元データ」を押し、元の 1 行(データ名、行番号、列名と値)を見せる。「デモ用の仮データではなく、元データの値です。」と出る。
 8. ページをリロードする。同じブラウザなら好みが保たれる(匿名 ID の Cookie `od_aid` で識別する)。
-9. (任意)コメントの流れ方を見せる。音声は、`TTS_PROVIDER=voicevox` で作り、配信できる環境(Azure の Blob と CDN)で再生する(下の注意)。
+9. (任意)コメントの流れ方を見せる。BGM は、設定したときだけ鳴る(左下のボタンでミュート)。音声は、`TTS_PROVIDER=voicevox` で作り、配信できる環境(Azure の Blob と CDN)で再生する(下の注意)。
 
 注意:
 
@@ -272,6 +303,7 @@ Azure の recsys は内部 ingress のみのため、手元 PC や CI の `publi
 - OpenDopa は**非公式のネタアプリ**です。国土交通省 Project LINKS が公開するオープンデータをもとにしていますが、国土交通省とは関係がありません。画面のフッターにも同じ文言を出しています。動画は「AI生成のフィクション風解説」で、数字は元データから機械的に作っています。元データの値は、各動画の「元データ」で確認できます。
 - 個人情報と配慮の方針は、設計書 §15.2 のとおりです(例: 事故データでは、負傷の部位や症状を読みません)。
 - **VOICEVOX**(`TTS_PROVIDER=voicevox`)を使うときは、画面のフッターにクレジット(既定は「VOICEVOX:ずんだもん」)を出します。声を変えたら、`TTS_CREDIT` も合わせて変えてください(`docs/decisions/2026-11-06-tts-voice-and-credit.md`)。VOICEVOX 本体と各キャラクターの利用規約・ライセンスは、公開前に必ず確認してください。このリポジトリは VOICEVOX を同梱しません。
+- BGM(`BGM_FILE`)を使うときは、`BGM_CREDIT` がフッターに出ます。音源のライセンス・利用規約は、公開前に必ず確認してください。このリポジトリは音源を同梱しません。
 - 右側の地図の日本の輪郭は、world-atlas 2.0.2(ISC ライセンス。元データは Natural Earth でパブリックドメイン)から作り、`apps/web/lib/data/japan.json` に同梱しています(作り方は `apps/web/scripts/build-japan.mjs`)。
 - 元データの CSV は、このリポジトリに含めません。
 
@@ -288,6 +320,18 @@ mise run test
 `data/raw/` は git に入りません(`.gitignore` 対象)。実データ(オープンデータの CSV)を `data/raw/<データセットID>/` に置くと、実データを使うテストも走ります。ファイル名は `docs/data.md` の一覧のとおりで、例は `data/raw/accident/02_jikojyouhou.csv` です。worktree では `data/raw` が空なので、メインの `data/raw` へのシンボリックリンクを張ると実データで動かせます。
 
 注意: 実データがあると、`pipeline/tests/test_generate.py::test_generate_accident_real` が main でも失敗します(推定秒数の最小 18.31 が期待の 19 未満)。CI は実データなしで skip するので影響しません。
+
+### Makefile のターゲット(Azure。人が実行する)
+
+| コマンド | 内容 |
+| --- | --- |
+| `make infra-init` / `infra-plan` / `infra-apply` / `infra-validate` / `infra-fmt` | Terraform(`mise run infra-*` も同じ。OpenTofu なら `TF=tofu`) |
+| `make deploy` | web・recsys のイメージをビルドして push し、Container Apps を更新する(`mise run deploy` も同じ) |
+| `make recsys-reload` | recsys を再起動して、`publish` 後の索引を読み直させる |
+| `make deploy-pipeline` / `make pipeline-run` | pipeline のジョブの更新 / 起動 |
+| `make deploy-decider` | 判断モデルのサーバーの更新 |
+
+いずれも実機未確認です(課金されるため人が実行します)。
 
 ### コマンド
 
@@ -520,4 +564,6 @@ terraform -chdir=infra destroy        # 作った環境を消す。確認の入�
 - [決定の記録](docs/DECISIONS.md)(2026-11-05 までの分。ADR の索引を兼ねる)
 - [ADR](docs/adr/)(Issue 単位の大きな決定)と [小さな決定](docs/decisions/)(1 決定 1 ファイル)。索引は `mise run decisions-index`
 - [pipeline の README](pipeline/README.md)(新しいデータセットの足し方)
+- [ハッシュタグと絞り込みの設計](docs/hashtag_design.md)(BFF の API まで実装済み)
+- [看板(状態ラベル)](docs/kanban.md): Claude Code の `/sleep`・`/start-task`・`/pr-review` が使うラベルの取り決め。`mise run sleep-scan` が、レビュー・実装などの対象を洗い出す(`docs/decisions/2026-11-06-sleep-scan-and-idle.md`)
 - [CLAUDE.md](CLAUDE.md): Claude Code 向けの案内
