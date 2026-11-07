@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { buildSlots } from "@/lib/ads";
 import {
   clampIndex,
   isEditableTarget,
@@ -10,6 +11,7 @@ import {
 } from "@/lib/feedNav";
 import type { FeedItem, FeedResponse } from "@/lib/feedTypes";
 import { createLikeSync } from "@/lib/likeSync";
+import { AdSlide } from "./AdSlide";
 import { CsvSheet } from "./CsvSheet";
 import { Slide } from "./Slide";
 import { useTasteApp, useTasteSheet } from "./taste-context";
@@ -62,6 +64,8 @@ export function Feed() {
       ),
     [],
   );
+  // 動画の列に広告を差し込んだ表示用の並び。active・anchor・lastActive は、この並びでの番号
+  const slots = useMemo(() => buildSlots(items), [items]);
   const rootRef = useRef<HTMLDivElement>(null);
   const loadingMore = useRef(false);
   const lastActive = useRef(0);
@@ -107,8 +111,12 @@ export function Feed() {
   // 常に「いまの次の 1 本」まで持っておく
   useEffect(() => {
     if (status !== "ready" || active === null) return;
-    if (items.length < active + 2) load(1, false);
-  }, [active, items.length, status, load]);
+    // 広告をはさんでも、次の動画が 1 本は手元にあるようにする
+    const videosAfter = slots.filter(
+      (s, i) => i > active && s.kind === "video",
+    ).length;
+    if (videosAfter < 1) load(1, false);
+  }, [active, slots, status, load]);
 
   // 60% 以上見えた動画を再生中にする
   useEffect(() => {
@@ -124,28 +132,28 @@ export function Feed() {
         setActive((cur) => (cur === index ? null : cur));
       }
     });
-  }, [items.length]);
+  }, [slots.length]);
 
   const scrollBy = useCallback(
     (delta: number) => {
       const root = rootRef.current;
       if (!root) return;
-      const to = clampIndex(lastActive.current, delta, items.length);
+      const to = clampIndex(lastActive.current, delta, slots.length);
       root
         .querySelector(`[data-index="${to}"]`)
         ?.scrollIntoView({ behavior: "smooth" });
     },
-    [items.length],
+    [slots.length],
   );
 
   const toggleLike = useCallback(() => {
-    const item = items[lastActive.current];
-    if (!item) return;
-    const id = item.videoId;
+    const slot = slots[lastActive.current];
+    if (slot?.kind !== "video") return; // 広告にはいいねしない
+    const id = slot.item.videoId;
     const next = !(liked[id] ?? false);
     setLiked((prev) => ({ ...prev, [id]: next }));
     likeSync.request(id, next);
-  }, [items, liked, likeSync]);
+  }, [slots, liked, likeSync]);
 
   // ↑ ↓ j k で前後へ(端で止まる)、l でいいね。シートが開いている間と入力欄では効かせない
   useEffect(() => {
@@ -192,25 +200,30 @@ export function Feed() {
     );
   }
 
-  const shown = items[active ?? anchor];
+  const shownSlot = slots[active ?? anchor];
+  const shown = shownSlot?.kind === "video" ? shownSlot.item : undefined;
 
   return (
     <div className="feed" ref={rootRef} tabIndex={-1}>
-      {items.map((item, i) => (
-        <Slide
-          key={i}
-          item={item}
-          index={i}
-          active={active === i}
-          mounted={Math.abs(i - anchor) <= 1}
-          hold={sheetOpen}
-          liked={liked[item.videoId] ?? false}
-          onLike={toggleLike}
-          onCsv={() => setCsvOpen(true)}
-          onTaste={tasteSheet.openSheet}
-          onNext={() => scrollBy(1)}
-        />
-      ))}
+      {slots.map((slot, i) =>
+        slot.kind === "ad" ? (
+          <AdSlide key={i} ad={slot.ad} index={i} onNext={() => scrollBy(1)} />
+        ) : (
+          <Slide
+            key={i}
+            item={slot.item}
+            index={i}
+            active={active === i}
+            mounted={Math.abs(i - anchor) <= 1}
+            hold={sheetOpen}
+            liked={liked[slot.item.videoId] ?? false}
+            onLike={toggleLike}
+            onCsv={() => setCsvOpen(true)}
+            onTaste={tasteSheet.openSheet}
+            onNext={() => scrollBy(1)}
+          />
+        ),
+      )}
       {csvOpen && shown ? (
         <CsvSheet
           datasetName={shown.scene.source.datasetName}
