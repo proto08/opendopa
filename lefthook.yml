@@ -6,7 +6,7 @@ pre-commit:
     - name: web
       root: apps/web/
       glob: "*.{ts,tsx,mts,js,mjs}"
-      run: mise exec -- pnpm exec eslint --fix {staged_files}
+      run: mise exec -- pnpm exec biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
 
     - name: pipeline
