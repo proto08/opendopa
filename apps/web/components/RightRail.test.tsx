@@ -6,7 +6,13 @@ import { RightRail } from "./RightRail";
 const noop = () => {};
 const rail = (liked: boolean) =>
   renderToStaticMarkup(
-    <RightRail liked={liked} onLike={noop} onCsv={noop} onTaste={noop} onNext={noop} />,
+    <RightRail
+      liked={liked}
+      onLike={noop}
+      onCsv={noop}
+      onTaste={noop}
+      onNext={noop}
+    />,
   );
 
 describe("RightRail", () => {
@@ -25,7 +31,13 @@ describe("RightRail", () => {
 
   it("キー入力を止めない(ボタンにフォーカスがあっても l / j / k が window に届く)", () => {
     // RightRail はフックを使わないので、関数として呼んで根の要素の props を調べる
-    const root = RightRail({ liked: false, onLike: noop, onCsv: noop, onTaste: noop, onNext: noop });
+    const root = RightRail({
+      liked: false,
+      onLike: noop,
+      onCsv: noop,
+      onTaste: noop,
+      onNext: noop,
+    });
     expect(root.props.onKeyDown).toBeUndefined();
     expect(root.props.onKeyUp).toBeUndefined();
     // クリックは止める(ステージの一時停止/再開に伝えない)
@@ -49,8 +61,8 @@ describe("CsvSheet", () => {
     expect(html).toContain("鉄道輸送統計");
     expect(html).toContain("行 #12");
     expect(html).toContain("デモ用の仮データではなく、元データの値です");
-    expect(html).toContain("<th scope=\"row\">事業者</th><td>東都鉄道</td>");
-    expect(html).toContain("<th scope=\"row\">旅客数</th><td>1,234</td>");
+    expect(html).toContain('<th scope="row">事業者</th><td>東都鉄道</td>');
+    expect(html).toContain('<th scope="row">旅客数</th><td>1,234</td>');
     expect(html).toContain('role="dialog"');
   });
 });

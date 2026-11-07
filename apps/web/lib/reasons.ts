@@ -12,6 +12,7 @@ export const REASON_LABELS: Record<Reason, string> = {
 export const UNKNOWN_REASON_LABEL = "—";
 
 export function reasonLabel(reason: string | null): string {
-  if (reason !== null && Object.hasOwn(REASON_LABELS, reason)) return REASON_LABELS[reason as Reason];
+  if (reason !== null && Object.hasOwn(REASON_LABELS, reason))
+    return REASON_LABELS[reason as Reason];
   return UNKNOWN_REASON_LABEL;
 }

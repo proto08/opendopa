@@ -1,7 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { TasteStore } from "@/lib/taste-store";
 import type { FeedMap } from "@/lib/feedTypes";
+import { TasteStore } from "@/lib/taste-store";
 import type { Taste } from "@/lib/types";
 import { TastePanel } from "./TastePanel";
 
@@ -49,8 +49,12 @@ function render(current: string | null, viewed: string[]) {
 describe("TastePanel", () => {
   it("見た動画は濃く、見ていない動画は薄い", () => {
     const html = render(null, ["a"]);
-    expect(html).toMatch(/data-video-id="a" data-viewed="true"[^>]*opacity="1"/);
-    expect(html).toMatch(/data-video-id="b" data-viewed="false"[^>]*opacity="0.3"/);
+    expect(html).toMatch(
+      /data-video-id="a" data-viewed="true"[^>]*opacity="1"/,
+    );
+    expect(html).toMatch(
+      /data-video-id="b" data-viewed="false"[^>]*opacity="0.3"/,
+    );
   });
 
   it("再生中の動画だけ点線の輪で囲む", () => {
@@ -69,16 +73,23 @@ describe("TastePanel", () => {
 
   it("割合は合計 100% で、要約が表示される", () => {
     const html = render(null, []);
-    const pcts = [...html.matchAll(/class="sharePct">(\d+)%/g)].map((m) => Number(m[1]));
+    const pcts = [...html.matchAll(/class="sharePct">(\d+)%/g)].map((m) =>
+      Number(m[1]),
+    );
     expect(pcts.reduce((a, b) => a + b, 0)).toBe(100);
     expect(html).toContain("あなたは「空き家」を最後まで見る人です");
   });
 
   it("最近の視聴は 6 件を超えない", () => {
-    const many: Taste = { ...taste, log: Array.from({ length: 9 }, (_, i) => entry(i)) };
+    const many: Taste = {
+      ...taste,
+      log: Array.from({ length: 9 }, (_, i) => entry(i)),
+    };
     const store = new TasteStore();
     store.applyTaste(many);
-    const html = renderToStaticMarkup(<TastePanel state={store.getSnapshot()} />);
+    const html = renderToStaticMarkup(
+      <TastePanel state={store.getSnapshot()} />,
+    );
     expect(html.match(/class="viewLogItem"/g)).toHaveLength(6);
     expect(html).toContain("見出し0");
     expect(html).toContain("視聴 50%");
@@ -87,7 +98,9 @@ describe("TastePanel", () => {
   });
 
   it("taste がまだないときは読み込み中", () => {
-    const html = renderToStaticMarkup(<TastePanel state={new TasteStore().getSnapshot()} />);
+    const html = renderToStaticMarkup(
+      <TastePanel state={new TasteStore().getSnapshot()} />,
+    );
     expect(html).toContain("読み込み中");
   });
 });

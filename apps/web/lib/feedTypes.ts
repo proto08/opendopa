@@ -14,7 +14,13 @@ export type FeedItem = {
 
 export type FeedMap = {
   points: MapPoint[];
-  clusters: { id: number; name: string; color: string; cx: number; cy: number }[];
+  clusters: {
+    id: number;
+    name: string;
+    color: string;
+    cx: number;
+    cy: number;
+  }[];
 };
 
 export type FeedResponse = { items: FeedItem[]; taste: Taste; map?: FeedMap };

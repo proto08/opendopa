@@ -43,7 +43,9 @@ export class TasteStore {
   applyTaste(taste: Taste): void {
     const last = this.state.trail[this.state.trail.length - 1];
     const moved = !last || last.x !== taste.x || last.y !== taste.y;
-    const trail = moved ? [...this.state.trail, { x: taste.x, y: taste.y }].slice(-TRAIL_MAX) : this.state.trail;
+    const trail = moved
+      ? [...this.state.trail, { x: taste.x, y: taste.y }].slice(-TRAIL_MAX)
+      : this.state.trail;
     const viewed = new Set(this.state.viewed);
     for (const l of taste.log) viewed.add(l.videoId);
     this.set({ taste, trail, viewed });

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { clampIndex, isEditableTarget, isLikeKey, keyToDelta, observeActiveSlide } from "./feedNav";
+import {
+  clampIndex,
+  isEditableTarget,
+  isLikeKey,
+  keyToDelta,
+  observeActiveSlide,
+} from "./feedNav";
 
 describe("keyToDelta / clampIndex", () => {
   it("↓ と j は次へ、↑ と k は前へ", () => {
@@ -34,15 +40,27 @@ describe("observeActiveSlide", () => {
     }
     unobserve() {}
   }
-  const slide = (index: number) => ({ dataset: { index: String(index) } }) as unknown as Element;
-  const fire = (target: Element, isIntersecting: boolean, intersectionRatio: number) =>
-    MockObserver.last.cb([{ target, isIntersecting, intersectionRatio }] as never[]);
+  const slide = (index: number) =>
+    ({ dataset: { index: String(index) } }) as unknown as Element;
+  const fire = (
+    target: Element,
+    isIntersecting: boolean,
+    intersectionRatio: number,
+  ) =>
+    MockObserver.last.cb([
+      { target, isIntersecting, intersectionRatio },
+    ] as never[]);
 
   it("60% 以上で再生開始、外れると止める", () => {
     const onChange = vi.fn();
     const a = slide(0);
     const b = slide(1);
-    const stop = observeActiveSlide({} as Element, [a, b], onChange, MockObserver as never);
+    const stop = observeActiveSlide(
+      {} as Element,
+      [a, b],
+      onChange,
+      MockObserver as never,
+    );
     expect(MockObserver.last.options.threshold).toEqual([0.6]);
     expect(MockObserver.last.observed).toEqual([a, b]);
 

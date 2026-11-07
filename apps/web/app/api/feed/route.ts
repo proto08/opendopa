@@ -6,5 +6,7 @@ import { apiHandler, json, parseQuery } from "@/lib/http";
 export const GET = apiHandler(async ({ anonId, req }) => {
   await connection();
   const q = parseQuery(req, feedQuery);
-  return json(await getFeed(defaultDeps(), anonId, q.count, q.includeMap === "1"));
+  return json(
+    await getFeed(defaultDeps(), anonId, q.count, q.includeMap === "1"),
+  );
 });

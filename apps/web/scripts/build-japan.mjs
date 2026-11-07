@@ -26,17 +26,33 @@ const ringOf = (indexes) => {
   return pts;
 };
 
-const japan = topo.objects.countries.geometries.find((g) => g.properties.name === "Japan");
+const japan = topo.objects.countries.geometries.find(
+  (g) => g.properties.name === "Japan",
+);
 const polygons = japan.type === "Polygon" ? [japan.arcs] : japan.arcs;
 
 // 外周だけを使い、0.15 度未満の島は落とし、座標は小数 2 桁に丸める
 const rings = [];
 for (const poly of polygons) {
-  const ring = ringOf(poly[0]).map(([lon, lat]) => [+lon.toFixed(2), +lat.toFixed(2)]);
+  const ring = ringOf(poly[0]).map(([lon, lat]) => [
+    +lon.toFixed(2),
+    +lat.toFixed(2),
+  ]);
   const lons = ring.map((p) => p[0]);
   const lats = ring.map((p) => p[1]);
-  const size = Math.max(Math.max(...lons) - Math.min(...lons), Math.max(...lats) - Math.min(...lats));
+  const size = Math.max(
+    Math.max(...lons) - Math.min(...lons),
+    Math.max(...lats) - Math.min(...lats),
+  );
   if (size >= 0.15) rings.push(ring);
 }
-writeFileSync(new URL("../lib/data/japan.json", import.meta.url), JSON.stringify(rings));
-console.log(rings.length, "rings,", rings.reduce((n, r) => n + r.length, 0), "points");
+writeFileSync(
+  new URL("../lib/data/japan.json", import.meta.url),
+  JSON.stringify(rings),
+);
+console.log(
+  rings.length,
+  "rings,",
+  rings.reduce((n, r) => n + r.length, 0),
+  "points",
+);

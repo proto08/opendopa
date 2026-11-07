@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ViewTracker, type ViewPayload } from "./view-tracker";
+import { type ViewPayload, ViewTracker } from "./view-tracker";
 
 function setup() {
   let t = 0;
@@ -19,7 +19,12 @@ describe("ViewTracker", () => {
     tracker.show("a");
     advance(14_300);
     tracker.hide();
-    expect(sent).toEqual([{ payload: { viewId: "view-1", videoId: "a", watchedSec: 14.3 }, beacon: false }]);
+    expect(sent).toEqual([
+      {
+        payload: { viewId: "view-1", videoId: "a", watchedSec: 14.3 },
+        beacon: false,
+      },
+    ]);
   });
 
   it("一時停止の時間は含めない", () => {

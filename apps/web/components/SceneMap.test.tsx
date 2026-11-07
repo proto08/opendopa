@@ -1,9 +1,9 @@
-import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
 import { validateScene } from "@opendopa/shared";
 import mapPoints from "@opendopa/shared/fixtures/map-points.json";
 import mapPolygon from "@opendopa/shared/fixtures/map-polygon.json";
 import mapRoute from "@opendopa/shared/fixtures/map-route.json";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vitest";
 import { SceneMap } from "./SceneMap";
 
 const scene = (json: unknown) => {

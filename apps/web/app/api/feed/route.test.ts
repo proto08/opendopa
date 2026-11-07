@@ -23,7 +23,18 @@ function fakeDeps(over: Record<string, unknown> = {}) {
       taste: { x: 0.5, y: 0.5, shares: [] },
     }),
     loadVideos: async () =>
-      new Map([["v1", { id: "v1", headline: "h", scene: { videoId: "v1" }, csvRow: [], sourceRef: "r" }]]),
+      new Map([
+        [
+          "v1",
+          {
+            id: "v1",
+            headline: "h",
+            scene: { videoId: "v1" },
+            csvRow: [],
+            sourceRef: "r",
+          },
+        ],
+      ]),
     recordImpressions: vi.fn(async () => {}),
     loadClusters: async () => [],
     loadMapPoints: async () => [],
@@ -51,7 +62,11 @@ describe("GET /api/feed", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("Cache-Control")).toBe("no-store");
     const body = await res.json();
-    expect(body.items[0]).toMatchObject({ videoId: "v1", reason: "first", reasonLabel: "最初の1本" });
+    expect(body.items[0]).toMatchObject({
+      videoId: "v1",
+      reason: "first",
+      reasonLabel: "最初の1本",
+    });
     expect(body.taste.summary).toBe("まだ見ていないので、好みはわかりません");
     expect(body.map).toBeUndefined();
   });
@@ -65,7 +80,10 @@ describe("GET /api/feed", () => {
   });
 
   it("includeMap=1 のときだけ map が付く", async () => {
-    expect((await (await get("?includeMap=1")).json()).map).toEqual({ points: [], clusters: [] });
+    expect((await (await get("?includeMap=1")).json()).map).toEqual({
+      points: [],
+      clusters: [],
+    });
     expect((await (await get("?includeMap=0")).json()).map).toBeUndefined();
   });
 
@@ -76,7 +94,11 @@ describe("GET /api/feed", () => {
     const setCookie = res.headers.get("Set-Cookie") ?? "";
     expect(setCookie).toContain(`${ANON_COOKIE}=`);
     const issued = /od_aid=([^;]+)/.exec(setCookie)![1];
-    expect(d.recordImpressions).toHaveBeenCalledWith(issued, [{ videoId: "v1", reason: "first" }], false);
+    expect(d.recordImpressions).toHaveBeenCalledWith(
+      issued,
+      [{ videoId: "v1", reason: "first" }],
+      false,
+    );
   });
 
   it("recsys が落ちている・遅いときは 502", async () => {
@@ -87,6 +109,8 @@ describe("GET /api/feed", () => {
     });
     const res = await get();
     expect(res.status).toBe(502);
-    expect(await res.json()).toEqual({ error: "recommendation service unavailable" });
+    expect(await res.json()).toEqual({
+      error: "recommendation service unavailable",
+    });
   });
 });

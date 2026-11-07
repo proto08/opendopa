@@ -114,7 +114,7 @@ run = "python scripts/decisions_index.py"
 [tasks.fmt]
 description = "全言語の整形"
 run = [
-  "pnpm --filter web exec eslint --fix .",
+  "pnpm --filter web exec biome check --write .",
   "uv run --project pipeline ruff format .",
   "uv run --project pipeline ruff check --fix .",
   "cargo fmt --manifest-path services/recsys/Cargo.toml --all",

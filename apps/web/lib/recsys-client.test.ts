@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pingRecsys, RecsysError, recsysFeed, recsysTaste } from "./recsys-client";
+import {
+  pingRecsys,
+  RecsysError,
+  recsysFeed,
+  recsysTaste,
+} from "./recsys-client";
 
 describe("pingRecsys", () => {
   beforeEach(() => {
@@ -15,15 +20,24 @@ describe("pingRecsys", () => {
     const fetchMock = vi.fn(async () => new Response("{}", { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     expect(await pingRecsys()).toBe(true);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      URL,
+      RequestInit,
+    ];
     expect(url.href).toBe("http://recsys.test:8080/internal/ping");
     expect(init.headers).toEqual({ "X-Internal-Token": "tok" });
   });
 
   it("401 や接続失敗は false", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 401 })));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 401 })),
+    );
     expect(await pingRecsys()).toBe(false);
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new Error("refused"))));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Promise.reject(new Error("refused"))),
+    );
     expect(await pingRecsys()).toBe(false);
   });
 
@@ -50,10 +64,16 @@ describe("recsysFeed / recsysTaste", () => {
     vi.stubGlobal("fetch", fetchMock);
     const req = { events: [], seenIds: [], recentDatasets: [], count: 2 };
     expect(await recsysFeed(req)).toEqual(res);
-    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [
+      URL,
+      RequestInit,
+    ];
     expect(url.href).toBe("http://recsys.test:8080/internal/feed");
     expect(init.method).toBe("POST");
-    expect(init.headers).toMatchObject({ "X-Internal-Token": "tok", "Content-Type": "application/json" });
+    expect(init.headers).toMatchObject({
+      "X-Internal-Token": "tok",
+      "Content-Type": "application/json",
+    });
     expect(JSON.parse(init.body as string)).toEqual(req);
     expect(init.signal).toBeInstanceOf(AbortSignal);
   });
@@ -67,11 +87,28 @@ describe("recsysFeed / recsysTaste", () => {
   });
 
   it("5xx・接続失敗・タイムアウト・壊れた本文は RecsysError", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("", { status: 503 })));
-    await expect(recsysTaste({ events: [] })).rejects.toBeInstanceOf(RecsysError);
-    vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new DOMException("timeout", "TimeoutError"))));
-    await expect(recsysTaste({ events: [] })).rejects.toBeInstanceOf(RecsysError);
-    vi.stubGlobal("fetch", vi.fn(async () => new Response("not json", { status: 200 })));
-    await expect(recsysFeed({ events: [], seenIds: [], recentDatasets: [], count: 1 })).rejects.toBeInstanceOf(RecsysError);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("", { status: 503 })),
+    );
+    await expect(recsysTaste({ events: [] })).rejects.toBeInstanceOf(
+      RecsysError,
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Promise.reject(new DOMException("timeout", "TimeoutError")),
+      ),
+    );
+    await expect(recsysTaste({ events: [] })).rejects.toBeInstanceOf(
+      RecsysError,
+    );
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("not json", { status: 200 })),
+    );
+    await expect(
+      recsysFeed({ events: [], seenIds: [], recentDatasets: [], count: 1 }),
+    ).rejects.toBeInstanceOf(RecsysError);
   });
 });

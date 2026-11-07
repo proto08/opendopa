@@ -1,9 +1,9 @@
-import { notFound } from "next/navigation";
 import { validateScene } from "@opendopa/shared";
 import accident from "@opendopa/shared/fixtures/accident-0001.json";
 import mapPoints from "@opendopa/shared/fixtures/map-points.json";
 import mapPolygon from "@opendopa/shared/fixtures/map-polygon.json";
 import mapRoute from "@opendopa/shared/fixtures/map-route.json";
+import { notFound } from "next/navigation";
 import { StageDev } from "./StageDev";
 import "./dev.css";
 
@@ -22,7 +22,10 @@ export default function DevStagePage() {
 
   const fixtures = Object.entries(files).map(([name, json]) => {
     const result = validateScene(json);
-    if (!result.ok) throw new Error(`フィクスチャ ${name} が不正: ${result.errors.join(", ")}`);
+    if (!result.ok)
+      throw new Error(
+        `フィクスチャ ${name} が不正: ${result.errors.join(", ")}`,
+      );
     return { name, scene: result.scene };
   });
 

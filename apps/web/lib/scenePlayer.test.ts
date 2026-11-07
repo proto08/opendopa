@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  COUNT_UP_SEC,
-  ScenePlayer,
   bigNumberFontSizeCqw,
+  COUNT_UP_SEC,
   computeSnapshot,
   countUpValue,
   formatBigNumber,
   lineIndexAt,
+  ScenePlayer,
 } from "./scenePlayer";
 
 // 3 行: 0〜4 秒、4〜6 秒、6〜10 秒(合計 10 秒)
@@ -57,7 +57,10 @@ describe("ScenePlayer(fake timers)", () => {
 
     player.resume();
     vi.advanceTimersByTime(500);
-    expect(player.getSnapshot().elapsedSec).toBeCloseTo(paused.elapsedSec + 0.5, 1);
+    expect(player.getSnapshot().elapsedSec).toBeCloseTo(
+      paused.elapsedSec + 0.5,
+      1,
+    );
     expect(player.getSnapshot().paused).toBe(false);
   });
 
@@ -99,15 +102,19 @@ describe("lineIndexAt / computeSnapshot", () => {
     expect(lineIndexAt(d, 6)).toBe(2);
   });
   it("合計を超えると頭に戻る", () => {
-    expect(computeSnapshot(d, 10, { paused: false, toggles: 0 })).toMatchObject({
-      loops: 1,
-      elapsedSec: 0,
-      lineIndex: 0,
-      progress: 0,
-    });
+    expect(computeSnapshot(d, 10, { paused: false, toggles: 0 })).toMatchObject(
+      {
+        loops: 1,
+        elapsedSec: 0,
+        lineIndex: 0,
+        progress: 0,
+      },
+    );
   });
   it("合計 0 でも壊れない", () => {
-    expect(computeSnapshot([0], 5, { paused: false, toggles: 0 })).toMatchObject({
+    expect(
+      computeSnapshot([0], 5, { paused: false, toggles: 0 }),
+    ).toMatchObject({
       lineIndex: 0,
       progress: 0,
     });

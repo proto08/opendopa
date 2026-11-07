@@ -53,7 +53,10 @@ export function computeSnapshot(
 }
 
 /** ループ内の経過秒に対応する字幕の行(境目は次の行) */
-export function lineIndexAt(durations: readonly number[], elapsedSec: number): number {
+export function lineIndexAt(
+  durations: readonly number[],
+  elapsedSec: number,
+): number {
   let end = 0;
   for (let i = 0; i < durations.length; i++) {
     end += durations[i];
@@ -82,7 +85,8 @@ export function formatBigNumber(
   countUp: boolean,
   countProgress: number,
 ): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return String(value);
+  if (typeof value !== "number" || !Number.isFinite(value))
+    return String(value);
   const places = decimalPlaces(value);
   const shown = countUp ? countUpValue(value, countProgress) : value;
   return shown.toLocaleString("ja-JP", {
@@ -139,7 +143,10 @@ export class ScenePlayer {
   private frame: Frame | null = null;
   private snapshot: PlayerSnapshot;
 
-  constructor(lines: readonly Pick<Line, "durationSec">[], deps: Partial<PlayerDeps> = {}) {
+  constructor(
+    lines: readonly Pick<Line, "durationSec">[],
+    deps: Partial<PlayerDeps> = {},
+  ) {
     this.durations = lines.map((l) => l.durationSec);
     this.deps = { ...defaultDeps, ...deps };
     this.snapshot = this.compute();
@@ -235,7 +242,10 @@ export class ScenePlayer {
 
   private advance(): void {
     const nowMs = this.deps.now();
-    const step = Math.min(Math.max((nowMs - this.lastMs) / 1000, 0), MAX_STEP_SEC);
+    const step = Math.min(
+      Math.max((nowMs - this.lastMs) / 1000, 0),
+      MAX_STEP_SEC,
+    );
     this.lastMs = nowMs;
     this.playedSec += step;
   }

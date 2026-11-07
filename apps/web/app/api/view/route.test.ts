@@ -26,7 +26,11 @@ function fakeDeps(over: Record<string, unknown> = {}) {
     loadDuration: async (id: string) => (id === "v1" ? 20 : null),
     insertView: vi.fn(async () => true),
     insertLike: vi.fn(async () => true),
-    loadVideoLogInfo: async () => ({ headline: "見出し", reason: "near", liked: true }),
+    loadVideoLogInfo: async () => ({
+      headline: "見出し",
+      reason: "near",
+      liked: true,
+    }),
     loadEvents: async () => [],
     recsysTaste: vi.fn(async () => ({ taste: { x: 0.5, y: 0.5, shares: [] } })),
     loadClusters: async () => [],
@@ -60,7 +64,11 @@ describe("POST /api/view", () => {
   it("保存して taste と logEntry を返す。ratio は 1 で頭打ち", async () => {
     const d = fakeDeps();
     deps.current = d;
-    const res = await post(postViewRoute, { viewId: VIEW_ID, videoId: "v1", watchedSec: 50 });
+    const res = await post(postViewRoute, {
+      viewId: VIEW_ID,
+      videoId: "v1",
+      watchedSec: 50,
+    });
     expect(res.status).toBe(200);
     expect(d.insertView).toHaveBeenCalledWith({
       viewId: VIEW_ID,
@@ -83,13 +91,23 @@ describe("POST /api/view", () => {
   it("ratio = watchedSec / duration_sec", async () => {
     const d = fakeDeps();
     deps.current = d;
-    await post(postViewRoute, { viewId: VIEW_ID, videoId: "v1", watchedSec: 5 });
-    expect(d.insertView).toHaveBeenCalledWith(expect.objectContaining({ ratio: 0.25 }));
+    await post(postViewRoute, {
+      viewId: VIEW_ID,
+      videoId: "v1",
+      watchedSec: 5,
+    });
+    expect(d.insertView).toHaveBeenCalledWith(
+      expect.objectContaining({ ratio: 0.25 }),
+    );
   });
 
   it("viewId の重複(保存されなかった)でも 200 で taste を返す", async () => {
     deps.current = fakeDeps({ insertView: vi.fn(async () => false) });
-    const res = await post(postViewRoute, { viewId: VIEW_ID, videoId: "v1", watchedSec: 5 });
+    const res = await post(postViewRoute, {
+      viewId: VIEW_ID,
+      videoId: "v1",
+      watchedSec: 5,
+    });
     expect(res.status).toBe(200);
     expect((await res.json()).taste).toBeDefined();
   });
@@ -106,9 +124,15 @@ describe("POST /api/view", () => {
   it.each([
     ["存在しない videoId", { viewId: VIEW_ID, videoId: "nope", watchedSec: 1 }],
     ["watchedSec が負", { viewId: VIEW_ID, videoId: "v1", watchedSec: -1 }],
-    ["watchedSec > duration * 10", { viewId: VIEW_ID, videoId: "v1", watchedSec: 200.1 }],
+    [
+      "watchedSec > duration * 10",
+      { viewId: VIEW_ID, videoId: "v1", watchedSec: 200.1 },
+    ],
     ["viewId が UUID でない", { viewId: "abc", videoId: "v1", watchedSec: 1 }],
-    ["watchedSec が数値でない", { viewId: VIEW_ID, videoId: "v1", watchedSec: "1" }],
+    [
+      "watchedSec が数値でない",
+      { viewId: VIEW_ID, videoId: "v1", watchedSec: "1" },
+    ],
   ])("400: %s", async (_n, body) => {
     const d = fakeDeps();
     deps.current = d;
@@ -123,7 +147,11 @@ describe("POST /api/view", () => {
   });
 
   it("duration * 10 ちょうどは受け付ける", async () => {
-    const res = await post(postViewRoute, { viewId: VIEW_ID, videoId: "v1", watchedSec: 200 });
+    const res = await post(postViewRoute, {
+      viewId: VIEW_ID,
+      videoId: "v1",
+      watchedSec: 200,
+    });
     expect(res.status).toBe(200);
   });
 
@@ -133,7 +161,15 @@ describe("POST /api/view", () => {
         throw new RecsysError("down");
       },
     });
-    expect((await post(postViewRoute, { viewId: VIEW_ID, videoId: "v1", watchedSec: 1 })).status).toBe(502);
+    expect(
+      (
+        await post(postViewRoute, {
+          viewId: VIEW_ID,
+          videoId: "v1",
+          watchedSec: 1,
+        })
+      ).status,
+    ).toBe(502);
   });
 });
 
@@ -147,17 +183,27 @@ describe("POST /api/like", () => {
     deps.current = d;
     const res = await post(postLikeRoute, { videoId: "v1", liked: true });
     expect(res.status).toBe(200);
-    expect(d.insertLike).toHaveBeenCalledWith({ anonId: ID, videoId: "v1", liked: true });
+    expect(d.insertLike).toHaveBeenCalledWith({
+      anonId: ID,
+      videoId: "v1",
+      liked: true,
+    });
     expect((await res.json()).taste.eventCount).toBe(1);
   });
 
   it("同じ状態(追加されなかった)でも 200", async () => {
     deps.current = fakeDeps({ insertLike: vi.fn(async () => false) });
-    expect((await post(postLikeRoute, { videoId: "v1", liked: false })).status).toBe(200);
+    expect(
+      (await post(postLikeRoute, { videoId: "v1", liked: false })).status,
+    ).toBe(200);
   });
 
   it("sendBeacon 相当の text/plain を受け付ける", async () => {
-    const res = await post(postLikeRoute, JSON.stringify({ videoId: "v1", liked: true }), "text/plain");
+    const res = await post(
+      postLikeRoute,
+      JSON.stringify({ videoId: "v1", liked: true }),
+      "text/plain",
+    );
     expect(res.status).toBe(200);
   });
 

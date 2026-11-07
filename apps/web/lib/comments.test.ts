@@ -1,15 +1,19 @@
-import { describe, expect, it } from "vitest";
 import type { FlowComment } from "@opendopa/shared";
+import { describe, expect, it } from "vitest";
 import {
-  LANE_COUNT,
-  MAX_DURATION_SEC,
-  MIN_DURATION_SEC,
   activeComments,
   assignLane,
   commentDuration,
+  LANE_COUNT,
+  MAX_DURATION_SEC,
+  MIN_DURATION_SEC,
 } from "./comments";
 
-const c = (t: number, text = "あ", style: FlowComment["style"] = "normal"): FlowComment => ({
+const c = (
+  t: number,
+  text = "あ",
+  style: FlowComment["style"] = "normal",
+): FlowComment => ({
   t,
   text,
   style,
@@ -34,7 +38,9 @@ describe("commentDuration", () => {
       expect(d).toBeGreaterThanOrEqual(MIN_DURATION_SEC);
       expect(d).toBeLessThanOrEqual(MAX_DURATION_SEC);
     }
-    expect(commentDuration(c(3.2, "気をつけたい"))).toBe(commentDuration(c(3.2, "気をつけたい")));
+    expect(commentDuration(c(3.2, "気をつけたい"))).toBe(
+      commentDuration(c(3.2, "気をつけたい")),
+    );
   });
 });
 
@@ -58,7 +64,9 @@ describe("activeComments", () => {
   });
 
   it("全レーンが使用中なら、その回は出さない(あとで出し直さない)", () => {
-    const list = Array.from({ length: LANE_COUNT + 2 }, (_, i) => c(1, `x${i}`));
+    const list = Array.from({ length: LANE_COUNT + 2 }, (_, i) =>
+      c(1, `x${i}`),
+    );
     expect(activeComments(list, 20, 1.5)).toHaveLength(LANE_COUNT);
     // 全部流れ終わったあとも、出せなかった分は出ない
     expect(activeComments(list, 20, 1 + MAX_DURATION_SEC + 0.1)).toEqual([]);
@@ -77,7 +85,9 @@ describe("activeComments", () => {
 
   it("再生秒を進めても、画面にいるコメントのレーンは変わらない", () => {
     // 流れる時間が長く、レーンの占有が連鎖する密なコメント列
-    const list = Array.from({ length: 30 }, (_, i) => c(i * 0.6, `コメント${i}`));
+    const list = Array.from({ length: 30 }, (_, i) =>
+      c(i * 0.6, `コメント${i}`),
+    );
     const laneOf = new Map<string, number>();
     for (let t = 0; t <= 90; t += 0.1) {
       for (const a of activeComments(list, 20, t)) {
@@ -97,6 +107,8 @@ describe("activeComments", () => {
   });
 
   it("yellow のスタイルを引き継ぐ", () => {
-    expect(activeComments([c(0, "a", "yellow")], 20, 1)[0].style).toBe("yellow");
+    expect(activeComments([c(0, "a", "yellow")], 20, 1)[0].style).toBe(
+      "yellow",
+    );
   });
 });

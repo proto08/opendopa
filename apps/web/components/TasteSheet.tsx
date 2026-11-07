@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { type ReactNode, useEffect } from "react";
 
 /** スマホ(幅 899px 以下)で、下から開く好みのシート。PC では CSS で出さない */
 export function TasteSheet({

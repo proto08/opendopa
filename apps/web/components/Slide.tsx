@@ -33,10 +33,21 @@ export function Slide({
   onNext: () => void;
 }) {
   return (
-    <section className="slide" data-index={index} data-active={active} aria-label={item.scene.headline}>
+    <section
+      className="slide"
+      data-index={index}
+      data-active={active}
+      aria-label={item.scene.headline}
+    >
       {mounted ? (
         <Stage scene={item.scene} active={active} hold={hold}>
-          <RightRail liked={liked} onLike={onLike} onCsv={onCsv} onTaste={onTaste} onNext={onNext} />
+          <RightRail
+            liked={liked}
+            onLike={onLike}
+            onCsv={onCsv}
+            onTaste={onTaste}
+            onNext={onNext}
+          />
         </Stage>
       ) : null}
     </section>

@@ -9,7 +9,10 @@ export function ShareBars({ shares }: { shares: Taste["shares"] }) {
         <li key={s.clusterId} className="shareRow" data-pct={s.pct}>
           <span className="shareName">{s.name}</span>
           <span className="shareTrack">
-            <span className="shareFill" style={{ width: `${s.pct}%`, background: s.color }} />
+            <span
+              className="shareFill"
+              style={{ width: `${s.pct}%`, background: s.color }}
+            />
           </span>
           <span className="sharePct">{s.pct}%</span>
         </li>

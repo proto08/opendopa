@@ -18,7 +18,8 @@ export function tasteSummary(
     (best, s) => (best === undefined || s.pct > best.pct ? s : best),
     undefined,
   );
-  if (top && top.pct >= SUMMARY_MIN_PCT) return `あなたは「${top.name}」を最後まで見る人です`;
+  if (top && top.pct >= SUMMARY_MIN_PCT)
+    return `あなたは「${top.name}」を最後まで見る人です`;
   return "好みはまだ決まっていません。いろいろ見ています";
 }
 
@@ -31,7 +32,12 @@ export function buildTaste(
   const byId = new Map(clusters.map((c) => [c.id, c]));
   const shares = recsys.shares.map((s) => {
     const c = byId.get(s.clusterId);
-    return { clusterId: s.clusterId, name: c?.name ?? "", color: c?.color ?? "#999999", pct: s.pct };
+    return {
+      clusterId: s.clusterId,
+      name: c?.name ?? "",
+      color: c?.color ?? "#999999",
+      pct: s.pct,
+    };
   });
   return {
     x: recsys.x,

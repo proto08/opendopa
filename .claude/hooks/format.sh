@@ -13,7 +13,7 @@ case "$rel" in
   packages/shared/src/generated/* | pipeline/opendopa_pipeline/generated/*)
     exit 0 ;; # 生成物は触らない
   apps/web/*.ts | apps/web/*.tsx | apps/web/*.mts | apps/web/*.js | apps/web/*.mjs)
-    (cd "$root/apps/web" && mise exec -- pnpm exec eslint --fix "$file") >/dev/null 2>&1 ;;
+    (cd "$root/apps/web" && mise exec -- pnpm exec biome check --write "$file") >/dev/null 2>&1 ;;
   pipeline/*.py)
     (cd "$root/pipeline" && mise exec -- uv run ruff format "$file" && mise exec -- uv run ruff check --fix "$file") >/dev/null 2>&1 ;;
   services/recsys/*.rs)

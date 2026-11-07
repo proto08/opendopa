@@ -5,7 +5,10 @@ import { apiHandler, HttpError, json, parseJsonBody, parseQuery } from "./http";
 import { RecsysError } from "./recsys-client";
 
 const ID = "3b0f6a52-1c1e-4d0e-9a55-0f2f4c1b7e11";
-const call = (h: (r: Request) => Promise<Response>, cookie = `${ANON_COOKIE}=${ID}`) =>
+const call = (
+  h: (r: Request) => Promise<Response>,
+  cookie = `${ANON_COOKIE}=${ID}`,
+) =>
   h(new Request("http://x.test/api/t", { headers: cookie ? { cookie } : {} }));
 
 describe("apiHandler", () => {
@@ -40,9 +43,13 @@ describe("apiHandler", () => {
   });
 
   it("RecsysError は 502、想定外の例外は 500", async () => {
-    const r502 = await call(apiHandler(() => Promise.reject(new RecsysError("down"))));
+    const r502 = await call(
+      apiHandler(() => Promise.reject(new RecsysError("down"))),
+    );
     expect(r502.status).toBe(502);
-    const r500 = await call(apiHandler(() => Promise.reject(new Error("boom"))));
+    const r500 = await call(
+      apiHandler(() => Promise.reject(new Error("boom"))),
+    );
     expect(r500.status).toBe(500);
     expect(await r500.json()).toEqual({ error: "internal server error" });
   });
@@ -68,13 +75,24 @@ describe("入力の検証", () => {
 
   it("本文が不正なら 400", async () => {
     const bad = new Request("http://x.test", { method: "POST", body: "{" });
-    await expect(parseJsonBody(bad, schema)).rejects.toMatchObject({ status: 400 });
-    const ng = new Request("http://x.test", { method: "POST", body: JSON.stringify({ n: 9 }) });
-    await expect(parseJsonBody(ng, schema)).rejects.toMatchObject({ status: 400 });
+    await expect(parseJsonBody(bad, schema)).rejects.toMatchObject({
+      status: 400,
+    });
+    const ng = new Request("http://x.test", {
+      method: "POST",
+      body: JSON.stringify({ n: 9 }),
+    });
+    await expect(parseJsonBody(ng, schema)).rejects.toMatchObject({
+      status: 400,
+    });
   });
 
   it("クエリを検証する", () => {
-    expect(parseQuery(new Request("http://x.test/?n=2"), schema)).toEqual({ n: 2 });
-    expect(() => parseQuery(new Request("http://x.test/?n=0"), schema)).toThrow(HttpError);
+    expect(parseQuery(new Request("http://x.test/?n=2"), schema)).toEqual({
+      n: 2,
+    });
+    expect(() => parseQuery(new Request("http://x.test/?n=0"), schema)).toThrow(
+      HttpError,
+    );
   });
 });

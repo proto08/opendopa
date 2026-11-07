@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import { ANON_COOKIE, resolveAnonId } from "./anon";
 
 const ID = "3b0f6a52-1c1e-4d0e-9a55-0f2f4c1b7e11";
-const req = (headers: Record<string, string> = {}, url = "http://x.test/api/feed") =>
-  new Request(url, { headers });
+const req = (
+  headers: Record<string, string> = {},
+  url = "http://x.test/api/feed",
+) => new Request(url, { headers });
 
 describe("resolveAnonId", () => {
   it("Cookie がなければ発行して Set-Cookie を返す", () => {
@@ -29,7 +31,10 @@ describe("resolveAnonId", () => {
   it("ヘッダー・クエリで送られた別の値は使わない", () => {
     const other = "11111111-2222-4333-8444-555555555555";
     const r = resolveAnonId(
-      req({ "x-anon-id": other, [ANON_COOKIE]: other }, `http://x.test/api/feed?${ANON_COOKIE}=${other}&anonId=${other}`),
+      req(
+        { "x-anon-id": other, [ANON_COOKIE]: other },
+        `http://x.test/api/feed?${ANON_COOKIE}=${other}&anonId=${other}`,
+      ),
     );
     expect(r.anonId).not.toBe(other);
   });

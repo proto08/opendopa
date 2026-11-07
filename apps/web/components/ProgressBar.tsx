@@ -9,7 +9,10 @@ export function ProgressBar({ progress }: { progress: number }) {
       aria-valuemax={100}
       aria-valuenow={Math.round(progress * 100)}
     >
-      <div className="progressFill" style={{ transform: `scaleX(${progress})` }} />
+      <div
+        className="progressFill"
+        style={{ transform: `scaleX(${progress})` }}
+      />
     </div>
   );
 }

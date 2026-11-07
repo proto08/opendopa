@@ -10,5 +10,8 @@ export async function GET() {
   if (await pingDb()) {
     return Response.json({ status: "ok", db: "ok" }, { headers });
   }
-  return Response.json({ error: "database unreachable" }, { status: 503, headers });
+  return Response.json(
+    { error: "database unreachable" },
+    { status: 503, headers },
+  );
 }

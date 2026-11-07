@@ -10,7 +10,12 @@ export function TastePanel({ state }: { state: TasteState }) {
   return (
     <section className="tastePanel" aria-label="あなたの好み">
       <h2 className="tasteTitle">あなたの好み</h2>
-      <TasteMap map={map} current={currentVideoId} viewed={viewed} trail={trail} />
+      <TasteMap
+        map={map}
+        current={currentVideoId}
+        viewed={viewed}
+        trail={trail}
+      />
       {taste ? (
         <>
           <ShareBars shares={taste.shares} />
