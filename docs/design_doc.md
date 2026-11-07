@@ -691,8 +691,8 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | PostgreSQL Flexible Server | DB。拡張 `vector` を許可する(`azure.extensions` に `VECTOR`) |
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
-| Azure OpenAI | 埋め込み(`EMBED_PROVIDER=azure`)のデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認。チャットのデプロイは不要(`LLM_PROVIDER=none`) |
 | 判断モデルの配備先(本体と同じ環境の CPU の Container App) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。外部 ingress だが Bearer トークン必須。既定では作らない(`decider_enabled`) |
+| Azure OpenAI | 埋め込み(`EMBED_PROVIDER=azure`)のデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認。チャットのデプロイは不要(`LLM_PROVIDER=none`) |
 | Key Vault(任意) | 接続文字列とキー |
 
 地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。
