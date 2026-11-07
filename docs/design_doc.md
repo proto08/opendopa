@@ -457,7 +457,8 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 | `TAU` | 0.05 | 候補から確率で選ぶときの温度(コサイン類似度に対して) |
 | `EXPLORE` | 0.18 | 冒険枠の確率 |
 | `COLD_START_N` | 3 | 最初のN本は、全データセットから偏らず選ぶ |
-| `MAX_STREAK` | 2 | 同じデータセットが連続できる最大数 |
+| `DISCOVER_N` | 14 | N本目までは、まだ出ていないデータセットが残る間、新しいデータセットから選ぶ(好みの信号がなくても、全データセットを一巡して好みを見つける)。`COLD_START_N` 以下なら無効 |
+| `MAX_STREAK` | 3 | 同じデータセットが連続できる最大数 |
 | `TAU_MAP` | 0.05 | 地図上の現在地を出すときの温度 |
 
 この値で確定する。問題が出たら、疑似ユーザーのテスト(§14.2)をもとに、あとから調整する。調整しやすいよう、すべて設定ファイルから読む形にする。
@@ -491,7 +492,7 @@ like(false):  いいねを取り消し、そのユーザーの全イベントを
 function pickNext(anon, u, eventCount, lastDatasets):
   unseen = videos where status='ok' and id not in impressions(anon)
   if unseen is empty: seenIds を空として扱って全体から選び直し、seenReset=true を返す(Next.js が impressions を削除する)
-  if eventCount < COLD_START_N:
+  if eventCount < COLD_START_N or (eventCount < DISCOVER_N and 未出のデータセットが unseen に残っている):
       データセットごとに1本ずつ順に(まだ出ていないデータセットから)ランダムに選ぶ。reason='explore_cold'
   elif random() < EXPLORE:
       類似度が unseen の下位半分から、直前と違うデータセットを優先して一様に選ぶ。reason='adventure'
@@ -789,8 +790,8 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 - ユーザーA: 「鉄道」のデータセットの動画だけ、最後まで見る(視聴率1.0)。他はすぐ飛ばす(0.05)。
 - ユーザーB: 「空き家」に、いいねを押す。他は普通(0.5)。
 - 各ユーザー100本ぶん動かし、**何本目から、好みのデータセットの動画が配信の過半数を超えるか**を測る。
-- 合格の目安: 20本以内に過半数を超えること。冒険枠(約18%)は、好み以外の動画が混ざることを確認する。
-  - 実測(合成インデックス、seed 30通り)では、累計の過半数が20本以内に達したのは A が 10/30、B が 8/30 で、目安を満たさない。テストの合格条件は「好みの初出のあとの20本」で測る形に読み替えた(累計は出力のみ)。理由と改善案は `docs/decisions/2026-11-06-recsys-simulation-results.md`。
+- 合格の目安(#119 で見直した): ①ユーザー A・B とも、好みのデータセットの初出が20本以内。②初出と一巡(`DISCOVER_N`)の遅いほうのあと、20本のうち好みが平均で13本(65%)以上、どの seed でも8本以上。③好み以外が100本のうち10本以上(冒険枠が働いている)。
+  - 当初の目安「20本以内に、好みが配信の累計の過半数を超える」は、一巡(最大14本)のあいだ新しいデータセットを強制するため、設計と合わない。累計の過半数は測って出力するだけにした。理由と実測は `docs/decisions/2026-11-07-recsys-discovery-and-streak.md`(前の実測は `2026-11-06-recsys-simulation-results.md`)。
 - 係数(§7.1)は、この結果で調整する。
 
 ### 14.2b 判断モデルの評価
