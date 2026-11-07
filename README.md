@@ -346,8 +346,11 @@ make infra-plan && make infra-apply
 # 4. 動画・埋め込み・クラスタを DB に、シーン JSON と音声を Blob に入れる(リポジトリのルートで)
 export DATABASE_URL="$ADMIN_URL"
 export STORAGE_CONNECTION_STRING="$(terraform -chdir=infra output -raw storage_connection_string)"
+# 音声の URL の前に付ける値。未設定だと相対パスのまま入り音声が再生されない。.env.local / .env.example の http://localhost:3000/media は Azure では404になるので必ず上書きする
+export MEDIA_BASE_URL="$(terraform -chdir=infra output -raw media_base_url)"
 # 埋め込みを Azure OpenAI で作るなら AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_EMBED_DEPLOYMENT も
 # terraform output の値で設定する。音声は TTS_PROVIDER=voicevox(手元で VOICEVOX を起動しておく)
+# mise 経由(mise exec -- uv run)にしない: mise は .env.local を読み込み、上で export した値を手元用の値で上書きしうるため。素の uv run なら export した値がそのまま使われる
 cd pipeline && uv run opendopa all
 #    件数だけ確かめるなら: uv run opendopa publish --dry-run
 
