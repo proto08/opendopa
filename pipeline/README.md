@@ -24,3 +24,22 @@ CSV → 原稿 → シーンJSON → 埋め込み → DB への公開を行う B
   - `DECIDER_PROVIDER=strands_local` で、手元の PC が Strands Decider 2B(`StrandsAgents/strands-decider-2B-hobson-v19`、Apache-2.0)をプロセス内で動かす。使う前に `cd pipeline && uv sync --extra decider`(PyTorch などが入る)。初回は Hugging Face Hub から重み(約 4.6 GB)を落とす。`STRANDS_LOCAL_MODEL` でモデル ID(またはローカルのディレクトリ)、`STRANDS_LOCAL_DEVICE` で `cuda` / `mps` / `cpu` を指定できる。
   - モデルが読めない・推論が失敗・確信度が `min_confidence` 未満のときは、`rules` に戻る(`decisions` に `used_fallback` が残る)。
   - `rules` と比べるには `opendopa decide <dataset> --eval <labels.csv> --provider rules,strands_local`。合格(一致率80%以上、フォールバック30%以下)するまで、既定は `rules`。
+
+## Azure のジョブで動かす(Container Apps Job)
+
+元 CSV を Blob に置き、ジョブを手動で起動すると、動画だけを洗い替える(Issue #144)。ハッカソンのデモ(2026-11-08)までは、手元から `opendopa all` を流す。
+
+- **元 CSV の置き場**: Storage Account の非公開コンテナ `raw`(Terraform が作る。`RAW_BLOB_CONTAINER` で変えられる)。`raw/<dataset_id>/*.csv`(`.geojson` も可)に、**人が**置く。`<dataset_id>/` 直下のファイルを名前順にすべて読む(サブフォルダは読まない)。`<dataset_id>/` が空のデータセットがあると、動画が消えないよう、ジョブはエラーで止まる。
+- **ローカルとの切り替え**: `RAW_SOURCE=local`(既定。`datasets/*.yaml` の `files`)/ `RAW_SOURCE=blob`(Blob から `data/raw/<dataset_id>/` に取り込み、その配下をすべて読む)。`opendopa fetch-raw` で取り込みだけもできる。`opendopa all` は `RAW_SOURCE=blob` のとき最初に取り込む。
+- **決定モデル**: ジョブの環境変数 `DECIDER_PROVIDER`(Terraform の `pipeline_decider_provider` = `rules` / `strands_azure`)。失敗・低確信度で `rules` に戻る動作は設計書 §8.3a のまま。
+- **洗い替え**: `videos` は `id` で upsert、`embeddings` と `clusters` は消して入れ直し、今回の出力にない動画は `excluded`(`unpublished`)にする。`impressions`・`view_events`・`like_events` は消さない。公開のあと、`RECSYS_URL`(ジョブは recsys の内部 URL に届く)の `/internal/reload` で recsys に読み直させる。
+- **動画 ID と元 CSV の行順**: ID は `<dataset_id>-<連番4桁>` で CSV の行順に依存する。元 CSV を差し替えるときは、**既存の行の順序を保ち、増やす行は末尾に足す**(複数ファイルは名前順に結合されるので、ファイル名の順序も保つ)。publish は、既にある動画の元の行の内容が前回と違うと警告を出す(公開は止めない)。
+- **音声**: ジョブの `TTS_PROVIDER` は `none`(VOICEVOX にジョブから届かない)。音声つきの動画にしたいデータセットは、手元から `opendopa all` で公開する。
+
+### 手順(人が実行する。課金される)
+
+1. `infra/terraform.tfvars` で `pipeline_job_enabled = true`(`enable_storage = true` が必要)にして `mise run infra-plan` → `mise run infra-apply`。
+2. 元 CSV を Blob の `raw/<dataset_id>/` に置く(例: `az storage blob upload-batch -d raw --destination-path <dataset_id> -s <CSV のあるフォルダ> --account-name <storage>`)。
+3. `make deploy-pipeline`(イメージを push してジョブを更新)。
+4. `make pipeline-run`(ジョブを起動)。進み具合は `az containerapp job execution list -g <rg> -n <job> -o table`、ログは Log Analytics の `ContainerAppConsoleLogs_CL`。
+5. 定期実行にしたいときは、ジョブを `schedule_trigger_config`(cron)に変える。ハッカソンの範囲では手動のみ。

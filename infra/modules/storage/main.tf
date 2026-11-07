@@ -30,6 +30,12 @@ variable "container_names" {
   default     = ["media", "scenes"]
 }
 
+variable "private_container_names" {
+  description = "非公開コンテナ。raw は元 CSV の置き場(raw/<dataset_id>/*.csv。人が CSV を置く。Issue #144)"
+  type        = list(string)
+  default     = ["raw"]
+}
+
 variable "cors_allowed_origins" {
   description = "ブラウザが scenes の JSON を直接 fetch するときの許可オリジン"
   type        = list(string)
@@ -71,6 +77,14 @@ resource "azurerm_storage_container" "public" {
   name                  = each.value
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "blob"
+}
+
+resource "azurerm_storage_container" "private" {
+  for_each = toset(var.private_container_names)
+
+  name                  = each.value
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
 }
 
 output "name" {

@@ -206,3 +206,36 @@ variable "decider_token" {
     error_message = "decider_token は 16 文字以上にする。"
   }
 }
+
+variable "pipeline_job_enabled" {
+  description = "pipeline の Container Apps Job を作る(Blob の raw/<dataset_id>/*.csv から動画を洗い替える。Issue #144)。手動で起動したときだけ課金される。enable_storage = true が必要"
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.pipeline_job_enabled || var.enable_storage
+    error_message = "pipeline_job_enabled = true には enable_storage = true が必要(元 CSV の置き場が Blob のため)。"
+  }
+}
+
+variable "pipeline_image" {
+  description = "pipeline のジョブのイメージ。空ならプレースホルダー"
+  type        = string
+  default     = ""
+}
+
+variable "pipeline_decider_provider" {
+  description = "ジョブの DECIDER_PROVIDER(rules / strands_azure)。strands_azure には decider_enabled = true と decider_token が必要。失敗・低確信度で rules に戻る動作は設計書 §8.3a のまま"
+  type        = string
+  default     = "rules"
+
+  validation {
+    condition     = contains(["rules", "strands_azure"], var.pipeline_decider_provider)
+    error_message = "pipeline_decider_provider は rules / strands_azure のどちらかにする。"
+  }
+
+  validation {
+    condition     = var.pipeline_decider_provider != "strands_azure" || var.decider_enabled
+    error_message = "strands_azure には decider_enabled = true が必要。"
+  }
+}

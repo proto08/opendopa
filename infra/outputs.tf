@@ -122,3 +122,8 @@ output "decider_app_name" {
   description = "判断モデルの Container App 名(decider_enabled のときだけ)"
   value       = var.decider_enabled ? module.decider[0].name : null
 }
+
+output "pipeline_job_name" {
+  description = "pipeline の Container Apps Job 名(pipeline_job_enabled のときだけ)"
+  value       = var.pipeline_job_enabled ? module.pipeline_job[0].name : null
+}
