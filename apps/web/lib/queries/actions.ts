@@ -24,30 +24,53 @@ export async function insertView(
   return rows.length > 0;
 }
 
+/** 専用の接続を借りられるもの(`pg` の `Pool` がそのまま当てはまる)。トランザクションに使う。 */
+export interface Connectable {
+  connect(): Promise<Queryable & { release(): void }>;
+}
+
 /**
  * いいねの状態を保存する。そのユーザー・動画の最新の状態と同じなら追加しない(false を返す)。
  * 履歴がないときの最新の状態は「いいねなし(false)」として扱う。
- * 同じユーザーの同時リクエストで二重に足さないよう、(anon_id, video_id) の advisory lock を取る。
+ * 同じユーザーの同時リクエストで二重に足さないよう、1 つのトランザクションの中で
+ * (anon_id, video_id) の advisory lock を取り、そのあとの別の文で最新の状態を読む
+ * (READ COMMITTED では文ごとにスナップショットが取り直されるので、ロック待ちのあとでも先行のコミットが見える)。
  */
 export async function insertLike(
-  db: Queryable,
+  db: Connectable,
   v: { anonId: string; videoId: string; liked: boolean },
 ): Promise<boolean> {
-  // 1 文で「最新の状態の判定」と追加を行う。同時実行の競合は advisory lock で直列化する
-  const { rows } = await db.query(
-    `WITH lock AS (SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))),
-     latest AS (
-       SELECT COALESCE((SELECT liked FROM like_events
-                         WHERE anon_id = $1 AND video_id = $2
-                         ORDER BY created_at DESC, id DESC LIMIT 1), false) AS liked
-         FROM lock
-     )
-     INSERT INTO like_events (anon_id, video_id, liked)
-     SELECT $1, $2, $3 FROM latest WHERE latest.liked <> $3
-     RETURNING id`,
-    [v.anonId, v.videoId, v.liked],
-  );
-  return rows.length > 0;
+  const client = await db.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", [
+      v.anonId,
+      v.videoId,
+    ]);
+    const { rows: latest } = await client.query<{ liked: boolean }>(
+      `SELECT liked FROM like_events
+        WHERE anon_id = $1 AND video_id = $2
+        ORDER BY created_at DESC, id DESC LIMIT 1`,
+      [v.anonId, v.videoId],
+    );
+    const current = latest[0]?.liked ?? false;
+    let inserted = false;
+    if (current !== v.liked) {
+      await client.query("INSERT INTO like_events (anon_id, video_id, liked) VALUES ($1, $2, $3)", [
+        v.anonId,
+        v.videoId,
+        v.liked,
+      ]);
+      inserted = true;
+    }
+    await client.query("COMMIT");
+    return inserted;
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
 
 export interface VideoLogInfo {

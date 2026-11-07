@@ -151,6 +151,20 @@ describe.skipIf(!url)("queries(DB)", () => {
     expect((await q(`SELECT 1 FROM like_events WHERE anon_id='lk2'`)).rows).toHaveLength(1);
   });
 
+  it("actions: ロック待ちの後発も、先行のコミットを見て二重に足さない", async () => {
+    // 先行がロックを持ったまま止まっている間に後発を走らせる
+    const first = await pool.connect();
+    await first.query("BEGIN");
+    await first.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", ["lk3", "a"]);
+    const second = insertLike(pool, { anonId: "lk3", videoId: "a", liked: true });
+    await new Promise((r) => setTimeout(r, 200)); // 後発がロック待ちに入る時間
+    await first.query("INSERT INTO like_events (anon_id, video_id, liked) VALUES ('lk3','a',true)");
+    await first.query("COMMIT");
+    first.release();
+    expect(await second).toBe(false);
+    expect((await q(`SELECT 1 FROM like_events WHERE anon_id='lk3'`)).rows).toHaveLength(1);
+  });
+
   it("actions: loadVideoLogInfo", async () => {
     await recordImpressions(pool, "inf", [{ videoId: "a", reason: "near" }], false);
     await insertLike(pool, { anonId: "inf", videoId: "a", liked: true });
