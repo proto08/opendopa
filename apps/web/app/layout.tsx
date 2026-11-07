@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { Dela_Gothic_One, Noto_Sans_JP } from "next/font/google";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { BgmPlayer } from "@/components/BgmPlayer";
 import { Footer } from "@/components/Footer";
+import { bgmConfig } from "@/lib/bgmConfig";
 import { ttsCredit } from "@/lib/credit";
 import "./globals.css";
 
@@ -25,11 +27,18 @@ export const metadata: Metadata = {
   description: "オープンデータから作るショート動画",
 };
 
-// TTS_PROVIDER などの環境変数を、ビルド時でなく実行時に読む。
+// TTS_PROVIDER・BGM_FILE などの環境変数を、ビルド時でなく実行時に読む。
 // connection() は <Suspense> の中でしか使えない(外だとプリレンダーできず build が失敗する)ため、ここだけ切り出す
 async function CreditFooter() {
   await connection();
-  return <Footer credit={ttsCredit()} />;
+  const bgm = bgmConfig();
+  const credits = [ttsCredit(), bgm?.credit].filter((c) => c !== undefined);
+  return (
+    <>
+      {bgm ? <BgmPlayer url={bgm.url} volume={bgm.volume} /> : null}
+      <Footer credits={credits} />
+    </>
+  );
 }
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
