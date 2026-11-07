@@ -4,6 +4,7 @@ packages:
 
 # 依存パッケージのビルドスクリプト(postinstall など)の実行可否
 allowBuilds:
+  protobufjs: false
   sharp: false
   unrs-resolver: false
 

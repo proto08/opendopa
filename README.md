@@ -451,6 +451,40 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
 - インフラ変更: Actions の `Infra` から **Run workflow** → `plan` の要約を確認 → `infra-apply` の承認 → `apply`。
 - 最小構成から始める(無料試用など): 必須は Resource Group、Container Registry、Log Analytics、Postgres、Container Apps で、Azure OpenAI(`enable_openai`)、Blob(`enable_storage`)、Front Door(`enable_cdn`)は `terraform.tfvars` で `false` にできます(既定は `true`。`enable_openai = false` のときは `AZURE_OPENAI_*` が空になります)。変数は `.env.example` の `TF_VAR_*` と `infra/terraform.tfvars.example` を参照してください。
 
+## 監視(Application Insights / Log Analytics)
+
+web は、環境変数 `APPLICATIONINSIGHTS_CONNECTION_STRING` があるときだけ Application Insights に送ります(`apps/web/instrumentation.ts`)。ローカルとテストでは未設定なので、何も送りません。Azure では Terraform が Container Apps のシークレットとして渡します(ADR-0018)。
+
+- web: `/api/*` のリクエスト(`api.request`)と recsys 呼び出し(`recsys.call`)を、スパンと応答時間のヒストグラム(`opendopa.api.duration` / `opendopa.recsys.duration`、単位 ms)として記録します。失敗はエラーの種類を付けます。匿名 ID の生の値と `csvRow` は送りません(エラー文の UUID も伏せます。ADR-0061)。
+- recsys: 標準出力に1行1JSONで出します(端末につないだときだけ読みやすい形式)。起動時の索引の件数、`reload`、エラー、リクエストごとのパス・ステータス・所要時間(`ms`)です。Container Apps が Log Analytics に集めます。`RUST_LOG=debug` で `/healthz` の成功も出ます。
+
+Azure ポータルの Log Analytics(または Application Insights の「ログ」)で、次のクエリを使います。テーブル名はワークスペース型の Application Insights のものです。
+
+```kusto
+// /api/feed のリクエストと失敗(直近1時間)
+AppRequests
+| where TimeGenerated > ago(1h) and Name has "api/feed"
+| summarize 件数 = count(), 失敗 = countif(Success == false), p95_ms = percentile(DurationMs, 95) by bin(TimeGenerated, 5m)
+
+// 失敗したスパン(web → recsys の失敗を含む)
+AppDependencies
+| where TimeGenerated > ago(1h) and Success == false
+| project TimeGenerated, Name, ResultCode, Properties
+
+// 応答時間のヒストグラム(カスタムメトリクス)
+AppMetrics
+| where Name in ("opendopa.api.duration", "opendopa.recsys.duration")
+| summarize 件数 = sum(ItemCount), 平均_ms = sum(Sum) / sum(ItemCount) by Name, bin(TimeGenerated, 5m)
+
+// recsys のログ(JSON の項目は parse_json で引く)
+ContainerAppConsoleLogs_CL
+| where ContainerAppName_s has "recsys" and TimeGenerated > ago(1h)
+| extend j = parse_json(Log_s)
+| where j.level in ("ERROR", "WARN") or j.fields.message has "索引"
+| project TimeGenerated, level = j.level, message = j.fields.message, fields = j.fields
+```
+
+
 ## Azure 環境をゼロから作る・消す
 
 新しい `env_name` で、Azure 環境を最初から作る手順です。**Azure の課金とアクセス権に関わるため、人が実行します**(自動化したワークフローでは行いません)。CI/CD の初期設定(OIDC・GitHub の変数)は前節の「CD(デプロイ)とインフラ変更」のとおりです。

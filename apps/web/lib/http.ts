@@ -2,6 +2,7 @@ import type { ZodError, ZodType } from "zod";
 import { resolveAnonId } from "./anon";
 import { rateLimiter } from "./rate-limit";
 import { RecsysError } from "./recsys-client";
+import { apiAttributes, startApiRequest } from "./telemetry";
 
 // /api/* の共通ヘルパー(設計書 §6.5)。新しい API は `apiHandler` で包むだけで、
 // 匿名 ID の Cookie、`Cache-Control: no-store`、レート制限、エラー形式 `{ "error": "message" }` を満たす。
@@ -87,6 +88,9 @@ export function apiHandler(
 ) {
   return async (req: Request): Promise<Response> => {
     const { anonId, setCookie } = resolveAnonId(req);
+    // 計測。匿名 ID は渡さない(telemetry.ts)
+    const span = startApiRequest(req.method, req.url);
+    let failure: unknown;
     let res: Response;
     if (!rateLimiter.allow(anonId)) {
       res = errorResponse(429, "too many requests", {
@@ -96,9 +100,12 @@ export function apiHandler(
       try {
         res = await handler({ anonId, req });
       } catch (e) {
+        // 想定内の HttpError(400 など)は失敗として数えない。502・500 の原因だけ残す
+        if (!(e instanceof HttpError)) failure = e;
         res = toErrorResponse(e);
       }
     }
+    span.end(apiAttributes(req.method, req.url, res.status), failure);
     // ハンドラが返したレスポンスにも必ず付ける
     const headers = new Headers(res.headers);
     headers.set("Cache-Control", "no-store");

@@ -1,4 +1,4 @@
-use std::{net::SocketAddr, sync::Arc};
+use std::{io::IsTerminal, net::SocketAddr, sync::Arc};
 
 use recsys_core::config::Config;
 use recsys_server::{AppState, loader::PgLoader};
@@ -6,9 +6,16 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
+    // 端末に出すときは読みやすい形式、そうでなければ(Container Apps など)1行1JSON。Log Analytics で項目を引ける
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into());
+    if std::io::stdout().is_terminal() {
+        tracing_subscriber::fmt().with_env_filter(filter).init();
+    } else {
+        tracing_subscriber::fmt()
+            .json()
+            .with_env_filter(filter)
+            .init();
+    }
 
     // 待ち受けるポートは環境変数 PORT(既定 8080。ADR-0012 A15)
     let port: u16 = std::env::var("PORT")

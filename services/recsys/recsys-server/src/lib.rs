@@ -277,6 +277,28 @@ async fn reload(State(state): State<Arc<AppState>>) -> Result<Json<serde_json::V
     }
 }
 
+/// リクエストごとに、メソッド・パス・ステータス・所要時間を構造化ログに残す(イシュー #61)。
+/// 本文・ヘッダー(トークン)・クエリは記録しない。5xx は error、4xx は warn、それ以外は info(`/healthz` の成功は debug)。
+async fn access_log(req: Request, next: Next) -> Response {
+    let method = req.method().clone();
+    let path = req.uri().path().to_owned();
+    let start = std::time::Instant::now();
+    let res = next.run(req).await;
+    let status = res.status().as_u16();
+    let ms = start.elapsed().as_secs_f64() * 1000.0;
+    if status >= 500 {
+        tracing::error!(%method, path, status, ms, "request");
+    } else if status >= 400 {
+        tracing::warn!(%method, path, status, ms, "request");
+    } else if path == "/healthz" {
+        // ヘルスチェックは頻繁なので、既定の info では出さない
+        tracing::debug!(%method, path, status, ms, "request");
+    } else {
+        tracing::info!(%method, path, status, ms, "request");
+    }
+    res
+}
+
 /// `internal_token` は INTERNAL_TOKEN の値。空でないこと(呼び出し側で確かめる)。
 pub fn app(internal_token: String, state: Arc<AppState>) -> Router {
     let internal = Router::new()
@@ -291,6 +313,7 @@ pub fn app(internal_token: String, state: Arc<AppState>) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .merge(internal)
+        .layer(middleware::from_fn(access_log))
         .with_state(state)
 }
 
