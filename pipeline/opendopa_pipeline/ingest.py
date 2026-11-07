@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -91,6 +92,11 @@ def register_loader(suffix: str, loader: Loader) -> None:
     _LOADERS[suffix.lower()] = loader
 
 
+def supported_suffixes() -> list[str]:
+    """ローダがある拡張子(`.csv` など)。"""
+    return sorted(_LOADERS)
+
+
 def _to_number_if_possible(col: pd.Series) -> pd.Series:
     """欠損以外がすべて数値の形なら数値にする。`01100` のような先頭 0 の符号は文字列のまま。"""
     values = col.dropna()
@@ -155,16 +161,40 @@ def load_path(path: Path) -> pd.DataFrame:
     return loader(path)
 
 
-def load_frame(dataset: DatasetDef, root: Path | str = ".") -> pd.DataFrame:
-    """`files` を読み、結合して、`rename`・`null_values`・`zero_is_null` を適用する。
+RAW_SOURCE_ENV = "RAW_SOURCE"
 
-    `files` の相対パスは `root`(リポジトリのルート)からの相対。
+
+def raw_files(dataset: DatasetDef, root: Path | str = ".") -> list[str]:
+    """読むファイル(`root` からの相対パス)。
+
+    既定は YAML の `files`。環境変数 `RAW_SOURCE=blob`(Blob から取り込んだ元データ。`rawblob.py`)の
+    ときは、`data/raw/<dataset_id>/` 直下の対応する拡張子のファイルすべてを、名前順に読む。
+    """
+    if os.environ.get(RAW_SOURCE_ENV) != "blob":
+        return list(dataset.files)
+    root = Path(root)
+    folder = root / "data" / "raw" / dataset.id
+    if not folder.is_dir():
+        raise IngestError(f"{folder} がありません(Blob から取り込んでいません)")
+    return sorted(
+        p.relative_to(root).as_posix()
+        for p in folder.iterdir()
+        if p.is_file() and p.suffix.lower() in _LOADERS
+    )
+
+
+def load_frame(dataset: DatasetDef, root: Path | str = ".") -> pd.DataFrame:
+    """元データを読み、結合して、`rename`・`null_values`・`zero_is_null` を適用する。
+
+    読むファイルは `raw_files`(既定は `files`)。相対パスは `root`(リポジトリのルート)からの相対。
     複数のファイルは、同じ列を持つものとして縦に結合する。
     """
     root = Path(root)
-    frames = [load_path(root / name) for name in dataset.files]
+    frames = [load_path(root / name) for name in raw_files(dataset, root)]
     if not frames:
-        raise IngestError("files が空です")
+        raise IngestError(
+            "読むファイルがありません(files が空、または Blob に元データがありません)"
+        )
     return normalize(pd.concat(frames, ignore_index=True), dataset)
 
 

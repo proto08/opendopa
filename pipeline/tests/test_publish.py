@@ -307,3 +307,37 @@ def test_missing_embed_output(tmp_path) -> None:
     (out / "centroid.json").unlink()
     with pytest.raises(PublishError, match="embed"):
         run_publish(root, out, dry_run=True, env={})
+
+
+class _FakeCur:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.params = params
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakeConn:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def cursor(self):
+        return _FakeCur(self.rows)
+
+
+def test_changed_videos_detects_rows_that_moved(tmp_path) -> None:
+    root, out = make_root(tmp_path)
+    b = pub.load_bundle(root, out)
+    # 前回: demo-0000 は同じ内容、demo-0001 は別の行だった、demo-0002 は新しい動画
+    old = [("demo-0000", [["列", 0]]), ("demo-0001", [["列", 99]])]
+    assert pub.changed_videos(_FakeConn(old), b) == ["demo-0001"]
+    assert pub.changed_videos(_FakeConn([]), b) == []
