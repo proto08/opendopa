@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  AUDIO_WAIT_MAX_SEC,
   bigNumberFontSizeCqw,
   COUNT_UP_SEC,
   computeSnapshot,
@@ -224,5 +225,73 @@ describe("ScenePlayer.hold / release(シートが開いている間の停止)", 
     p.hold();
     p.release();
     expect(p.getSnapshot().paused).toBe(true);
+  });
+});
+
+describe("ScenePlayer の音声との連携(音声を時間の基準にする)", () => {
+  let player: ScenePlayer;
+  let playing: boolean;
+  beforeEach(() => {
+    vi.useFakeTimers();
+    playing = true;
+    player = new ScenePlayer(lines);
+    player.setAudioGate(() => playing);
+    player.start();
+  });
+  afterEach(() => {
+    player.stop();
+    vi.useRealTimers();
+  });
+
+  it("音声が鳴っている行は、見積もりの秒数が過ぎても次の行へ進まない", () => {
+    vi.advanceTimersByTime(4500); // 行 0 は 4 秒
+    expect(player.getSnapshot().lineIndex).toBe(0);
+  });
+
+  it("音声の終わり(finishLine)で、すぐ次の行へ進む", () => {
+    vi.advanceTimersByTime(4500);
+    player.finishLine();
+    expect(player.getSnapshot().lineIndex).toBe(1);
+  });
+
+  it("音声が見積もりより早く終わったら、行の終わりまで字幕を進める", () => {
+    vi.advanceTimersByTime(2000);
+    player.finishLine();
+    expect(player.getSnapshot().lineIndex).toBe(1);
+    expect(player.getSnapshot().playedSec).toBeCloseTo(4, 1);
+  });
+
+  it("音声が鳴っていない(止められている・読み込み中断)ときは、時計だけで進む", () => {
+    playing = false;
+    vi.advanceTimersByTime(4100);
+    expect(player.getSnapshot().lineIndex).toBe(1);
+  });
+
+  it("音声が終わらなくても、待つのは上限まで", () => {
+    vi.advanceTimersByTime(4000 + AUDIO_WAIT_MAX_SEC * 1000 + 300);
+    expect(player.getSnapshot().lineIndex).toBe(1);
+  });
+
+  it("一時停止中の finishLine は何もしない", () => {
+    vi.advanceTimersByTime(1000);
+    player.pause();
+    const before = player.getSnapshot().playedSec;
+    player.finishLine();
+    expect(player.getSnapshot().playedSec).toBe(before);
+  });
+
+  it("最後の行の音声が終わると、ループして先頭の行に戻る", () => {
+    player.finishLine(); // 行 0 → 1
+    player.finishLine(); // 行 1 → 2
+    expect(player.getSnapshot().lineIndex).toBe(2);
+    player.finishLine(); // 最後の行 → 先頭へ
+    expect(player.getSnapshot().lineIndex).toBe(0);
+    expect(player.getSnapshot().loops).toBe(1);
+  });
+
+  it("lineElapsedSec は表示中の行の頭からの秒数", () => {
+    player.finishLine(); // 行 1(4〜6 秒)の頭へ
+    vi.advanceTimersByTime(1000);
+    expect(player.getSnapshot().lineElapsedSec).toBeCloseTo(1, 1);
   });
 });

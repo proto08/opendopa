@@ -46,7 +46,19 @@ export function useScenePlayer(
   const audioUrl = active
     ? (scene.lines[snap.lineIndex]?.audio?.url ?? null)
     : null;
-  const lineAudio = useMemo(() => new LineAudio(), []);
+  const lineAudio = useMemo(
+    () =>
+      new LineAudio({
+        getOffsetSec: () => player.getSnapshot().lineElapsedSec,
+        onEnded: () => player.finishLine(),
+      }),
+    [player],
+  );
+  // 音声が鳴っている行は、音声の終わりまで次の行へ進めない(音声が時間の基準)
+  useEffect(() => {
+    player.setAudioGate(() => lineAudio.isPlaying());
+    return () => player.setAudioGate(null);
+  }, [player, lineAudio]);
   // 行が変わる・ループする・一時停止/再開するたびに、音声を字幕に合わせる
   useEffect(() => {
     lineAudio.sync(audioUrl, `${snap.lineIndex}:${snap.loops}`, snap.paused);
