@@ -7,6 +7,17 @@ export function keyToDelta(key: string): -1 | 0 | 1 {
   return 0;
 }
 
+/** `l` キーはいいねの切り替え */
+export function isLikeKey(key: string): boolean {
+  return key === "l";
+}
+
+/** キー入力の対象が入力欄など(ショートカットを効かせない場所)か */
+export function isEditableTarget(target: EventTarget | null): boolean {
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  return target.closest("input, textarea, select, [contenteditable]") !== null;
+}
+
 /** 現在の位置から delta 動かした位置。端で止まる */
 export function clampIndex(index: number, delta: number, length: number): number {
   if (length <= 0) return 0;
