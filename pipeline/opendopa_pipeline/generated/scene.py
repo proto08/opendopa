@@ -2,11 +2,9 @@
 #   filename:  scene.schema.json
 
 from __future__ import annotations
-
 from enum import StrEnum
-from typing import Annotated, Any, Literal
-
 from pydantic import BaseModel, ConfigDict, Field, RootModel
+from typing import Annotated, Any, Literal
 
 
 class Kind(StrEnum):
