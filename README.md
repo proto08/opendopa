@@ -135,6 +135,10 @@ cd pipeline && uv run opendopa --help
 
 サブコマンド(`profile`、`generate`、`embed`、`publish` など)の中身は、これから実装します。
 
+#### publish のあとの recsys の再読み込み(Azure)
+
+Azure の recsys は内部 ingress のみのため、手元 PC や CI の `publish` から `/internal/reload` は届かず、警告(`recsys の reload に失敗しました`)だけで終わる。公開のあとは、`az login` した状態で `make recsys-reload` を実行する。recsys が再起動し、起動時に新しい索引を読み込む。
+
 ## 開発
 
 ### テストの実行
@@ -264,7 +268,7 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
 
 - デプロイ: `main` に merge すると、CI が通ったあとに `Deploy` が走ります。手動で再デプロイするときは Actions の `Deploy` から **Run workflow** します。
 - インフラ変更: Actions の `Infra` から **Run workflow** → `plan` の要約を確認 → `infra-apply` の承認 → `apply`。
-- 最小構成から始める(無料試用など): 必須は Resource Group、Container Registry、Log Analytics、Postgres、Container Apps で、Blob(`enable_storage`)と Front Door(`enable_cdn`)は `terraform.tfvars` で `false` にできます(既定は `true`)。Azure OpenAI は Terraform では作りません。変数は `.env.example` の `TF_VAR_*` と `infra/terraform.tfvars.example` を参照してください。
+- 最小構成から始める(無料試用など): 必須は Resource Group、Container Registry、Log Analytics、Postgres、Container Apps で、Azure OpenAI(`enable_openai`)、Blob(`enable_storage`)、Front Door(`enable_cdn`)は `terraform.tfvars` で `false` にできます(既定は `true`。`enable_openai = false` のときは `AZURE_OPENAI_*` が空になります)。変数は `.env.example` の `TF_VAR_*` と `infra/terraform.tfvars.example` を参照してください。
 
 ## ドキュメント
 

@@ -692,14 +692,14 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
 | 判断モデルの配備先(本体と同じ環境の CPU の Container App) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。外部 ingress だが Bearer トークン必須。既定では作らない(`decider_enabled`) |
-| Azure OpenAI | 埋め込み(`EMBED_PROVIDER=azure`)のデプロイ(§0.4)。**Terraform では作らない**(`docs/decisions/2026-11-07-minimal-infra-no-openai-module.md`)。使うときは Azure で手動で作り、`AZURE_OPENAI_*` を渡す。チャットのデプロイは不要(`LLM_PROVIDER=none`) |
+| Azure OpenAI | 埋め込み(`EMBED_PROVIDER=azure`)のデプロイ(§0.4)。`enable_openai`(既定 `true`)で作らない選択ができる(`docs/decisions/2026-11-07-minimal-infra-enable-switches.md`)。チャットのデプロイは不要(`LLM_PROVIDER=none`) |
 | Key Vault(任意) | 接続文字列とキー |
 
-地域は、日本の東(Japan East)に決定。サービスが使えない地域は、次の候補を選んでよい(記録する)。
+地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。
 
 ### 12.2 Terraform の構成
 
-- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `decider`, `monitoring`, `registry`)。`storage` と `cdn` は `enable_storage` / `enable_cdn` で作らない選択ができる。
+- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `decider`, `monitoring`, `registry`)。`openai`・`storage`・`cdn` は `enable_openai` / `enable_storage` / `enable_cdn` で作らない選択ができる。
 - プロバイダーは `hashicorp/azurerm`。実装時に最新の安定版を選び、`versions.tf` で固定する(この文書ではバージョンを固定しない)。
 - **状態(state)** は、Azure Storage のBlobに置く(`backend "azurerm"`)。バックエンド用のStorage Accountは、最初の1回だけ手動(またはブートストラップ用の小さなスクリプト)で作る。
 - 環境は変数 `env_name`(例: `dev`)で分け、リソース名に含める。`terraform.tfvars` はコミットしない(`terraform.tfvars.example` を置く)。

@@ -67,6 +67,27 @@ output "media_base_url" {
   value       = local.media_base_url
 }
 
+output "azure_openai_endpoint" {
+  description = "AZURE_OPENAI_ENDPOINT に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? module.openai[0].endpoint : null
+}
+
+output "azure_openai_api_key" {
+  description = "AZURE_OPENAI_API_KEY に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? module.openai[0].primary_access_key : null
+  sensitive   = true
+}
+
+output "azure_openai_embed_deployment" {
+  description = "AZURE_OPENAI_EMBED_DEPLOYMENT に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? "embedding" : null
+}
+
+output "azure_openai_chat_deployment" {
+  description = "AZURE_OPENAI_CHAT_DEPLOYMENT に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? "chat" : null
+}
+
 output "web_url" {
   description = "web の URL。/api/health が 200 なら DB に繋がっている"
   value       = module.containerapp.web_url

@@ -4,7 +4,7 @@ TF_DIR := infra
 # 使うコマンド。OpenTofu なら `make TF=tofu infra-plan`(環境変数 TF=tofu でもよい)
 TF ?= terraform
 
-.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy deploy-decider
+.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy deploy-decider recsys-reload
 
 infra-init:
 	$(TF) -chdir=$(TF_DIR) init -backend-config=backend.hcl
@@ -43,6 +43,18 @@ deploy:
 	az containerapp update -g "$$rg" -n "$$recsys_app" --image "$$login_server/opendopa-recsys:$(TAG)"; \
 	az containerapp update -g "$$rg" -n "$$web_app" --image "$$login_server/opendopa-web:$(TAG)"; \
 	echo "デプロイしました: $$web_url (確認: $$web_url/api/health)"
+
+# recsys を再起動して、publish 後の新しい索引を起動時に読み直させる。
+# recsys は内部 ingress のみで、手元 PC や CI から /internal/reload は届かないため。
+# 事前に `az login` が要る。アクティブなリビジョンが複数ある場合は先頭の1つだけを再起動する。
+recsys-reload:
+	@set -eu; \
+	rg=$$(terraform -chdir=$(TF_DIR) output -raw resource_group_name); \
+	app=$$(terraform -chdir=$(TF_DIR) output -raw recsys_app_name); \
+	rev=$$(az containerapp revision list -g "$$rg" -n "$$app" --query "[?properties.active].name | [0]" -o tsv); \
+	test -n "$$rev" || { echo "アクティブなリビジョンが見つかりません" >&2; exit 1; }; \
+	az containerapp revision restart -g "$$rg" -n "$$app" --revision "$$rev"; \
+	echo "recsys を再起動しました: $$app ($$rev)"
 
 # 判断モデル(strands_azure)の API サーバーのイメージを push して更新する。
 # 事前に infra の decider_enabled = true で apply 済みであること。常時 1 レプリカが課金されるため、人が実行する。

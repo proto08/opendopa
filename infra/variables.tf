@@ -83,6 +83,12 @@ variable "enable_storage" {
   default     = true
 }
 
+variable "enable_openai" {
+  description = "Azure OpenAI(埋め込み)を作る。最小構成(無料試用など)では false にできる(false にすると、AZURE_OPENAI_* は空になる)"
+  type        = bool
+  default     = true
+}
+
 variable "enable_cdn" {
   description = "Front Door(CDN)を作る。enable_storage = true が必要。false なら MEDIA_BASE_URL は Blob の URL を直接指す"
   type        = bool

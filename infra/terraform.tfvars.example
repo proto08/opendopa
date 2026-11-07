@@ -13,6 +13,7 @@ env_name = "dev"
 #   export TF_VAR_internal_token='...'
 #   export TF_VAR_recsys_database_url='postgres://opendopa_recsys:...@<host>:5432/opendopa?sslmode=require'
 
-# 最小構成で始めるときは、Blob と配信を作らない(enable_cdn は enable_storage が true のときだけ使える)
+# 最小構成で始めるときは、Azure OpenAI・Blob・配信を作らない(enable_cdn は enable_storage が true のときだけ使える)
+# enable_openai  = false   # Azure OpenAI を作らない。AZURE_OPENAI_* は空になる
 # enable_cdn     = false   # Front Door を作らない。MEDIA_BASE_URL は Blob の URL になる
 # enable_storage = false   # Blob も作らない(pipeline の publish 先と配信がなくなる)

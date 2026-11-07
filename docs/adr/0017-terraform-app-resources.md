@@ -19,7 +19,7 @@
 - 決定: Front Door Standard。オリジンは Blob の公開エンドポイント、`/media/*` と `/scenes/*` をパスを変えずに転送する。`MEDIA_BASE_URL` は `https://<endpoint>`。Blob のコンテナは `container_access_type = "blob"`(匿名読み取り)、CORS は既定 `*`(変数 `cors_allowed_origins` で絞れる)。
 - 理由: 2 つのコンテナは同じオリジンで、パスの先頭がコンテナ名になるだけなので、ルート 1 つで足りる。
 
-## A4 Azure OpenAI のモデルは `infra/main.parameters.json` で指定する(取り消し: Terraform から外した。`docs/decisions/2026-11-07-minimal-infra-no-openai-module.md`)
+## A4 Azure OpenAI のモデルは `infra/main.parameters.json` で指定する(変数 `enable_openai` で作らない選択ができる。`docs/decisions/2026-11-07-minimal-infra-enable-switches.md`)
 
 - 決定: 地域 `japaneast`、埋め込み `text-embedding-3-small`(version 1、Standard)、チャット `gpt-4o-mini`(2024-07-18、Standard)。デプロイ名は `embedding` / `chat`(`AZURE_OPENAI_*_DEPLOYMENT` の値)。
 - 理由: 設計書 §12.1。**本物の apply・クォータの確認はしていない**(課金が発生するため)。apply で `Standard` が拒否された、またはモデルが Japan East にない場合は、`sku_name` を `GlobalStandard` に、`openai_location` を `eastus2` などに変えて、結果をここに追記する。
