@@ -21,6 +21,9 @@ CSV → 原稿 → シーンJSON → 埋め込み → DB への公開を行う B
 
 - 概要の文は、`derived` の `op: sentence` でそのまま字幕に使う。元データの文なので事実が変わらない。要約や言い換えを LLM に書かせない。
 - 施策の種類など、分類が要るときは、判断モデル(`decisions` と `fallback_rules`。docs/data.md §8.3a、`DECIDER_PROVIDER`)で行う。
+  - `DECIDER_PROVIDER=strands_local` で、手元の PC が Strands Decider 2B(`StrandsAgents/strands-decider-2B-hobson-v19`、Apache-2.0)をプロセス内で動かす。使う前に `cd pipeline && uv sync --extra decider`(PyTorch などが入る)。初回は Hugging Face Hub から重み(約 4.6 GB)を落とす。`STRANDS_LOCAL_MODEL` でモデル ID(またはローカルのディレクトリ)、`STRANDS_LOCAL_DEVICE` で `cuda` / `mps` / `cpu` を指定できる。
+  - モデルが読めない・推論が失敗・確信度が `min_confidence` 未満のときは、`rules` に戻る(`decisions` に `used_fallback` が残る)。
+  - `rules` と比べるには `opendopa decide <dataset> --eval <labels.csv> --provider rules,strands_local`。合格(一致率80%以上、フォールバック30%以下)するまで、既定は `rules`。
 
 ## Azure のジョブで動かす(Container Apps Job)
 
