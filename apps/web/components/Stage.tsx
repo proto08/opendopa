@@ -1,7 +1,7 @@
 "use client";
 
 import type { Scene } from "@opendopa/shared";
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useScenePlayer } from "@/lib/useScenePlayer";
 import { AiLabel } from "./AiLabel";
 import { BigNumber } from "./BigNumber";
@@ -15,8 +15,20 @@ import { Telop } from "./Telop";
 import "./stage.css";
 
 /** 9:16 の動画ステージ。1 本のシーンを再生する(タップと Space で一時停止/再開) */
-export function Stage({ scene, active = true }: { scene: Scene; active?: boolean }) {
-  const player = useScenePlayer(scene, active);
+export function Stage({
+  scene,
+  active = true,
+  hold = false,
+  children,
+}: {
+  scene: Scene;
+  active?: boolean;
+  /** true の間は再生を止める(シートが開いているとき) */
+  hold?: boolean;
+  /** 重ねて置くもの(右レールなど) */
+  children?: ReactNode;
+}) {
+  const player = useScenePlayer(scene, active, hold);
   const { toggle } = player;
 
   useEffect(() => {
@@ -66,6 +78,7 @@ export function Stage({ scene, active = true }: { scene: Scene; active?: boolean
       <AiLabel />
       <Comments comments={scene.comments} totalSec={player.totalSec} playedSec={player.playedSec} />
       <PauseIcon paused={player.paused} toggles={player.toggles} />
+      {children}
     </div>
   );
 }

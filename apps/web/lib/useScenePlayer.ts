@@ -14,6 +14,8 @@ export function useScenePlayer(
   scene: Pick<Scene, "videoId" | "lines">,
   /** false の間は止めて最初に戻す(フィードで画面から外れている動画) */
   active = true,
+  /** true の間は再生を止める(シートが開いているとき)。false に戻すと続きから再開する */
+  hold = false,
 ): UseScenePlayer {
   const player = useMemo(
     // 動画が変わったら作り直す。lines の中身は videoId に対して不変とみなす
@@ -27,6 +29,12 @@ export function useScenePlayer(
     else player.reset();
     return () => player.stop();
   }, [player, active]);
+
+  useEffect(() => {
+    if (!active || !hold) return;
+    player.hold();
+    return () => player.release();
+  }, [player, active, hold]);
 
   const toggle = useCallback(() => player.toggle(), [player]);
   const snap = useSyncExternalStore(player.subscribe, player.getSnapshot, player.getSnapshot);

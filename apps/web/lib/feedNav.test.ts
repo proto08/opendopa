@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { clampIndex, keyToDelta, observeActiveSlide } from "./feedNav";
+import { clampIndex, isEditableTarget, isLikeKey, keyToDelta, observeActiveSlide } from "./feedNav";
 
 describe("keyToDelta / clampIndex", () => {
   it("↓ と j は次へ、↑ と k は前へ", () => {
@@ -55,5 +55,17 @@ describe("observeActiveSlide", () => {
 
     stop();
     expect(MockObserver.last.disconnect).toHaveBeenCalled();
+  });
+});
+
+describe("isLikeKey / isEditableTarget", () => {
+  it("l だけがいいねのキー", () => {
+    expect(isLikeKey("l")).toBe(true);
+    expect(isLikeKey("L")).toBe(false);
+    expect(isLikeKey("j")).toBe(false);
+  });
+
+  it("DOM がない環境や要素でない対象は入力欄とみなさない", () => {
+    expect(isEditableTarget(null)).toBe(false);
   });
 });
