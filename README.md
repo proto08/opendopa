@@ -290,9 +290,15 @@ export TF_VAR_internal_token='...'                         # 16 文字以上
 # 3. インフラを作る
 make infra-init && make infra-plan && make infra-apply
 
-# 4. DB のマイグレーションを流す(Postgres は Azure 内サービスからのみ許可のため、手元から流すときは一時的にファイアウォール規則を足す)
-#    DATABASE_URL は `terraform -chdir=infra output -raw database_url`
-DATABASE_URL="$(terraform -chdir=infra output -raw database_url)" dbmate up
+# 4. DB のマイグレーションを流す(リポジトリのルートで実行する。DBMATE_MIGRATIONS_DIR=db/migrations は mise.toml が設定する)
+#    Postgres は Azure 内サービスからのみ許可のため、手元から流すときは自分の IP を一時的に許可し、流した後に消す
+RG="$(terraform -chdir=infra output -raw resource_group_name)"
+PG="$(terraform -chdir=infra output -raw postgres_fqdn | cut -d. -f1)"   # サーバー名はホスト名の先頭
+MYIP="$(curl -s https://api.ipify.org)"
+az postgres flexible-server firewall-rule create -g "$RG" -n "$PG" --rule-name tmp-migrate \
+  --start-ip-address "$MYIP" --end-ip-address "$MYIP"
+DATABASE_URL="$(terraform -chdir=infra output -raw database_url)" mise exec -- dbmate up
+az postgres flexible-server firewall-rule delete -g "$RG" -n "$PG" --rule-name tmp-migrate --yes   # 必ず消す
 
 # 5. イメージをビルドして Container Apps を更新する
 make deploy
