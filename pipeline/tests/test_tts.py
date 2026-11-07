@@ -10,7 +10,6 @@ from typer.testing import CliRunner
 from opendopa_pipeline.cli import app
 from opendopa_pipeline.scene import validate_scene
 from opendopa_pipeline.tts.providers import (
-    Azure,
     TtsError,
     VoiceVox,
     create_synthesizer,
@@ -200,25 +199,11 @@ def test_voicevox_calls_query_then_synthesis() -> None:
     assert mp3_duration(mp3) == pytest.approx(1.0, abs=0.1)
 
 
-def test_azure_posts_ssml_with_escaped_text() -> None:
-    seen: dict[str, Any] = {}
-
-    def post(url: str, body: bytes, headers: Any) -> bytes:
-        seen.update(url=url, body=body.decode(), headers=headers)
-        return silent_mp3(1.0)
-
-    Azure("k", "japaneast", post=post).synthesize("A<B&C")
-    assert seen["url"] == "https://japaneast.tts.speech.microsoft.com/cognitiveservices/v1"
-    assert "A&lt;B&amp;C" in seen["body"]
-    assert seen["headers"]["Ocp-Apim-Subscription-Key"] == "k"
-    assert "mp3" in seen["headers"]["X-Microsoft-OutputFormat"]
-
-
 def test_create_synthesizer_validates_env() -> None:
     assert create_synthesizer("none") is None
     assert isinstance(create_synthesizer("voicevox", {}), VoiceVox)
     with pytest.raises(TtsError):
-        create_synthesizer("azure", {})
+        create_synthesizer("azure", {})  # 廃止済み
     with pytest.raises(TtsError):
         create_synthesizer("nope", {})
     with pytest.raises(TtsError):

@@ -13,7 +13,6 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from typing import Any, Protocol
-from xml.sax.saxutils import escape
 
 import lameenc
 from mutagen.mp3 import MP3
@@ -96,34 +95,6 @@ class VoiceVox:
         return wav_to_mp3(wav)
 
 
-class Azure:
-    """Azure AI Speech の REST(`AZURE_SPEECH_KEY` / `AZURE_SPEECH_REGION`)。mp3 で受け取る。"""
-
-    def __init__(
-        self,
-        key: str,
-        region: str,
-        voice: str = "ja-JP-NanamiNeural",
-        post: Post = _post,
-    ) -> None:
-        self.key, self.region, self.voice, self._post = key, region, voice, post
-
-    def synthesize(self, text: str) -> bytes:
-        ssml = (
-            f'<speak version="1.0" xml:lang="ja-JP"><voice name="{self.voice}">'
-            f"{escape(text)}</voice></speak>"
-        )
-        return self._post(
-            f"https://{self.region}.tts.speech.microsoft.com/cognitiveservices/v1",
-            ssml.encode(),
-            {
-                "Ocp-Apim-Subscription-Key": self.key,
-                "Content-Type": "application/ssml+xml",
-                "X-Microsoft-OutputFormat": "audio-24khz-48kbitrate-mono-mp3",
-            },
-        )
-
-
 def provider_name_from_env(env: Mapping[str, str] | None = None) -> str:
     return (env if env is not None else os.environ).get("TTS_PROVIDER", "none") or "none"
 
@@ -142,10 +113,4 @@ def create_synthesizer(name: str, env: Mapping[str, str] | None = None) -> Synth
             )
         except ValueError as err:
             raise TtsError(f"VOICEVOX_SPEAKER / VOICEVOX_SPEED が数ではありません: {err}") from err
-    if name == "azure":
-        if not e.get("AZURE_SPEECH_KEY") or not e.get("AZURE_SPEECH_REGION"):
-            raise TtsError(
-                "TTS_PROVIDER=azure には AZURE_SPEECH_KEY と AZURE_SPEECH_REGION が必要です"
-            )
-        return Azure(e["AZURE_SPEECH_KEY"], e["AZURE_SPEECH_REGION"])
-    raise TtsError(f"TTS_PROVIDER は none / voicevox / azure のどれか: {name}")
+    raise TtsError(f"TTS_PROVIDER は none / voicevox のどれか: {name}")

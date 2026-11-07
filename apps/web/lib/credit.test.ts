@@ -2,12 +2,11 @@ import { describe, expect, it } from "vitest";
 import { ttsCredit } from "./credit";
 
 describe("ttsCredit", () => {
-  it("none・azure・未設定ではクレジットを出さない", () => {
+  it("none・未設定ではクレジットを出さない", () => {
     expect(ttsCredit({})).toBeUndefined();
     expect(
       ttsCredit({ TTS_PROVIDER: "none", TTS_CREDIT: "VOICEVOX:x" }),
     ).toBeUndefined();
-    expect(ttsCredit({ TTS_PROVIDER: "azure" })).toBeUndefined();
   });
 
   it("voicevox では TTS_CREDIT、なければ既定の声のクレジットを出す", () => {

@@ -44,7 +44,7 @@
 | 部品 | 既定の実装 | 代わりの実装 | 環境変数 |
 | --- | --- | --- | --- |
 | 埋め込み | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`) | ローカルの `multilingual-e5-large`(1024次元) | `EMBED_PROVIDER=azure\|local` |
-| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | `azure`(Azure AI Speech) | `TTS_PROVIDER=none\|azure\|voicevox` |
+| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | なし(Azure AI Speech は使わない) | `TTS_PROVIDER=none\|voicevox` |
 | 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `strands_azure`(Azure上で動かす Strands Decider 2B。失敗・低確信度のときは `rules`) | `jev_local`、`jev_api`(TypeSafe Jev)、`azure_openai`(構造化出力) | `DECIDER_PROVIDER=rules\|strands_azure\|jev_local\|jev_api\|azure_openai` |
 | LLM(テンプレート案、クラスタ名) | Azure OpenAI のチャットモデル | なし(クラスタ名は機械的な名前にフォールバック) | `LLM_PROVIDER=azure\|none` |
 
@@ -689,7 +689,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
 | Azure OpenAI | 埋め込み、チャットのデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認 |
 | 判断モデルの配備先(GPU付きContainer Apps、またはAzure ML) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。**内部のみ** |
-| Azure AI Speech | `TTS_PROVIDER=azure` のとき(VOICEVOX採用のため、既定では不要) |
 | Key Vault(任意) | 接続文字列とキー |
 
 地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。
@@ -712,7 +711,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | PostgreSQL | `azurerm_postgresql_flexible_server`, `azurerm_postgresql_flexible_server_database`, `azurerm_postgresql_flexible_server_configuration`(`azure.extensions` に `VECTOR` を許可) |
 | Blob と配信 | `azurerm_storage_account`, `azurerm_storage_container`, `azurerm_cdn_frontdoor_profile` ほか |
 | Azure OpenAI | `azurerm_cognitive_account`(kind: `OpenAI`)、`azurerm_cognitive_deployment`(埋め込みとチャット) |
-| Azure AI Speech | `azurerm_cognitive_account`(kind: `SpeechServices`) |
 | 秘密の値(任意) | `azurerm_key_vault`, `azurerm_key_vault_secret` |
 
 - `CREATE EXTENSION vector;` は、Terraform ではなく、アプリのDBマイグレーション(`db/migrations/`、dbmate)で実行する。
@@ -731,7 +729,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | `EMBED_PROVIDER`, `EMBED_DIM` | §0.4 |
 | `TTS_PROVIDER`, `LLM_PROVIDER`, `DECIDER_PROVIDER` |
 | `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBED_DEPLOYMENT`, `AZURE_OPENAI_CHAT_DEPLOYMENT` | Azure OpenAI |
-| `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | Azure AI Speech |
 | `STORAGE_CONNECTION_STRING` | Blob への書き込み(パイプラインの `publish`) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | 監視 |
 
