@@ -1,0 +1,55 @@
+# `status::ready-to-merge` が付いた PR のうち、「他の人(AI を含む)のレビューが指摘なし」のものを、
+# CI が通ったら自動でマージする(`gh pr merge --auto` は「必須チェックが通ったらマージする」予約)。
+# 自分の PR をマージしてもらうために、人に頼む手間をなくすためのもの。docs/kanban.md 参照。
+#
+# 予約する条件(すべて):
+#   - `status::ready-to-merge` が付いている(レビュー担当が「指摘なし」のときに付ける)
+#   - `needs-human` が付いていない(実機確認や承認が要るものは、人が外すまで自動マージしない)
+#   - 作成者以外の、最後のレビューの本文に「指摘なし」があり、そのレビューがいまの head の commit に対するものである
+#   - ドラフトではない
+# 動かすには、リポジトリ側の設定が要る(dependabot-automerge.yml と同じ)。
+#   - Settings > General > Allow auto-merge を ON
+#   - main のブランチ保護(ruleset)で、必須チェックに「CI(必須チェック)」を指定
+# 設定がないと、予約に失敗してこのジョブが落ちる(保護がないまま即マージされることはない)。
+name: Auto-merge(ready-to-merge)
+
+on:
+  # コードは checkout しない(ラベルの変更で動かすため pull_request_target にしている)
+  pull_request_target:
+    types: [labeled]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    runs-on: ubuntu-latest
+    if: github.event.label.name == 'status::ready-to-merge' && github.actor != 'dependabot[bot]'
+    steps:
+      - name: 条件を確かめて、自動マージを予約する
+        run: |
+          set -euo pipefail
+          pr=$(gh api "repos/$REPO/pulls/$NUMBER")
+          if [ "$(jq -r .draft <<<"$pr")" = "true" ]; then echo "ドラフトなのでスキップ"; exit 0; fi
+          if jq -e '.labels | any(.name == "needs-human")' <<<"$pr" >/dev/null; then
+            echo "needs-human が付いているのでスキップ"; exit 0
+          fi
+          author=$(jq -r .user.login <<<"$pr")
+          head=$(jq -r .head.sha <<<"$pr")
+          last=$(gh api --paginate "repos/$REPO/pulls/$NUMBER/reviews?per_page=100" \
+            | jq -c -s --arg author "$author" '
+                add // [] | map(select(.user.login != $author and .user.type != "Bot")) | last // {}')
+          if ! jq -e '(.body // "") | contains("指摘なし")' <<<"$last" >/dev/null; then
+            echo "作成者以外の最後のレビューが「指摘なし」ではないのでスキップ"; exit 0
+          fi
+          # 「指摘なし」のあとに push されていたら、見ていない commit が混ざるのでスキップ
+          if [ "$(jq -r '.commit_id // ""' <<<"$last")" != "$head" ]; then
+            echo "「指摘なし」のレビューが、いまの head ではない commit に対するものなのでスキップ"; exit 0
+          fi
+          gh pr merge --auto --merge "$PR_URL"
+        env:
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

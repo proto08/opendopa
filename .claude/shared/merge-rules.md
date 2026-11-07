@@ -34,3 +34,11 @@ gh pr view <番号> --json isDraft,mergeable,reviewDecision,statusCheckRollup
 
 - マージしたとき: ワークフローが `status::*` を外すので、何もしない。
 - マージしなかったとき: 呼び出し元の指定に従う(`status::ready-to-merge` のまま、または `status::changes-requested` へ)。
+
+## 自分の PR の自動マージ
+
+自分の PR は、`/sleep` がマージするのではなく、GitHub が自動でマージする(`.github/workflows/automerge-ready.yml`)。
+
+- レビュー担当が「指摘なし」で `status::ready-to-merge` を付けると、ワークフローが `gh pr merge --auto` を予約する
+- 予約するのは、作成者以外の最後のレビューが「指摘なし」で、`needs-human` がなく、ドラフトでないときだけ
+- 実際のマージは、必須チェックが通ってから GitHub が行う。`/sleep` は、自分の PR を自分ではマージしない(コンフリクトを解消して push した PR のマージは `conflict.md` の規則のまま)

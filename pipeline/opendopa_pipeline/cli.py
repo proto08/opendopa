@@ -18,6 +18,7 @@ from opendopa_pipeline.decider.evaluate import (
     load_labels,
     write_labels,
 )
+from opendopa_pipeline.draft import build_prompt, check_draft, sample_rows
 from opendopa_pipeline.embed.providers import create_embedder
 from opendopa_pipeline.embed.run import DEFAULT_K, run_embed
 from opendopa_pipeline.generate import format_summary, run_generate
@@ -49,6 +50,23 @@ def _fail(message: str) -> typer.Exit:
     return typer.Exit(code=2)
 
 
+def _load_raw(dataset_id: str, file: list[Path] | None) -> tuple[pd.DataFrame, list[str]]:
+    """YAML のない新規データセットも読めるように、CSV を直接読む(profile・draft-yaml 用)。"""
+    if file:
+        df = prepare_raw(pd.concat([load_path(p) for p in file], ignore_index=True))
+        return df, [str(p) for p in file]
+    yaml_path = REPO_ROOT / "datasets" / f"{dataset_id}.yaml"
+    if yaml_path.exists():
+        definition = load_dataset(yaml_path)
+        return load_frame(definition, REPO_ROOT), definition.files
+    # 新規データセットは YAML がまだない。data/raw/<id>/ の CSV を読む
+    paths = sorted((REPO_ROOT / "data" / "raw" / dataset_id).glob("*.csv"))
+    if not paths:
+        raise IngestError(f"datasets/{dataset_id}.yaml も data/raw/{dataset_id}/*.csv もありません")
+    df = prepare_raw(pd.concat([load_path(p) for p in paths], ignore_index=True))
+    return df, [str(p.relative_to(REPO_ROOT)) for p in paths]
+
+
 @app.command()
 def profile(
     dataset: Annotated[
@@ -65,24 +83,7 @@ def profile(
         raise _fail("--dataset か --file のどちらかを指定してください")
     dataset_id = dataset or file[0].stem  # type: ignore[index]
     try:
-        if file:
-            df = prepare_raw(pd.concat([load_path(p) for p in file], ignore_index=True))
-            source = [str(p) for p in file]
-        else:
-            yaml_path = REPO_ROOT / "datasets" / f"{dataset_id}.yaml"
-            if yaml_path.exists():
-                definition = load_dataset(yaml_path)
-                df = load_frame(definition, REPO_ROOT)
-                source = definition.files
-            else:
-                # 新規データセットは YAML がまだない。data/raw/<id>/ の CSV を読む
-                paths = sorted((REPO_ROOT / "data" / "raw" / dataset_id).glob("*.csv"))
-                if not paths:
-                    raise IngestError(
-                        f"datasets/{dataset_id}.yaml も data/raw/{dataset_id}/*.csv もありません"
-                    )
-                df = prepare_raw(pd.concat([load_path(p) for p in paths], ignore_index=True))
-                source = [str(p.relative_to(REPO_ROOT)) for p in paths]
+        df, source = _load_raw(dataset_id, file)
     except (IngestError, ValueError) as e:
         raise _fail(str(e)) from e
 
@@ -92,6 +93,64 @@ def profile(
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     typer.echo(f"\n書き出しました: {out_path}")
+
+
+@app.command(name="draft-yaml")
+def draft_yaml_cmd(
+    dataset: Annotated[
+        str | None, typer.Option("--dataset", help="データセットID(例: accident)")
+    ] = None,
+    file: Annotated[
+        list[Path] | None,
+        typer.Option("--file", help="CSV を直接指定する(新規データセット用。複数可)"),
+    ] = None,
+    check: Annotated[
+        Path | None,
+        typer.Option(
+            "--check", help="書かれた下書き YAML を機械検査する(違反があれば終了コード 1)"
+        ),
+    ] = None,
+    out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
+) -> None:
+    """列定義 YAML の下書きの材料(out/<id>/draft_prompt.md)を出す。--check で下書きを検査する。
+
+    下書きは Claude Code が、材料を読んで書く。このコマンドは LLM を呼ばない。
+    """
+    if dataset is None and not file:
+        raise _fail("--dataset か --file のどちらかを指定してください")
+    dataset_id = dataset or file[0].stem  # type: ignore[index]
+    try:
+        df, source = _load_raw(dataset_id, file)
+    except (IngestError, ValueError) as e:
+        raise _fail(str(e)) from e
+
+    if check is not None:
+        try:
+            text = check.read_text(encoding="utf-8")
+        except OSError as e:
+            raise _fail(str(e)) from e
+        violations = check_draft(text, list(df.columns))
+        if not violations:
+            typer.echo("機械検査: 違反なし。人が内容を確認して datasets/<id>.yaml に置いてください")
+            return
+        typer.echo(f"機械検査: {len(violations)} 件の違反")
+        for v in violations:
+            typer.echo(f"  - {v}")
+        raise typer.Exit(code=1)
+
+    try:
+        system, user = build_prompt(build_profile(dataset_id, df, source), sample_rows(df))
+    except (ValueError, OSError) as e:
+        raise _fail(str(e)) from e
+    out = out_dir / dataset_id / "draft_prompt.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(f"{system}\n\n=====\n\n{user}\n", encoding="utf-8")
+    typer.echo(f"下書きの材料を書き出しました: {out}")
+    typer.echo(
+        f"Claude Code に、この材料を読ませて datasets/{dataset_id}.draft.yaml を書かせ、"
+        f"`opendopa draft-yaml --dataset {dataset_id} --check datasets/{dataset_id}.draft.yaml` "
+        "で検査してください"
+    )
 
 
 @app.command()

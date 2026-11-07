@@ -1,0 +1,81 @@
+# CD: main の CI が成功したら、web と recsys のイメージをビルドして ACR に push し、Container Apps を更新する。
+# 設計書 §12.4、ADR-0019。Azure へは OIDC(フェデレーション資格情報)で認証し、長期のシークレットは置かない。
+# 設定手順は README の「CD(デプロイ)」。AZURE_CLIENT_ID_DEPLOY が未設定のあいだは、何もせず成功で終わる。
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # 手動で再デプロイする(選んだブランチの先頭をデプロイする)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# 同時に2つ走らせない。新しい実行は待たせる(デプロイの途中で止めない)
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: ビルドとデプロイ
+    # CI が main への push で成功したときだけ。設定前(変数が空)は走らせない
+    if: >-
+      vars.AZURE_CLIENT_ID_DEPLOY != '' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'))
+    runs-on: ubuntu-latest
+    # フェデレーション資格情報の subject は repo:<owner>/<repo>:environment:dev
+    environment: dev
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      ACR_NAME: ${{ vars.ACR_NAME }}
+      WEB_APP: ${{ vars.WEB_APP_NAME }}
+      RECSYS_APP: ${{ vars.RECSYS_APP_NAME }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ env.SHA }}
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_DEPLOY }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: ACR にログインする
+        run: az acr login --name "$ACR_NAME"
+      - name: イメージをビルドして push する
+        run: |
+          set -euo pipefail
+          tag="$(git rev-parse --short HEAD)"
+          server="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "LOGIN_SERVER=$server" >> "$GITHUB_ENV"
+          docker build --platform linux/amd64 -f services/recsys/Dockerfile -t "$server/opendopa-recsys:$tag" .
+          docker build --platform linux/amd64 -f apps/web/Dockerfile -t "$server/opendopa-web:$tag" .
+          docker push "$server/opendopa-recsys:$tag"
+          docker push "$server/opendopa-web:$tag"
+      - name: Container Apps を更新する
+        run: |
+          set -euo pipefail
+          az containerapp update -g "$RESOURCE_GROUP" -n "$RECSYS_APP" --image "$LOGIN_SERVER/opendopa-recsys:$TAG"
+          az containerapp update -g "$RESOURCE_GROUP" -n "$WEB_APP" --image "$LOGIN_SERVER/opendopa-web:$TAG"
+      - name: /api/health を確かめる
+        run: |
+          set -euo pipefail
+          fqdn="$(az containerapp show -g "$RESOURCE_GROUP" -n "$WEB_APP" --query properties.configuration.ingress.fqdn -o tsv)"
+          for i in $(seq 1 12); do
+            if curl -fsS "https://$fqdn/api/health"; then
+              echo; echo "デプロイしました: https://$fqdn ($TAG)"
+              exit 0
+            fi
+            echo "起動待ち(${i}/12)"; sleep 10
+          done
+          echo "/api/health が 200 になりませんでした" >&2
+          exit 1

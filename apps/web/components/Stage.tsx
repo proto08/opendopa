@@ -9,6 +9,7 @@ import { Captions } from "./Captions";
 import { Comments } from "./Comments";
 import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
+import { SceneMap } from "./SceneMap";
 import { SourceLine } from "./SourceLine";
 import { Telop } from "./Telop";
 import "./stage.css";
@@ -58,6 +59,7 @@ export function Stage({ scene, active = true }: { scene: Scene; active?: boolean
         <span className="logoName">OpenDopa NEWS</span>
       </div>
       <BigNumber data={scene.bigNumber} countProgress={player.countProgress} />
+      <SceneMap map={scene.map} />
       <Telop categoryName={scene.categoryName} headline={scene.headline} />
       <Captions lines={scene.lines} lineIndex={player.lineIndex} />
       <SourceLine source={scene.source} />

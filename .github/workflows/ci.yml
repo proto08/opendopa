@@ -30,6 +30,7 @@ jobs:
       pipeline: ${{ steps.filter.outputs.pipeline }}
       recsys: ${{ steps.filter.outputs.recsys }}
       types: ${{ steps.filter.outputs.types }}
+      infra: ${{ steps.filter.outputs.infra }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
@@ -60,6 +61,10 @@ jobs:
               - 'pipeline/uv.lock'
               - 'pipeline/opendopa_pipeline/generated/**'
               - 'pnpm-lock.yaml'
+              - 'mise.toml'
+              - '.github/workflows/ci.yml'
+            infra:
+              - 'infra/**'
               - 'mise.toml'
               - '.github/workflows/ci.yml'
 
@@ -160,11 +165,24 @@ jobs:
         working-directory: pipeline
       - run: mise run gen-types:check
 
+  # Azure には接続しない(init は -backend=false)。mise run lint:infra と同じ
+  infra:
+    name: Terraform(fmt・validate)
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: terraform
+      - run: mise run lint:infra
+
   # 必須チェックにはこのジョブだけを指定する。
   # 走らなかった(スキップされた)ジョブは成功として扱い、失敗・キャンセルがあれば落とす。
   ci-ok:
     name: CI(必須チェック)
-    needs: [changes, web, pipeline, recsys, types]
+    needs: [changes, web, pipeline, recsys, types, infra]
     if: always()
     runs-on: ubuntu-latest
     steps:
