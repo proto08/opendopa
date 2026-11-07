@@ -695,7 +695,7 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 
 ### 12.2 Terraform の構成
 
-- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `speech`, `monitoring`, `registry`)。
+- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `monitoring`, `registry`)。
 - プロバイダーは `hashicorp/azurerm`。実装時に最新の安定版を選び、`versions.tf` で固定する(この文書ではバージョンを固定しない)。
 - **状態(state)** は、Azure Storage のBlobに置く(`backend "azurerm"`)。バックエンド用のStorage Accountは、最初の1回だけ手動(またはブートストラップ用の小さなスクリプト)で作る。
 - 環境は変数 `env_name`(例: `dev`)で分け、リソース名に含める。`terraform.tfvars` はコミットしない(`terraform.tfvars.example` を置く)。
