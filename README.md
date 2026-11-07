@@ -6,6 +6,27 @@ https://topaz.dev/projects/rf23wuwzyssmxsjj
 
 国土交通省 Project LINKS のオープンデータ(CSV)から、縦スクロールのショート動画を作り、視聴といいねから好みを学習して次の動画を選ぶ Web アプリです。
 
+OpenDopa は**非公式のネタアプリ**です。国土交通省とは関係がなく、国土交通省 Project LINKS が公開するオープンデータをもとにしています(詳しくは「免責とクレジット」)。
+
+使い方の流れは、(1)セットアップ、(2)DB・web・recsys の起動、(3)パイプラインで動画データを作って公開、(4)ブラウザで見る(「デモの手順」)です。Azure に載せる手順は「CD(デプロイ)とインフラ変更」「Azure 環境をゼロから作る・消す」にあります。
+
+## 構成図
+
+```
+[事前バッチ(手元またはCI)]                          [実行時]
+ data/raw/*.csv                                      ブラウザ(Next.js の画面)
+   │  pipeline/ (Python)                                │ ↑
+   ├─ profile / 取り込み・整形                           │ │ 動画: Blob + CDN(シーンJSON, 音声)
+   ├─ generate: 判断 → テンプレート → 穴埋め             ▼ │
+   ├─ tts(音声: 任意)                              Next.js(BFF)── DBの読み書き ──┐
+   ├─ embed(埋め込み)→ 2D座標 → クラスタ                │  内部HTTP                  │
+   └─ publish ─┬→ Blob(音声・シーンJSON)                ▼                          ▼
+               └→ PostgreSQL ◄───────────────── recsys(Rust: 計算だけ)      PostgreSQL
+                      起動時に埋め込みを読む(読み取りのみ)
+```
+
+元の図は `docs/design_doc.md` §4 です。DB の読み書きはすべて web が行い、ベクトル計算は recsys(Rust)だけが行います。
+
 ## 構成
 
 | ディレクトリ | 役割 | 言語 |
@@ -127,17 +148,132 @@ DB のタスクは次のとおりです。
 
 recsys 用のロール(`db/init/01-roles.sql`)は、ボリュームを最初に作るときにしか作られません。ロールを足す前に作ったボリュームを使っている場合は、`mise run db-reset` で作り直してください。
 
-### pipeline(Batch)
+## パイプライン(動画データを作る)
+
+Batch(Python)で、元データの CSV から動画データを作り、DB に公開します。実行時(ユーザーが見ている最中)には LLM を呼びません。原稿の数字は、元データから機械的に作ります。
 
 ```bash
-cd pipeline && uv run opendopa --help
+mise exec -- uv run --project pipeline opendopa --help
 ```
 
-サブコマンド(`profile`、`generate`、`embed`、`publish` など)の中身は、これから実装します。
+(`cd pipeline && uv run opendopa --help` でも同じです。以降のコマンドはリポジトリのルートで実行します。)
 
-#### publish のあとの recsys の再読み込み(Azure)
+### 1. 元データを置く
+
+`data/raw/<データセットID>/<ファイル名>` に、国土交通省 Project LINKS が公開している CSV を置きます(`data/raw/` は git に入りません)。ID とファイル名は `docs/data.md` §10.0 の表のとおりです(例: `data/raw/accident/02_jikojyouhou.csv`)。置き場所の詳細は `data/README.md` にあります。列の定義は `datasets/<ID>.yaml` です。
+
+### 2. 実行の順番
+
+| コマンド | 内容 | 出力 |
+| --- | --- | --- |
+| `opendopa profile --dataset <ID>` | 列の型・欠損率・種類数などを調べる(確認用。なくても動く) | `out/<ID>/profile.json` |
+| `opendopa generate --dataset <ID>` | 選定 → 判断 → 原稿 → シーン → 品質ゲート | `out/<ID>/scenes.jsonl` ほか |
+| `opendopa tts --dataset <ID>` | 音声を作る(`TTS_PROVIDER=none` なら何もしない) | `out/<ID>/media/` |
+| `opendopa embed` | 全動画の埋め込み・2D 座標・クラスタ(全データセットをまとめて) | `out/embeddings.npz` ほか |
+| `opendopa publish` | DB(と Blob)に公開する(1 トランザクションで入れ替え) | DB |
+| `opendopa all` | `datasets/*.yaml` のすべてについて、generate → tts → embed → publish を順に行う | 上のすべて |
+
+- `embed` は `tts` のあとに行います。`tts` が長さ超過の動画を除外するため、`embed` は除外後の動画だけを読みます(`docs/decisions/2026-11-06-all-order-tts-before-embed.md`)。個別に流すときも、この順番です。
+- `embed` は常に全体をやり直します。データセットを足したり作り直したりしたら、`embed` と `publish` を流し直します。
+- `publish` の前に、`--dry-run` で件数だけ確かめられます(DB にも Blob にも接続しません)。
+- ローカルの DB に公開するときは、`--skip-blob` を付けます(ローカルに Blob は立てません。`docs/decisions/2026-11-06-publish-local-blob.md`)。シーンは DB の `videos.scene` に入るので、`--skip-blob` だけで画面は動きます。
+
+最短の例(DB を起動済み、`data/raw/` に CSV を置いた状態):
+
+```bash
+mise exec -- uv run --project pipeline opendopa generate --dataset rental_result
+mise exec -- uv run --project pipeline opendopa embed
+mise exec -- uv run --project pipeline opendopa publish --skip-blob
+```
+
+全データセットをまとめて作るときは、次のとおりです。
+
+```bash
+mise exec -- uv run --project pipeline opendopa all --skip-blob
+```
+
+### 3. 環境変数(切り替え)
+
+ルートの `.env.local` に書きます(`mise run setup` が `.env.example` からコピーします)。
+
+| 変数 | 値 | 意味 |
+| --- | --- | --- |
+| `EMBED_PROVIDER` | `azure`(既定)/ `local` | 埋め込みモデル。`azure` は Azure OpenAI(`AZURE_OPENAI_*` が要る)。`local` は手元の `multilingual-e5-large` で、Azure なしで試せる。`local` を使うときは、先に `uv sync --project pipeline --extra local` を実行する |
+| `TTS_PROVIDER` | `none`(既定)/ `voicevox` | 音声。`none` は音声なし(字幕の秒数は文字数からの見積もり)。`voicevox` は VOICEVOX ENGINE(`VOICEVOX_URL`、既定 `http://localhost:50021`)で読み上げる |
+| `LLM_PROVIDER` | `none`(既定)/ `azure` | クラスタ名を付ける LLM。`none` は機械的な名前。原稿の生成には使わない |
+| `DECIDER_PROVIDER` | `rules`(既定)/ `strands_azure` ほか | 型の選択などの「判断」を行うモデル。`rules` は規則のみ(LLM を使わない)。`strands_azure` は Azure 上の自前モデルで、`STRANDS_DECIDER_URL` と `STRANDS_DECIDER_TOKEN` が要る |
+
+ローカルだけで試すなら、`EMBED_PROVIDER=local`、`TTS_PROVIDER=none`、`LLM_PROVIDER=none`、`DECIDER_PROVIDER=rules` の組み合わせです。`EMBED_PROVIDER` を変えたら、ベクトルを混ぜないよう `embed` をやり直し、`publish` で DB を入れ替えます(ローカルと Azure の埋め込みはモデルが違います)。変数の全一覧は `.env.example` にあります。
+
+各コマンドの `--provider` で、環境変数を上書きできます(`generate` は判断、`embed` は埋め込み、`tts` は音声)。
+
+### 4. out/ の中身
+
+`out/` は git に入りません。
+
+| パス | 内容 |
+| --- | --- |
+| `out/<ID>/scenes.jsonl` | 品質ゲートを通った動画のシーン JSON(1 行 1 本。契約は `packages/shared/schema`) |
+| `out/<ID>/videos.jsonl` | DB の `videos` 用の行(除外された動画も含む) |
+| `out/<ID>/excluded.csv` | 除外した行と理由(列: `row_id`、`video_id`、`stage`、`reason`、`detail`) |
+| `out/<ID>/decisions_report.json` | 判断の集計(型の内訳、フォールバックの件数など) |
+| `out/<ID>/decisions.cache.jsonl` | 判断のキャッシュ |
+| `out/<ID>/profile.json` | `profile` の結果 |
+| `out/<ID>/media/<videoId>/<n>.mp3` | `tts` の音声 |
+| `out/embeddings.npz`、`out/clusters.json`、`out/centroid.json` | `embed` の結果(全データセット共通) |
+
+新しいデータセットを足すときは、`pipeline/README.md` を見てください。
+
+### publish のあとの recsys の再読み込み
+
+recsys は起動時に索引を読みます。ローカルでは、`publish` が `RECSYS_URL` の `/internal/reload` を呼びます。recsys が動いていなければ警告だけで終わるので、`mise run recsys` を起動し直してください。
 
 Azure の recsys は内部 ingress のみのため、手元 PC や CI の `publish` から `/internal/reload` は届かず、警告(`recsys の reload に失敗しました`)だけで終わる。公開のあとは、`az login` した状態で `make recsys-reload` を実行する。recsys が再起動し、起動時に新しい索引を読み込む。
+
+## 入っているデータ
+
+デモ用に、14 のデータセットから 1,845 本の動画を作ります(2026-11-07 時点の実データでの生成結果。除外は 32 本)。件数は、データのバージョンや `datasets/*.yaml` の設定で変わります。
+
+| 分類 | データセット ID | 内容 | 本数 |
+| --- | --- | --- | --- |
+| 事故 | `accident` | 事故等報告 | 188 |
+| 空き家 | `akiya_reg` / `akiya_sold` | 空き家バンクの登録 / 成約物件 | 149 / 148 |
+| 鉄道 | `rail_traffic1` / `rail_traffic2` / `rail_km` | 輸送人員・運輸成績・営業キロ | 146 / 146 / 147 |
+| 鉄道 | `rail_pl` / `rail_income` / `rail_bs` | 営業損益・損益・貸借 | 145 / 146 / 150 |
+| 内航 | `naiko_route` / `naiko_ship` | 内航海運の航路 / 船 | 150 / 146 |
+| レンタカー | `rental_result` / `rental_fleet` | 貸渡実績 / 配車車両数 | 25 / 59 |
+| 計画書 | `flightplan` | 飛行計画(GeoJSON のサンプル 100 件) | 100 |
+
+件数の出どころは、`docs/decisions/` と `docs/adr/` の各データセットの記録です(例: `2026-11-06-rail-datasets-design.md`、`2026-11-06-naiko-datasets.md`、ADR-0051)。列の定義は `docs/data.md` にあります。
+
+## デモの手順
+
+所要時間の目安は 3〜5 分です。見せどころは、**いいねや視聴で、右側の「あなたの好み」が動くところ**です。PC の幅(900px 以上)で行うと、動画と右側のパネルを同時に見せられます。
+
+事前に、「セットアップ」「起動」「パイプライン」を済ませ(DB に動画が入っていること)、`mise run dev` で web と recsys を起動しておきます。
+
+1. http://localhost:3000 を開く。選択画面は出ず、そのまま動画が再生される(「AI生成のフィクション風解説」のラベル、見出し、字幕、大きな数字、流れるコメント)。
+2. スクロール(↑↓、`j` / `k`)で次の動画へ進む。
+3. 気になる種類の動画は最後まで見る。興味のないものは、すぐ飛ばす。
+4. 気に入った動画で、右レールのいいね(`l` キーでも可)を押す。赤く塗られる。
+5. 右側の「あなたの好み」を見る。地図の黄色い点(いまの好み)が動き、カテゴリ別の割合(%)が変わり、黄色の帯の要約が変わる。「最近の視聴」に、出た理由と視聴率が並ぶ。スマホ幅では、右レールの「好み」ボタンでシートを開く。
+6. 数本見て、好みに近い種類の動画が増えていくことを確かめる(全データセットを一巡するまでの最大 14 本は、新しいデータセットも出る。一巡のあとが、収束を見せやすい。`docs/decisions/2026-11-07-recsys-discovery-and-streak.md`)。
+7. 右レールの「元データ」を押し、元の 1 行(データ名、行番号、列名と値)を見せる。「デモ用の仮データではなく、元データの値です。」と出る。
+8. ページをリロードする。同じブラウザなら好みが保たれる(匿名 ID の Cookie `od_aid` で識別する)。
+9. (任意)コメントの流れ方を見せる。音声は、`TTS_PROVIDER=voicevox` で作り、配信できる環境(Azure の Blob と CDN)で再生する(下の注意)。
+
+注意:
+
+- ローカルの web には、音声ファイル(`MEDIA_BASE_URL`)を配信する経路がありません。音声つきのデモは、Blob に公開した環境で行います。ローカルのデモは、`TTS_PROVIDER=none`(字幕とコメントのみ)を前提にします。
+- 好みをやり直したいときは、Cookie `od_aid` を消します(シークレットウィンドウでも可)。
+
+## 免責とクレジット
+
+- OpenDopa は**非公式のネタアプリ**です。国土交通省 Project LINKS が公開するオープンデータをもとにしていますが、国土交通省とは関係がありません。画面のフッターにも同じ文言を出しています。動画は「AI生成のフィクション風解説」で、数字は元データから機械的に作っています。元データの値は、各動画の「元データ」で確認できます。
+- 個人情報と配慮の方針は、設計書 §15.2 のとおりです(例: 事故データでは、負傷の部位や症状を読みません)。
+- **VOICEVOX**(`TTS_PROVIDER=voicevox`)を使うときは、画面のフッターにクレジット(既定は「VOICEVOX:ずんだもん」)を出します。声を変えたら、`TTS_CREDIT` も合わせて変えてください(`docs/decisions/2026-11-06-tts-voice-and-credit.md`)。VOICEVOX 本体と各キャラクターの利用規約・ライセンスは、公開前に必ず確認してください。このリポジトリは VOICEVOX を同梱しません。
+- 右側の地図の日本の輪郭は、world-atlas 2.0.2(ISC ライセンス。元データは Natural Earth でパブリックドメイン)から作り、`apps/web/lib/data/japan.json` に同梱しています(作り方は `apps/web/scripts/build-japan.mjs`)。
+- 元データの CSV は、このリポジトリに含めません。
 
 ## 開発
 
@@ -274,6 +410,8 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
 
 新しい `env_name` で、Azure 環境を最初から作る手順です。**Azure の課金とアクセス権に関わるため、人が実行します**(自動化したワークフローでは行いません)。CI/CD の初期設定(OIDC・GitHub の変数)は前節の「CD(デプロイ)とインフラ変更」のとおりです。
 
+この手順は、既存の設定(`infra/`、`Makefile`、`.github/workflows/`)の読み取りに基づいて書いたもので、実際の Azure 環境での動作確認はまだしていません。実行して食い違いがあれば、この README を直してください。
+
 前提: `az login` 済み(サブスクリプションで Owner か、Contributor と User Access Administrator)、`docker`、`terraform`(または `TF=tofu`)、`dbmate`(`mise install` で入る)。
 
 ### 作る
@@ -332,5 +470,7 @@ terraform -chdir=infra destroy        # 作った環境を消す。確認の入�
 
 - [設計書](docs/design_doc.md)
 - [データ定義書](docs/data.md)
-- [決定の記録](docs/DECISIONS.md)(ADR の索引を兼ねる)
+- [決定の記録](docs/DECISIONS.md)(2026-11-05 までの分。ADR の索引を兼ねる)
+- [ADR](docs/adr/)(Issue 単位の大きな決定)と [小さな決定](docs/decisions/)(1 決定 1 ファイル)。索引は `mise run decisions-index`
+- [pipeline の README](pipeline/README.md)(新しいデータセットの足し方)
 - [CLAUDE.md](CLAUDE.md): Claude Code 向けの案内
