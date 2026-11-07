@@ -1,9 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
-import { feedQuery, getFeed, type FeedDeps } from "./feed";
-import { HttpError } from "./http";
+import { type FeedDeps, feedQuery, getFeed } from "./feed";
+import type { HttpError } from "./http";
 import type { VideoRow } from "./queries/videos";
 
-const scene = (id: string) => ({ videoId: id, headline: `h-${id}`, numbers: [{ secret: 1 }] });
+const scene = (id: string) => ({
+  videoId: id,
+  headline: `h-${id}`,
+  numbers: [{ secret: 1 }],
+});
 const video = (id: string): VideoRow => ({
   id,
   headline: `h-${id}`,
@@ -25,8 +29,12 @@ function makeDeps(over: Partial<FeedDeps> = {}): FeedDeps {
     }),
     loadVideos: async (ids) => new Map(ids.map((i) => [i, video(i)])),
     recordImpressions: async () => {},
-    loadClusters: async () => [{ id: 1, name: "ドローン", color: "#FF0000", cx: 0.1, cy: 0.2 }],
-    loadMapPoints: async () => [{ videoId: "b", datasetId: "d1", x: 0.1, y: 0.2, clusterId: 1 }],
+    loadClusters: async () => [
+      { id: 1, name: "ドローン", color: "#FF0000", cx: 0.1, cy: 0.2 },
+    ],
+    loadMapPoints: async () => [
+      { videoId: "b", datasetId: "d1", x: 0.1, y: 0.2, clusterId: 1 },
+    ],
     loadViewLog: async () => [],
     countViews: async () => 1,
     ...over,
@@ -36,7 +44,10 @@ function makeDeps(over: Partial<FeedDeps> = {}): FeedDeps {
 describe("feedQuery", () => {
   const parse = (q: Record<string, string>) => feedQuery.safeParse(q);
   it("既定は count=1、includeMap=0", () => {
-    expect(parse({})).toMatchObject({ success: true, data: { count: 1, includeMap: "0" } });
+    expect(parse({})).toMatchObject({
+      success: true,
+      data: { count: 1, includeMap: "0" },
+    });
   });
   it("count は 1〜3。0 と 4 は外れる", () => {
     expect(parse({ count: "3" }).success).toBe(true);
@@ -93,7 +104,9 @@ describe("getFeed", () => {
   });
 
   it("配信した動画を impressions に記録する(seenReset が無ければ reset=false)", async () => {
-    const recordImpressions = vi.fn<FeedDeps["recordImpressions"]>(async () => {});
+    const recordImpressions = vi.fn<FeedDeps["recordImpressions"]>(
+      async () => {},
+    );
     await getFeed(makeDeps({ recordImpressions }), "u1", 2, false);
     expect(recordImpressions).toHaveBeenCalledWith(
       "u1",
@@ -106,12 +119,17 @@ describe("getFeed", () => {
   });
 
   it("seenReset: true なら reset=true で記録する", async () => {
-    const recordImpressions = vi.fn<FeedDeps["recordImpressions"]>(async () => {});
+    const recordImpressions = vi.fn<FeedDeps["recordImpressions"]>(
+      async () => {},
+    );
     const base = makeDeps();
     await getFeed(
       makeDeps({
         recordImpressions,
-        recsysFeed: async (r) => ({ ...(await base.recsysFeed(r)), seenReset: true }),
+        recsysFeed: async (r) => ({
+          ...(await base.recsysFeed(r)),
+          seenReset: true,
+        }),
       }),
       "u1",
       1,
@@ -121,7 +139,9 @@ describe("getFeed", () => {
   });
 
   it("DB にない動画は配信も記録もしない。全部ないなら 503", async () => {
-    const recordImpressions = vi.fn<FeedDeps["recordImpressions"]>(async () => {});
+    const recordImpressions = vi.fn<FeedDeps["recordImpressions"]>(
+      async () => {},
+    );
     const res = await getFeed(
       makeDeps({
         recordImpressions,
@@ -132,7 +152,9 @@ describe("getFeed", () => {
       false,
     );
     expect(res.items.map((i) => i.videoId)).toEqual(["c"]);
-    expect(recordImpressions.mock.calls[0][1]).toEqual([{ videoId: "c", reason: "adventure" }]);
+    expect(recordImpressions.mock.calls[0][1]).toEqual([
+      { videoId: "c", reason: "adventure" },
+    ]);
 
     await expect(
       getFeed(makeDeps({ loadVideos: async () => new Map() }), "u1", 1, false),

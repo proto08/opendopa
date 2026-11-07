@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { TasteStore, TRAIL_MAX } from "./taste-store";
 import { toSvg } from "./taste-map";
+import { TasteStore, TRAIL_MAX } from "./taste-store";
 import type { Taste } from "./types";
 
 const taste = (x: number, y: number, videoIds: string[] = []): Taste => ({
@@ -9,7 +9,13 @@ const taste = (x: number, y: number, videoIds: string[] = []): Taste => ({
   shares: [],
   summary: "",
   eventCount: videoIds.length,
-  log: videoIds.map((videoId) => ({ videoId, headline: "", reasonLabel: "", ratio: 1, liked: false })),
+  log: videoIds.map((videoId) => ({
+    videoId,
+    headline: "",
+    reasonLabel: "",
+    ratio: 1,
+    liked: false,
+  })),
 });
 
 describe("TasteStore", () => {

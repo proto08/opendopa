@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { type ReactNode, useEffect, useId, useRef } from "react";
 import "./sheet.css";
 
-const FOCUSABLE = 'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE =
+  'button, a[href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
 
 /**
  * 下から出るシートの共通部品(元データ・好みで使う)。
@@ -71,7 +72,12 @@ export function Sheet({
           <h2 id={titleId} className="sheetTitle">
             {title}
           </h2>
-          <button type="button" className="sheetClose" aria-label="閉じる" onClick={onClose}>
+          <button
+            type="button"
+            className="sheetClose"
+            aria-label="閉じる"
+            onClick={onClose}
+          >
             ×
           </button>
         </div>

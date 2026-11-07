@@ -1,7 +1,10 @@
 import type { Queryable } from "./db";
 
 /** 動画の長さ(秒)。存在しない・配信対象でない(`status != 'ok'`)なら null。 */
-export async function loadDuration(db: Queryable, videoId: string): Promise<number | null> {
+export async function loadDuration(
+  db: Queryable,
+  videoId: string,
+): Promise<number | null> {
   const { rows } = await db.query<{ duration_sec: number }>(
     "SELECT duration_sec FROM videos WHERE id = $1 AND status = 'ok'",
     [videoId],
@@ -12,7 +15,13 @@ export async function loadDuration(db: Queryable, videoId: string): Promise<numb
 /** 視聴を保存する。`view_id` が重複なら保存しない(false を返す)。 */
 export async function insertView(
   db: Queryable,
-  v: { viewId: string; anonId: string; videoId: string; watchedSec: number; ratio: number },
+  v: {
+    viewId: string;
+    anonId: string;
+    videoId: string;
+    watchedSec: number;
+    ratio: number;
+  },
 ): Promise<boolean> {
   const { rows } = await db.query(
     `INSERT INTO view_events (view_id, anon_id, video_id, watched_sec, ratio)
@@ -43,10 +52,10 @@ export async function insertLike(
   const client = await db.connect();
   try {
     await client.query("BEGIN");
-    await client.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", [
-      v.anonId,
-      v.videoId,
-    ]);
+    await client.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))",
+      [v.anonId, v.videoId],
+    );
     const { rows: latest } = await client.query<{ liked: boolean }>(
       `SELECT liked FROM like_events
         WHERE anon_id = $1 AND video_id = $2
@@ -56,11 +65,10 @@ export async function insertLike(
     const current = latest[0]?.liked ?? false;
     let inserted = false;
     if (current !== v.liked) {
-      await client.query("INSERT INTO like_events (anon_id, video_id, liked) VALUES ($1, $2, $3)", [
-        v.anonId,
-        v.videoId,
-        v.liked,
-      ]);
+      await client.query(
+        "INSERT INTO like_events (anon_id, video_id, liked) VALUES ($1, $2, $3)",
+        [v.anonId, v.videoId, v.liked],
+      );
       inserted = true;
     }
     await client.query("COMMIT");
@@ -85,7 +93,11 @@ export async function loadVideoLogInfo(
   anonId: string,
   videoId: string,
 ): Promise<VideoLogInfo | null> {
-  const { rows } = await db.query<{ headline: string; reason: string | null; liked: boolean }>(
+  const { rows } = await db.query<{
+    headline: string;
+    reason: string | null;
+    liked: boolean;
+  }>(
     `SELECT v.headline, i.reason,
             COALESCE((SELECT l.liked FROM like_events l
                        WHERE l.anon_id = $1 AND l.video_id = v.id

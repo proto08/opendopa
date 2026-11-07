@@ -2,10 +2,10 @@ import type { Scene } from "@opendopa/shared";
 import japan from "@/lib/data/japan.json";
 import {
   fitView,
+  type LonLat,
   MAP_HEIGHT,
   MAP_WIDTH,
   project,
-  type LonLat,
   type View,
 } from "@/lib/map-projection";
 
@@ -20,7 +20,10 @@ function targets(map: MapData): LonLat[] {
     case "route":
       return [map.from, map.to].map((p) => [p.lon, p.lat] as const);
     case "polygon":
-      return [...map.rings.flat(), ...(map.markers ?? []).map((p) => [p.lon, p.lat] as const)] as LonLat[];
+      return [
+        ...map.rings.flat(),
+        ...(map.markers ?? []).map((p) => [p.lon, p.lat] as const),
+      ] as LonLat[];
     case "points":
       return map.points.map((p) => [p.lon, p.lat] as const);
   }
@@ -33,10 +36,24 @@ function ringPath(ring: readonly LonLat[], view: View, close: boolean): string {
     return p ? [p] : [];
   });
   if (pts.length === 0) return "";
-  return pts.map(([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`).join("") + (close ? "Z" : "");
+  return (
+    pts
+      .map(
+        ([x, y], i) => `${i === 0 ? "M" : "L"}${x.toFixed(2)} ${y.toFixed(2)}`,
+      )
+      .join("") + (close ? "Z" : "")
+  );
 }
 
-function Label({ place, view, dy = -2.2 }: { place: Place; view: View; dy?: number }) {
+function Label({
+  place,
+  view,
+  dy = -2.2,
+}: {
+  place: Place;
+  view: View;
+  dy?: number;
+}) {
   const p = project(place.lon, place.lat, view);
   if (!p) return null;
   return (
@@ -53,7 +70,10 @@ function Dot({ place, view, r }: { place: Place; view: View; r: number }) {
 }
 
 /** 港から港への弧(2 次ベジェ。弦の中点から、弦の長さの 25% だけ北側へふくらませる) */
-function arcPath(a: readonly [number, number], b: readonly [number, number]): string {
+function arcPath(
+  a: readonly [number, number],
+  b: readonly [number, number],
+): string {
   const mx = (a[0] + b[0]) / 2;
   const my = (a[1] + b[1]) / 2;
   const dx = b[0] - a[0];
@@ -92,7 +112,12 @@ export function SceneMap({ map }: { map: Scene["map"] }) {
   } else if (map.type === "polygon") {
     overlay = (
       <>
-        <path className="mapArea" d={map.rings.map((r) => ringPath(r as unknown as LonLat[], view, true)).join("")} />
+        <path
+          className="mapArea"
+          d={map.rings
+            .map((r) => ringPath(r as unknown as LonLat[], view, true))
+            .join("")}
+        />
         {(map.markers ?? []).map((m, i) => (
           <g key={i}>
             <Dot place={m} view={view} r={1.3} />
@@ -119,7 +144,10 @@ export function SceneMap({ map }: { map: Scene["map"] }) {
       aria-label="地図"
     >
       {/* 輪郭は外周のみ。viewBox の外は自然に切れる */}
-      <path className="mapOutline" d={outline.map((r) => ringPath(r, view, true)).join("")} />
+      <path
+        className="mapOutline"
+        d={outline.map((r) => ringPath(r, view, true)).join("")}
+      />
       {overlay}
     </svg>
   );

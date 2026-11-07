@@ -24,7 +24,10 @@ export class RateLimiter {
     const t = this.now();
     if (++this.calls % SWEEP_EVERY === 0) this.sweep(t);
     const b = this.buckets.get(key) ?? { tokens: this.perSec, updatedAt: t };
-    b.tokens = Math.min(this.perSec, b.tokens + ((t - b.updatedAt) / 1000) * this.perSec);
+    b.tokens = Math.min(
+      this.perSec,
+      b.tokens + ((t - b.updatedAt) / 1000) * this.perSec,
+    );
     b.updatedAt = t;
     const ok = b.tokens >= 1;
     if (ok) b.tokens -= 1;

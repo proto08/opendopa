@@ -11,7 +11,10 @@ export const MAX_DURATION_SEC = 8.5;
  * 空いている最初のレーンの番号。全レーンが使用中なら null(その回は出さない)。
  * `busyUntil[i]` はレーン i が空く時刻(秒)。`now` 以前なら空いている。
  */
-export function assignLane(busyUntil: readonly number[], now: number): number | null {
+export function assignLane(
+  busyUntil: readonly number[],
+  now: number,
+): number | null {
   const lane = busyUntil.findIndex((until) => until <= now);
   return lane === -1 ? null : lane;
 }
@@ -20,7 +23,10 @@ export function assignLane(busyUntil: readonly number[], now: number): number | 
 export function commentDuration(c: Pick<FlowComment, "t" | "text">): number {
   let h = Math.floor(c.t * 1000);
   for (const ch of c.text) h = (Math.imul(h, 31) + ch.codePointAt(0)!) >>> 0;
-  return MIN_DURATION_SEC + ((h % 1000) / 999) * (MAX_DURATION_SEC - MIN_DURATION_SEC);
+  return (
+    MIN_DURATION_SEC +
+    ((h % 1000) / 999) * (MAX_DURATION_SEC - MIN_DURATION_SEC)
+  );
 }
 
 export type ActiveComment = {
@@ -64,7 +70,13 @@ export function activeComments(
       busyUntil[lane] = start + duration;
       const progress = (playedSec - start) / duration;
       if (progress < 1) {
-        active.push({ key: `${loop}-${i}`, text: c.text, style: c.style, lane, progress });
+        active.push({
+          key: `${loop}-${i}`,
+          text: c.text,
+          style: c.style,
+          lane,
+          progress,
+        });
       }
     }
   }

@@ -87,8 +87,13 @@ export class ViewTracker {
     this.open = null;
     if (this.sent.has(v.viewId)) return;
     this.sent.add(v.viewId);
-    const playedMs = v.playedMs + (v.playingSince !== null ? this.deps.now() - v.playingSince : 0);
+    const playedMs =
+      v.playedMs +
+      (v.playingSince !== null ? this.deps.now() - v.playingSince : 0);
     const watchedSec = Math.max(0, Math.round(playedMs) / 1000);
-    this.deps.send({ viewId: v.viewId, videoId: v.videoId, watchedSec }, beacon);
+    this.deps.send(
+      { viewId: v.viewId, videoId: v.videoId, watchedSec },
+      beacon,
+    );
   }
 }

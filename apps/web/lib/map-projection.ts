@@ -15,7 +15,12 @@ const COS_REF = Math.cos((REF_LAT * Math.PI) / 180);
 export type LonLat = readonly [lon: number, lat: number];
 
 /** 投影した平面(経度は cos で縮め、緯度は上が小さくなるよう反転)上の範囲 */
-export type View = { minX: number; minY: number; width: number; height: number };
+export type View = {
+  minX: number;
+  minY: number;
+  width: number;
+  height: number;
+};
 
 /** 緯度経度 → 投影平面。有限でない値は null */
 export function toPlane(lon: number, lat: number): [number, number] | null {
@@ -25,11 +30,18 @@ export function toPlane(lon: number, lat: number): [number, number] | null {
 
 /** 投影平面 → SVG 座標 */
 export function planeToSvg(x: number, y: number, view: View): [number, number] {
-  return [((x - view.minX) / view.width) * MAP_WIDTH, ((y - view.minY) / view.height) * MAP_HEIGHT];
+  return [
+    ((x - view.minX) / view.width) * MAP_WIDTH,
+    ((y - view.minY) / view.height) * MAP_HEIGHT,
+  ];
 }
 
 /** 緯度経度 → SVG 座標。有限でない値は null。範囲外(海外など)でもそのまま計算する */
-export function project(lon: number, lat: number, view: View): [number, number] | null {
+export function project(
+  lon: number,
+  lat: number,
+  view: View,
+): [number, number] | null {
   const p = toPlane(lon, lat);
   return p ? planeToSvg(p[0], p[1], view) : null;
 }
@@ -52,8 +64,11 @@ export function fitView(coords: readonly LonLat[]): View {
   const xs = planes.map((p) => p[0]);
   const ys = planes.map((p) => p[1]);
   const minSpan = MIN_SPAN_DEG * COS_REF;
-  let width = Math.max(Math.max(...xs) - Math.min(...xs), minSpan) * (1 + PADDING * 2);
-  let height = Math.max(Math.max(...ys) - Math.min(...ys), MIN_SPAN_DEG) * (1 + PADDING * 2);
+  let width =
+    Math.max(Math.max(...xs) - Math.min(...xs), minSpan) * (1 + PADDING * 2);
+  let height =
+    Math.max(Math.max(...ys) - Math.min(...ys), MIN_SPAN_DEG) *
+    (1 + PADDING * 2);
   // viewBox の縦横比に合わせて、足りない方を広げる(はみ出さない)
   const aspect = MAP_WIDTH / MAP_HEIGHT;
   if (width / height < aspect) width = height * aspect;

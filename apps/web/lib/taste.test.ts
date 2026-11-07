@@ -18,7 +18,9 @@ const logRow = (n: number): LogRow => ({
 
 describe("tasteSummary", () => {
   it("視聴が 0 件なら、好みはわからない", () => {
-    expect(tasteSummary(0, [{ name: "A", pct: 100 }])).toBe("まだ見ていないので、好みはわかりません");
+    expect(tasteSummary(0, [{ name: "A", pct: 100 }])).toBe(
+      "まだ見ていないので、好みはわかりません",
+    );
   });
   it("最大の割合が 40% 以上なら、そのクラスタ名を使う", () => {
     expect(
@@ -37,7 +39,9 @@ describe("tasteSummary", () => {
         { name: "C", pct: 30 },
       ]),
     ).toBe("好みはまだ決まっていません。いろいろ見ています");
-    expect(tasteSummary(3, [])).toBe("好みはまだ決まっていません。いろいろ見ています");
+    expect(tasteSummary(3, [])).toBe(
+      "好みはまだ決まっていません。いろいろ見ています",
+    );
   });
 });
 
@@ -55,14 +59,31 @@ describe("buildTaste", () => {
     const t = buildTaste(recsys, clusters, 4, []);
     expect(t.x).toBe(0.3);
     expect(t.y).toBe(0.7);
-    expect(t.shares[0]).toEqual({ clusterId: 1, name: "ドローン", color: "#FF0000", pct: 60 });
+    expect(t.shares[0]).toEqual({
+      clusterId: 1,
+      name: "ドローン",
+      color: "#FF0000",
+      pct: 60,
+    });
     expect(t.summary).toBe("あなたは「ドローン」を最後まで見る人です");
     expect(t.eventCount).toBe(4);
   });
 
   it("log は渡された順(新しい順)で、最大 6 件。reasonLabel を付ける", () => {
-    const t = buildTaste(recsys, clusters, 8, [1, 2, 3, 4, 5, 6, 7, 8].map(logRow));
-    expect(t.log.map((l) => l.videoId)).toEqual(["v1", "v2", "v3", "v4", "v5", "v6"]);
+    const t = buildTaste(
+      recsys,
+      clusters,
+      8,
+      [1, 2, 3, 4, 5, 6, 7, 8].map(logRow),
+    );
+    expect(t.log.map((l) => l.videoId)).toEqual([
+      "v1",
+      "v2",
+      "v3",
+      "v4",
+      "v5",
+      "v6",
+    ]);
     expect(t.log[0]).toEqual({
       videoId: "v1",
       headline: "見出し1",

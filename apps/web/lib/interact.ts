@@ -2,8 +2,6 @@
 import { z } from "zod";
 import { getPool } from "./db";
 import { HttpError } from "./http";
-import { loadClusters, type ClusterRow } from "./queries/clusters";
-import { loadEvents } from "./queries/events";
 import {
   insertLike,
   insertView,
@@ -11,11 +9,18 @@ import {
   loadVideoLogInfo,
   type VideoLogInfo,
 } from "./queries/actions";
-import { countViews, loadViewLog, type LogRow } from "./queries/log";
+import { type ClusterRow, loadClusters } from "./queries/clusters";
+import { loadEvents } from "./queries/events";
+import { countViews, type LogRow, loadViewLog } from "./queries/log";
 import { reasonLabel } from "./reasons";
 import { recsysTaste } from "./recsys-client";
 import { buildTaste, LOG_LIMIT } from "./taste";
-import type { RecsysEvent, RecsysTasteRequest, RecsysTasteResponse, Taste } from "./types";
+import type {
+  RecsysEvent,
+  RecsysTasteRequest,
+  RecsysTasteResponse,
+  Taste,
+} from "./types";
 
 export interface InteractDeps {
   loadDuration(videoId: string): Promise<number | null>;
@@ -26,8 +31,15 @@ export interface InteractDeps {
     watchedSec: number;
     ratio: number;
   }): Promise<boolean>;
-  insertLike(v: { anonId: string; videoId: string; liked: boolean }): Promise<boolean>;
-  loadVideoLogInfo(anonId: string, videoId: string): Promise<VideoLogInfo | null>;
+  insertLike(v: {
+    anonId: string;
+    videoId: string;
+    liked: boolean;
+  }): Promise<boolean>;
+  loadVideoLogInfo(
+    anonId: string,
+    videoId: string,
+  ): Promise<VideoLogInfo | null>;
   loadEvents(anonId: string): Promise<RecsysEvent[]>;
   recsysTaste(req: RecsysTasteRequest): Promise<RecsysTasteResponse>;
   loadClusters(): Promise<ClusterRow[]>;
@@ -62,7 +74,10 @@ export const likeBody = z.object({
 });
 
 /** 保存済みの `events` から `taste` を作る(`/api/feed` と同じ組み立て)。 */
-async function currentTaste(deps: InteractDeps, anonId: string): Promise<Taste> {
+async function currentTaste(
+  deps: InteractDeps,
+  anonId: string,
+): Promise<Taste> {
   const events = await deps.loadEvents(anonId);
   const rec = await deps.recsysTaste({ events });
   const [clusters, eventCount, log] = await Promise.all([
@@ -80,7 +95,8 @@ export async function postView(
 ) {
   const duration = await deps.loadDuration(body.videoId);
   if (duration === null) throw new HttpError(400, "videoId: unknown video");
-  if (body.watchedSec > duration * 10) throw new HttpError(400, "watchedSec: too large");
+  if (body.watchedSec > duration * 10)
+    throw new HttpError(400, "watchedSec: too large");
   const ratio = Math.min(1, body.watchedSec / duration);
   await deps.insertView({
     viewId: body.viewId,

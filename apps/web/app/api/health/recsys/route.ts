@@ -10,5 +10,8 @@ export async function GET() {
   if (await pingRecsys()) {
     return Response.json({ status: "ok", recsys: "ok" }, { headers });
   }
-  return Response.json({ error: "recsys unreachable" }, { status: 503, headers });
+  return Response.json(
+    { error: "recsys unreachable" },
+    { status: 503, headers },
+  );
 }

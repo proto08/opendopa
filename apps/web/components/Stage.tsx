@@ -1,7 +1,7 @@
 "use client";
 
 import type { Scene } from "@opendopa/shared";
-import { useEffect, type CSSProperties, type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useEffect } from "react";
 import { useScenePlayer } from "@/lib/useScenePlayer";
 import { AiLabel } from "./AiLabel";
 import { BigNumber } from "./BigNumber";
@@ -11,8 +11,8 @@ import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
 import { SceneMap } from "./SceneMap";
 import { SourceLine } from "./SourceLine";
-import { useViewTracking } from "./taste-context";
 import { Telop } from "./Telop";
+import { useViewTracking } from "./taste-context";
 import "./stage.css";
 
 /** 9:16 の動画ステージ。1 本のシーンを再生する(タップと Space で一時停止/再開) */
@@ -78,7 +78,11 @@ export function Stage({
       <Captions lines={scene.lines} lineIndex={player.lineIndex} />
       <SourceLine source={scene.source} />
       <AiLabel />
-      <Comments comments={scene.comments} totalSec={player.totalSec} playedSec={player.playedSec} />
+      <Comments
+        comments={scene.comments}
+        totalSec={player.totalSec}
+        playedSec={player.playedSec}
+      />
       <PauseIcon paused={player.paused} toggles={player.toggles} />
       {children}
     </div>

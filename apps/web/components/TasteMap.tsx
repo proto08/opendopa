@@ -20,7 +20,8 @@ export function TasteMap({
   const now = trail[trail.length - 1];
   const [dx, dy] = now ? toSvg(now.x, now.y) : [0, 0];
   const path = trail.map((t) => toSvg(t.x, t.y).join(",")).join(" ");
-  const cur = current === null ? undefined : points.find((p) => p.videoId === current);
+  const cur =
+    current === null ? undefined : points.find((p) => p.videoId === current);
 
   return (
     <svg
@@ -29,7 +30,11 @@ export function TasteMap({
       role="img"
       aria-label="動画の地図と、いまの好みの位置"
     >
-      <rect className="tasteMapBg" width={TASTE_MAP_SIZE} height={TASTE_MAP_SIZE} />
+      <rect
+        className="tasteMapBg"
+        width={TASTE_MAP_SIZE}
+        height={TASTE_MAP_SIZE}
+      />
       {[25, 50, 75].map((v) => (
         <g key={v} className="tasteMapGrid">
           <line x1={v} y1={0} x2={v} y2={TASTE_MAP_SIZE} />
@@ -48,7 +53,10 @@ export function TasteMap({
             cx={x}
             cy={y}
             r={1.5}
-            fill={(p.clusterId !== null && colors.get(p.clusterId)) || FALLBACK_COLOR}
+            fill={
+              (p.clusterId !== null && colors.get(p.clusterId)) ||
+              FALLBACK_COLOR
+            }
             opacity={seen ? 1 : 0.3}
           />
         );
@@ -62,9 +70,15 @@ export function TasteMap({
           r={3.4}
         />
       ) : null}
-      {trail.length > 1 ? <polyline className="tasteMapTrail" points={path} /> : null}
+      {trail.length > 1 ? (
+        <polyline className="tasteMapTrail" points={path} />
+      ) : null}
       {now ? (
-        <g className="tasteMapTaste" data-taste-dot style={{ transform: `translate(${dx}px, ${dy}px)` }}>
+        <g
+          className="tasteMapTaste"
+          data-taste-dot
+          style={{ transform: `translate(${dx}px, ${dy}px)` }}
+        >
           <circle r={3.6} />
         </g>
       ) : null}

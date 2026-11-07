@@ -5,7 +5,8 @@ import { randomUUID } from "node:crypto";
 
 export const ANON_COOKIE = "od_aid";
 const MAX_AGE_SEC = 60 * 60 * 24 * 365; // 1 年
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface AnonResult {
   anonId: string;
@@ -23,8 +24,17 @@ function readCookie(header: string | null, name: string): string | undefined {
   return undefined;
 }
 
-export function buildSetCookie(anonId: string, secure = process.env.NODE_ENV === "production"): string {
-  const attrs = [`${ANON_COOKIE}=${anonId}`, "Path=/", `Max-Age=${MAX_AGE_SEC}`, "HttpOnly", "SameSite=Lax"];
+export function buildSetCookie(
+  anonId: string,
+  secure = process.env.NODE_ENV === "production",
+): string {
+  const attrs = [
+    `${ANON_COOKIE}=${anonId}`,
+    "Path=/",
+    `Max-Age=${MAX_AGE_SEC}`,
+    "HttpOnly",
+    "SameSite=Lax",
+  ];
   if (secure) attrs.push("Secure");
   return attrs.join("; ");
 }

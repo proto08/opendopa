@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
-import type { Queryable } from "./db";
 import type { Reason } from "../types";
+import type { Queryable } from "./db";
 
 /** recsys に渡す「直近に配信したデータセット」の最大件数 */
 const RECENT_LIMIT = 50;
@@ -12,7 +12,10 @@ export interface Impressions {
   recentDatasets: string[];
 }
 
-export async function loadImpressions(db: Queryable, anonId: string): Promise<Impressions> {
+export async function loadImpressions(
+  db: Queryable,
+  anonId: string,
+): Promise<Impressions> {
   const { rows } = await db.query<{ video_id: string; dataset_id: string }>(
     `SELECT i.video_id, v.dataset_id
        FROM impressions i JOIN videos v ON v.id = i.video_id
@@ -45,7 +48,10 @@ export async function recordImpressions(
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    if (reset) await client.query("DELETE FROM impressions WHERE anon_id = $1", [anonId]);
+    if (reset)
+      await client.query("DELETE FROM impressions WHERE anon_id = $1", [
+        anonId,
+      ]);
     for (const p of picks) {
       await client.query(
         `INSERT INTO impressions (anon_id, video_id, reason) VALUES ($1, $2, $3)

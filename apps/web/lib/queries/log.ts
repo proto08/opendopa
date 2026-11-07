@@ -13,7 +13,11 @@ export interface LogRow {
  * 右パネルの「視聴の記録」。新しい視聴から最大 `limit` 件。
  * `liked` はその動画の最新の `like_events` の状態(なければ false)。
  */
-export async function loadViewLog(db: Queryable, anonId: string, limit: number): Promise<LogRow[]> {
+export async function loadViewLog(
+  db: Queryable,
+  anonId: string,
+  limit: number,
+): Promise<LogRow[]> {
   const { rows } = await db.query<{
     video_id: string;
     headline: string;
@@ -43,7 +47,10 @@ export async function loadViewLog(db: Queryable, anonId: string, limit: number):
 }
 
 /** `view_events` の件数(`taste.eventCount`) */
-export async function countViews(db: Queryable, anonId: string): Promise<number> {
+export async function countViews(
+  db: Queryable,
+  anonId: string,
+): Promise<number> {
   const { rows } = await db.query<{ n: string }>(
     "SELECT count(*)::text AS n FROM view_events WHERE anon_id = $1",
     [anonId],

@@ -1,5 +1,5 @@
-import type { Queryable } from "./db";
 import type { RecsysEvent } from "../types";
+import type { Queryable } from "./db";
 
 interface EventRow {
   type: "view" | "like";
@@ -12,7 +12,10 @@ interface EventRow {
  * そのユーザーの視聴といいねを時刻順に返す(設計書 §6.1)。
  * 同じ時刻なら `id` 順、それも同じなら視聴を先にする(二つのテーブルの `id` は別の連番)。
  */
-export async function loadEvents(db: Queryable, anonId: string): Promise<RecsysEvent[]> {
+export async function loadEvents(
+  db: Queryable,
+  anonId: string,
+): Promise<RecsysEvent[]> {
   const { rows } = await db.query<EventRow>(
     `SELECT type, video_id, ratio, liked FROM (
        SELECT 'view' AS type, video_id, ratio, NULL::boolean AS liked, created_at, id

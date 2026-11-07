@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LineAudio, type AudioLike } from "./lineAudio";
+import { type AudioLike, LineAudio } from "./lineAudio";
 
 function setup() {
   const made: (AudioLike & {

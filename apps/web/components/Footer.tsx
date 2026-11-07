@@ -5,7 +5,8 @@ export function Footer({ credit }: { credit?: string }) {
   return (
     <footer className="siteFooter">
       <p>
-        OpenDopaは非公式のアプリです。国土交通省 Project LINKS が公開するオープンデータをもとにしています。
+        OpenDopaは非公式のアプリです。国土交通省 Project LINKS
+        が公開するオープンデータをもとにしています。
       </p>
       {credit ? <p>{credit}</p> : null}
     </footer>

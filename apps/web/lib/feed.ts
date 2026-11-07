@@ -1,13 +1,17 @@
 // GET /api/feed の中身(設計書 §6.1)。DB と recsys への依存は `FeedDeps` で渡す(テストで差し替える)。
 import type { Scene } from "@opendopa/shared";
 import { z } from "zod";
-import type { FeedItem, FeedMap, FeedResponse } from "./feedTypes";
 import { getPool } from "./db";
+import type { FeedItem, FeedMap, FeedResponse } from "./feedTypes";
 import { HttpError } from "./http";
-import { loadClusters, type ClusterRow } from "./queries/clusters";
+import { type ClusterRow, loadClusters } from "./queries/clusters";
 import { loadEvents } from "./queries/events";
-import { loadImpressions, recordImpressions, type Impressions } from "./queries/impressions";
-import { countViews, loadViewLog, type LogRow } from "./queries/log";
+import {
+  type Impressions,
+  loadImpressions,
+  recordImpressions,
+} from "./queries/impressions";
+import { countViews, type LogRow, loadViewLog } from "./queries/log";
 import { loadMapPoints, type MapPoint } from "./queries/map";
 import { loadVideos, type VideoRow } from "./queries/videos";
 import { reasonLabel } from "./reasons";
@@ -67,7 +71,13 @@ function stripNumbers(scene: unknown): Scene {
 function buildMap(points: MapPoint[], clusters: ClusterRow[]): FeedMap {
   return {
     points,
-    clusters: clusters.map(({ id, name, color, cx, cy }) => ({ id, name, color, cx, cy })),
+    clusters: clusters.map(({ id, name, color, cx, cy }) => ({
+      id,
+      name,
+      color,
+      cx,
+      cy,
+    })),
   };
 }
 
@@ -112,7 +122,10 @@ export async function getFeed(
     deps.loadViewLog(anonId, LOG_LIMIT),
     includeMap ? deps.loadMapPoints() : Promise.resolve(undefined),
   ]);
-  const res: FeedResponse = { items, taste: buildTaste(rec.taste, clusters, eventCount, log) };
+  const res: FeedResponse = {
+    items,
+    taste: buildTaste(rec.taste, clusters, eventCount, log),
+  };
   if (points) res.map = buildMap(points, clusters);
   return res;
 }

@@ -37,7 +37,10 @@ async function recsysPost<T>(path: string, body: unknown): Promise<T> {
   try {
     res = await fetch(new URL(path, url), {
       method: "POST",
-      headers: { "X-Internal-Token": token, "Content-Type": "application/json" },
+      headers: {
+        "X-Internal-Token": token,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify(body),
       cache: "no-store",
       signal: AbortSignal.timeout(TIMEOUT_MS),
@@ -54,12 +57,16 @@ async function recsysPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** `POST /internal/feed`: 次の動画と `taste` を得る。 */
-export function recsysFeed(req: RecsysFeedRequest): Promise<RecsysFeedResponse> {
+export function recsysFeed(
+  req: RecsysFeedRequest,
+): Promise<RecsysFeedResponse> {
   return recsysPost("/internal/feed", req);
 }
 
 /** `POST /internal/taste`: `taste` だけを得る。 */
-export function recsysTaste(req: RecsysTasteRequest): Promise<RecsysTasteResponse> {
+export function recsysTaste(
+  req: RecsysTasteRequest,
+): Promise<RecsysTasteResponse> {
   return recsysPost("/internal/taste", req);
 }
 

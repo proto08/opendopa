@@ -14,12 +14,17 @@ export function isLikeKey(key: string): boolean {
 
 /** キー入力の対象が入力欄など(ショートカットを効かせない場所)か */
 export function isEditableTarget(target: EventTarget | null): boolean {
-  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) return false;
+  if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement))
+    return false;
   return target.closest("input, textarea, select, [contenteditable]") !== null;
 }
 
 /** 現在の位置から delta 動かした位置。端で止まる */
-export function clampIndex(index: number, delta: number, length: number): number {
+export function clampIndex(
+  index: number,
+  delta: number,
+  length: number,
+): number {
   if (length <= 0) return 0;
   return Math.min(Math.max(index + delta, 0), length - 1);
 }
@@ -27,11 +32,19 @@ export function clampIndex(index: number, delta: number, length: number): number
 /** 動画が見えている割合がこれ以上になったら再生を始める */
 export const ACTIVE_RATIO = 0.6;
 
-type EntryLike = { target: Element; isIntersecting: boolean; intersectionRatio: number };
+type EntryLike = {
+  target: Element;
+  isIntersecting: boolean;
+  intersectionRatio: number;
+};
 type ObserverCtor = new (
   cb: (entries: EntryLike[]) => void,
   options: { root?: Element | null; threshold: number[] },
-) => { observe(el: Element): void; unobserve(el: Element): void; disconnect(): void };
+) => {
+  observe(el: Element): void;
+  unobserve(el: Element): void;
+  disconnect(): void;
+};
 
 /**
  * 各スライドを監視し、60% 以上見えたら onChange(番号, true)、それを下回ったら onChange(番号, false) を呼ぶ。

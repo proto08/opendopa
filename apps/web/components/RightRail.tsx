@@ -42,20 +42,56 @@ export function RightRail({
           />
         </svg>
       </button>
-      <button type="button" className="railButton" data-kind="csv" aria-label="元データ" onClick={onCsv}>
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <button
+        type="button"
+        className="railButton"
+        data-kind="csv"
+        aria-label="元データ"
+        onClick={onCsv}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        >
           <rect x="4" y="4" width="16" height="16" rx="2" />
           <path d="M4 10h16M4 15h16M10 4v16" />
         </svg>
       </button>
-      <button type="button" className="railButton railTaste" data-kind="taste" aria-label="好み" onClick={onTaste}>
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8">
+      <button
+        type="button"
+        className="railButton railTaste"
+        data-kind="taste"
+        aria-label="好み"
+        onClick={onTaste}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+        >
           <circle cx="12" cy="12" r="8" />
           <circle cx="12" cy="12" r="3" fill="currentColor" />
         </svg>
       </button>
-      <button type="button" className="railButton" data-kind="next" aria-label="次へ(J)" onClick={onNext}>
-        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2">
+      <button
+        type="button"
+        className="railButton"
+        data-kind="next"
+        aria-label="次へ(J)"
+        onClick={onNext}
+      >
+        <svg
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </button>

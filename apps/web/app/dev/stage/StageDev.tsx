@@ -18,7 +18,12 @@ export function StageDev({ fixtures }: { fixtures: Fixture[] }) {
     ...base,
     bigNumber: {
       ...base.bigNumber,
-      value: value === "" ? base.bigNumber.value : isNaN(Number(value)) ? value : Number(value),
+      value:
+        value === ""
+          ? base.bigNumber.value
+          : Number.isNaN(Number(value))
+            ? value
+            : Number(value),
       countUp,
     },
   };
@@ -36,10 +41,18 @@ export function StageDev({ fixtures }: { fixtures: Fixture[] }) {
         </label>
         <label>
           数字の上書き
-          <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="例: 12345" />
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="例: 12345"
+          />
         </label>
         <label>
-          <input type="checkbox" checked={countUp} onChange={(e) => setCountUp(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={countUp}
+            onChange={(e) => setCountUp(e.target.checked)}
+          />
           countUp
         </label>
         <button onClick={() => setRun((n) => n + 1)}>最初から</button>

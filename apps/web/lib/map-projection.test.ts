@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import japan from "./data/japan.json";
-import { fitView, JAPAN_VIEW, MAP_HEIGHT, MAP_WIDTH, project, type LonLat } from "./map-projection";
+import {
+  fitView,
+  JAPAN_VIEW,
+  type LonLat,
+  MAP_HEIGHT,
+  MAP_WIDTH,
+  project,
+} from "./map-projection";
 
 describe("project", () => {
   it("日本全体の範囲で、北は上・東は右になり、画面内に入る", () => {

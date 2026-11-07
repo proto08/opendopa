@@ -3,7 +3,12 @@
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { insertLike, insertView, loadDuration, loadVideoLogInfo } from "./actions";
+import {
+  insertLike,
+  insertView,
+  loadDuration,
+  loadVideoLogInfo,
+} from "./actions";
 import { loadClusters } from "./clusters";
 import { loadEvents } from "./events";
 import { loadImpressions, recordImpressions } from "./impressions";
@@ -23,12 +28,20 @@ describe.skipIf(!url)("queries(DB)", () => {
     await boot.query(`CREATE EXTENSION IF NOT EXISTS vector`);
     await boot.query(`CREATE SCHEMA ${schema}`);
     await boot.end();
-    pool = new Pool({ connectionString: url, options: `-c search_path=${schema},public` });
-    const file = new URL("../../../../db/migrations/20261104000002_create_core_tables.sql", import.meta.url);
+    pool = new Pool({
+      connectionString: url,
+      options: `-c search_path=${schema},public`,
+    });
+    const file = new URL(
+      "../../../../db/migrations/20261104000002_create_core_tables.sql",
+      import.meta.url,
+    );
     const up = readFileSync(file, "utf8").split("-- migrate:down")[0];
     await q(up);
 
-    await q(`INSERT INTO datasets VALUES ('d1','D1','s','あ','#111111'),('d2','D2','s','い','#222222')`);
+    await q(
+      `INSERT INTO datasets VALUES ('d1','D1','s','あ','#111111'),('d2','D2','s','い','#222222')`,
+    );
     const scene = JSON.stringify({ videoId: "x" });
     const decisions = JSON.stringify({ secret: true });
     for (const [id, ds, status] of [
@@ -42,9 +55,19 @@ describe.skipIf(!url)("queries(DB)", () => {
         [id, ds, `h-${id}`, scene, decisions, status],
       );
     }
-    await q(`INSERT INTO clusters VALUES (1,'クラスタ','#FF0000',$1,0.1,0.2)`, [vec()]);
-    for (const [id, x] of [["a", 0.1], ["b", 0.2], ["c", 0.3]] as const) {
-      await q(`INSERT INTO embeddings VALUES ($1,$2,$3,0.5,1,'m')`, [id, vec(), x]);
+    await q(`INSERT INTO clusters VALUES (1,'クラスタ','#FF0000',$1,0.1,0.2)`, [
+      vec(),
+    ]);
+    for (const [id, x] of [
+      ["a", 0.1],
+      ["b", 0.2],
+      ["c", 0.3],
+    ] as const) {
+      await q(`INSERT INTO embeddings VALUES ($1,$2,$3,0.5,1,'m')`, [
+        id,
+        vec(),
+        x,
+      ]);
     }
   });
 
@@ -77,15 +100,35 @@ describe.skipIf(!url)("queries(DB)", () => {
   });
 
   it("impressions: 記録は重複しても落ちず、reset で消してから入れる", async () => {
-    await recordImpressions(pool, "i", [{ videoId: "a", reason: "first" }], false);
-    await recordImpressions(pool, "i", [{ videoId: "a", reason: "near" }, { videoId: "b", reason: "near" }], false);
+    await recordImpressions(
+      pool,
+      "i",
+      [{ videoId: "a", reason: "first" }],
+      false,
+    );
+    await recordImpressions(
+      pool,
+      "i",
+      [
+        { videoId: "a", reason: "near" },
+        { videoId: "b", reason: "near" },
+      ],
+      false,
+    );
     let imp = await loadImpressions(pool, "i");
     expect(imp.seenIds.sort()).toEqual(["a", "b"]);
     expect(imp.recentDatasets[0]).toBe("d2");
-    const { rows } = await q(`SELECT reason FROM impressions WHERE anon_id='i' AND video_id='a'`);
+    const { rows } = await q(
+      `SELECT reason FROM impressions WHERE anon_id='i' AND video_id='a'`,
+    );
     expect(rows[0].reason).toBe("first");
 
-    await recordImpressions(pool, "i", [{ videoId: "b", reason: "adventure" }], true);
+    await recordImpressions(
+      pool,
+      "i",
+      [{ videoId: "b", reason: "adventure" }],
+      true,
+    );
     imp = await loadImpressions(pool, "i");
     expect(imp.seenIds).toEqual(["b"]);
     expect((await loadImpressions(pool, "none")).seenIds).toEqual([]);
@@ -105,18 +148,34 @@ describe.skipIf(!url)("queries(DB)", () => {
   });
 
   it("map と clusters", async () => {
-    expect(await loadClusters(pool)).toEqual([{ id: 1, name: "クラスタ", color: "#FF0000", cx: 0.1, cy: 0.2 }]);
+    expect(await loadClusters(pool)).toEqual([
+      { id: 1, name: "クラスタ", color: "#FF0000", cx: 0.1, cy: 0.2 },
+    ]);
     const pts = await loadMapPoints(pool);
     expect(pts.map((p) => p.videoId)).toEqual(["a", "b"]);
     expect(pts[0]).toMatchObject({ datasetId: "d1", clusterId: 1 });
   });
 
   it("log: 新しい視聴から。reason は impressions、liked は最新のいいね", async () => {
-    await recordImpressions(pool, "u", [{ videoId: "a", reason: "first" }, { videoId: "b", reason: "near" }], false);
+    await recordImpressions(
+      pool,
+      "u",
+      [
+        { videoId: "a", reason: "first" },
+        { videoId: "b", reason: "near" },
+      ],
+      false,
+    );
     const log = await loadViewLog(pool, "u", 6);
     expect(log).toEqual([
       { videoId: "b", headline: "h-b", reason: "near", ratio: 1, liked: true },
-      { videoId: "a", headline: "h-a", reason: "first", ratio: 0.5, liked: false },
+      {
+        videoId: "a",
+        headline: "h-a",
+        reason: "first",
+        ratio: 0.5,
+        liked: false,
+      },
     ]);
     expect(await loadViewLog(pool, "u", 1)).toHaveLength(1);
     expect(await countViews(pool, "u")).toBe(2);
@@ -127,49 +186,90 @@ describe.skipIf(!url)("queries(DB)", () => {
     expect(await loadDuration(pool, "a")).toBe(20);
     expect(await loadDuration(pool, "c")).toBeNull();
     expect(await loadDuration(pool, "zzz")).toBeNull();
-    const v = { viewId: "act-v1", anonId: "act", videoId: "a", watchedSec: 30, ratio: 1 };
+    const v = {
+      viewId: "act-v1",
+      anonId: "act",
+      videoId: "a",
+      watchedSec: 30,
+      ratio: 1,
+    };
     expect(await insertView(pool, v)).toBe(true);
     expect(await insertView(pool, v)).toBe(false);
-    expect((await q(`SELECT 1 FROM view_events WHERE anon_id='act'`)).rows).toHaveLength(1);
+    expect(
+      (await q(`SELECT 1 FROM view_events WHERE anon_id='act'`)).rows,
+    ).toHaveLength(1);
   });
 
   it("actions: いいねは最新の状態と同じなら追加しない", async () => {
-    const l = (liked: boolean) => insertLike(pool, { anonId: "lk", videoId: "a", liked });
+    const l = (liked: boolean) =>
+      insertLike(pool, { anonId: "lk", videoId: "a", liked });
     expect(await l(false)).toBe(false); // 履歴なしで取り消し
     expect(await l(true)).toBe(true);
     expect(await l(true)).toBe(false);
     expect(await l(false)).toBe(true);
     expect(await l(false)).toBe(false);
-    const { rows } = await q(`SELECT liked FROM like_events WHERE anon_id='lk' ORDER BY id`);
+    const { rows } = await q(
+      `SELECT liked FROM like_events WHERE anon_id='lk' ORDER BY id`,
+    );
     expect(rows.map((r) => r.liked)).toEqual([true, false]);
     expect(await loadEvents(pool, "lk")).toEqual([
       { type: "like", videoId: "a", liked: true },
       { type: "like", videoId: "a", liked: false },
     ]);
     // 同時に送っても 1 件だけ
-    await Promise.all([1, 2, 3].map(() => insertLike(pool, { anonId: "lk2", videoId: "a", liked: true })));
-    expect((await q(`SELECT 1 FROM like_events WHERE anon_id='lk2'`)).rows).toHaveLength(1);
+    await Promise.all(
+      [1, 2, 3].map(() =>
+        insertLike(pool, { anonId: "lk2", videoId: "a", liked: true }),
+      ),
+    );
+    expect(
+      (await q(`SELECT 1 FROM like_events WHERE anon_id='lk2'`)).rows,
+    ).toHaveLength(1);
   });
 
   it("actions: ロック待ちの後発も、先行のコミットを見て二重に足さない", async () => {
     // 先行がロックを持ったまま止まっている間に後発を走らせる
     const first = await pool.connect();
     await first.query("BEGIN");
-    await first.query("SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))", ["lk3", "a"]);
-    const second = insertLike(pool, { anonId: "lk3", videoId: "a", liked: true });
+    await first.query(
+      "SELECT pg_advisory_xact_lock(hashtextextended($1 || ':' || $2, 0))",
+      ["lk3", "a"],
+    );
+    const second = insertLike(pool, {
+      anonId: "lk3",
+      videoId: "a",
+      liked: true,
+    });
     await new Promise((r) => setTimeout(r, 200)); // 後発がロック待ちに入る時間
-    await first.query("INSERT INTO like_events (anon_id, video_id, liked) VALUES ('lk3','a',true)");
+    await first.query(
+      "INSERT INTO like_events (anon_id, video_id, liked) VALUES ('lk3','a',true)",
+    );
     await first.query("COMMIT");
     first.release();
     expect(await second).toBe(false);
-    expect((await q(`SELECT 1 FROM like_events WHERE anon_id='lk3'`)).rows).toHaveLength(1);
+    expect(
+      (await q(`SELECT 1 FROM like_events WHERE anon_id='lk3'`)).rows,
+    ).toHaveLength(1);
   });
 
   it("actions: loadVideoLogInfo", async () => {
-    await recordImpressions(pool, "inf", [{ videoId: "a", reason: "near" }], false);
+    await recordImpressions(
+      pool,
+      "inf",
+      [{ videoId: "a", reason: "near" }],
+      false,
+    );
     await insertLike(pool, { anonId: "inf", videoId: "a", liked: true });
-    expect(await loadVideoLogInfo(pool, "inf", "a")).toEqual({ headline: "h-a", reason: "near", liked: true });
-    expect(await loadVideoLogInfo(pool, "nobody", "b")).toEqual({ headline: "h-b", reason: null, liked: false });
+    expect(await loadVideoLogInfo(pool, "inf", "a")).toEqual({
+      headline: "h-a",
+      reason: "near",
+      liked: true,
+    });
+    expect(await loadVideoLogInfo(pool, "nobody", "b")).toEqual({
+      headline: "h-b",
+      reason: null,
+      liked: false,
+    });
     expect(await loadVideoLogInfo(pool, "inf", "zzz")).toBeNull();
   });
 });

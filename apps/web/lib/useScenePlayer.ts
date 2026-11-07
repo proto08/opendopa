@@ -3,7 +3,7 @@
 import type { Scene } from "@opendopa/shared";
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { LineAudio } from "./lineAudio";
-import { ScenePlayer, type PlayerSnapshot } from "./scenePlayer";
+import { type PlayerSnapshot, ScenePlayer } from "./scenePlayer";
 
 export type UseScenePlayer = PlayerSnapshot & { toggle: () => void };
 
@@ -21,7 +21,6 @@ export function useScenePlayer(
   const player = useMemo(
     // 動画が変わったら作り直す。lines の中身は videoId に対して不変とみなす
     () => new ScenePlayer(scene.lines),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [scene.videoId],
   );
 
@@ -38,9 +37,15 @@ export function useScenePlayer(
   }, [player, active, hold]);
 
   const toggle = useCallback(() => player.toggle(), [player]);
-  const snap = useSyncExternalStore(player.subscribe, player.getSnapshot, player.getSnapshot);
+  const snap = useSyncExternalStore(
+    player.subscribe,
+    player.getSnapshot,
+    player.getSnapshot,
+  );
 
-  const audioUrl = active ? (scene.lines[snap.lineIndex]?.audio?.url ?? null) : null;
+  const audioUrl = active
+    ? (scene.lines[snap.lineIndex]?.audio?.url ?? null)
+    : null;
   const lineAudio = useMemo(() => new LineAudio(), []);
   // 行が変わる・ループする・一時停止/再開するたびに、音声を字幕に合わせる
   useEffect(() => {
