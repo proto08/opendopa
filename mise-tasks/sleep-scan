@@ -17,7 +17,8 @@ set -euo pipefail
 command -v jq >/dev/null || { echo "jq が必要です" >&2; exit 1; }
 command -v gh >/dev/null || { echo "gh が必要です" >&2; exit 1; }
 
-REPO="${REPO:-$(git remote get-url origin | sed -E 's#\.git$##' | awk -F/ '{print $(NF-1)"/"$NF}')}"
+# https://github.com/o/r(.git) でも git@github.com:o/r(.git) でも、末尾の o/r を取る
+REPO="${REPO:-$(git remote get-url origin | sed -E 's#\.git$##; s#^.*[:/]([^/:]+/[^/]+)$#\1#')}"
 BUSY_HOURS="${BUSY_HOURS:-3}"
 
 api() { gh api --paginate "$1" | jq -s 'add // []'; }
