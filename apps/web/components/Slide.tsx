@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import type { FeedItem } from "@/lib/feedTypes";
 import { RightRail } from "./RightRail";
 import { Stage } from "./Stage";
@@ -19,6 +20,9 @@ export function Slide({
   onCsv,
   onTaste,
   onNext,
+  selectedTags,
+  onTag,
+  overlay,
 }: {
   item: FeedItem;
   index: number;
@@ -31,6 +35,10 @@ export function Slide({
   onCsv: () => void;
   onTaste: () => void;
   onNext: () => void;
+  selectedTags: readonly string[];
+  onTag: (id: string) => void;
+  /** 虫眼鏡と検索シート */
+  overlay: ReactNode;
 }) {
   return (
     <section
@@ -40,7 +48,13 @@ export function Slide({
       aria-label={item.scene.headline}
     >
       {mounted ? (
-        <Stage scene={item.scene} active={active} hold={hold}>
+        <Stage
+          scene={item.scene}
+          active={active}
+          hold={hold}
+          selectedTags={selectedTags}
+          onTag={onTag}
+        >
           <RightRail
             liked={liked}
             onLike={onLike}
@@ -48,6 +62,7 @@ export function Slide({
             onTaste={onTaste}
             onNext={onNext}
           />
+          {overlay}
         </Stage>
       ) : null}
     </section>
