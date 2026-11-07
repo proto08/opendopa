@@ -43,14 +43,14 @@
 
 | 部品 | 既定の実装 | 代わりの実装 | 環境変数 |
 | --- | --- | --- | --- |
-| 埋め込み | ローカルの `multilingual-e5-large`(1024次元。パイプラインを動かす PC で実行) | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`。使わない方針) | `EMBED_PROVIDER=local\|azure` |
+| 埋め込み | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`) | ローカルの `multilingual-e5-large`(1024次元。パイプラインを動かす PC で実行) | `EMBED_PROVIDER=azure\|local` |
 | 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | なし(Azure AI Speech は使わない) | `TTS_PROVIDER=none\|voicevox` |
 | 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `strands_azure`(Azure 上の Container App で動かす Strands Decider 2B。失敗・低確信度のときは `rules`) | `jev_local`(手元で動かす Jev 系 2B)、`jev_api`(TypeSafe Jev)。`azure_openai` は使わない方針 | `DECIDER_PROVIDER=rules\|jev_local\|jev_api\|strands_azure\|azure_openai` |
 | LLM(クラスタ名) | `none`(クラスタ名は機械的な名前にフォールバック)。テンプレート案(列定義 YAML の下書き)は LLM API ではなく Claude Code が書く(§8.9) | Azure OpenAI のチャットモデル(使わない方針) | `LLM_PROVIDER=none\|azure` |
 
-**方針(2026-11-07)**: Azure OpenAI は使わない。埋め込みと判断モデルはローカルで動かし、Azure には載せない(本番に載るのは web・recsys・DB・Blob/CDN だけ。モデルはパイプラインを動かす PC で動かし、結果を `publish` で上げる)。
+**方針(2026-11-07 改)**: 埋め込みは Azure OpenAI(`EMBED_PROVIDER=azure`)、判断モデルは Azure 上の自前モデル(`strands_azure`。評価に合格するまでは `rules`)。チャットモデル(`LLM_PROVIDER`)は使わず `none`。詳細は `docs/decisions/2026-11-07-decider-on-azure-again.md` と `docs/decisions/2026-11-07-no-azure-openai-local-models.md`。
 
-ローカルの埋め込み(`EMBED_PROVIDER=local`)は `intfloat/multilingual-e5-large`(1024次元)に決定。入力の先頭に、動画の本文には `passage: `、検索文には `query: ` を付け、正規化したベクトルを保存する。Azure と次元(1024)が同じなので、DBの列は共通。ただし、モデルが違うため、**ベクトルを混ぜない**(切り替えたら全動画を埋め込み直す)。
+代わりの実装のローカル埋め込み(`EMBED_PROVIDER=local`)は `intfloat/multilingual-e5-large`(1024次元)に決定。入力の先頭に、動画の本文には `passage: `、検索文には `query: ` を付け、正規化したベクトルを保存する。Azure と次元(1024)が同じなので、DBの列は共通。ただし、モデルが違うため、**ベクトルを混ぜない**(切り替えたら全動画を埋め込み直す)。
 
 `TTS_PROVIDER=none` のときの字幕のタイミングは、1秒あたり6.5文字で見積もる。
 
@@ -692,6 +692,7 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
 | 判断モデルの配備先(本体と同じ環境の CPU の Container App) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。外部 ingress だが Bearer トークン必須。既定では作らない(`decider_enabled`) |
+| Azure OpenAI | 埋め込み(`EMBED_PROVIDER=azure`)のデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認。チャットのデプロイは不要(`LLM_PROVIDER=none`) |
 | Key Vault(任意) | 接続文字列とキー |
 
 地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。

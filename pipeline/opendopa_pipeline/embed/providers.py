@@ -90,8 +90,8 @@ def _require_env(name: str) -> str:
 
 
 def provider_name_from_env() -> str:
-    """環境変数 `EMBED_PROVIDER`(既定 `local`)。"""
-    return os.environ.get("EMBED_PROVIDER") or "local"
+    """環境変数 `EMBED_PROVIDER`(既定 `azure`)。"""
+    return os.environ.get("EMBED_PROVIDER") or "azure"
 
 
 def create_embedder(name: str | None = None) -> EmbedProvider:
