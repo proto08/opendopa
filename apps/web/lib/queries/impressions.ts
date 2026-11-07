@@ -36,6 +36,7 @@ export interface Connectable extends Queryable {
 
 /**
  * 配信した動画を記録する。`reset` なら先にそのユーザーの `impressions` を削除する(`seenReset`、#40)。
+ * `scopeIds` があれば(タグの絞り込み中)、削除するのはその動画の分だけにする。
  * `UNIQUE (anon_id, video_id)` の競合(同時リクエストなど)は無視する。
  */
 export async function recordImpressions(
@@ -43,12 +44,18 @@ export async function recordImpressions(
   anonId: string,
   picks: { videoId: string; reason: Reason }[],
   reset: boolean,
+  scopeIds?: string[],
 ): Promise<void> {
   if (!reset && picks.length === 0) return;
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    if (reset)
+    if (reset && scopeIds)
+      await client.query(
+        "DELETE FROM impressions WHERE anon_id = $1 AND video_id = ANY($2::text[])",
+        [anonId, scopeIds],
+      );
+    else if (reset)
       await client.query("DELETE FROM impressions WHERE anon_id = $1", [
         anonId,
       ]);

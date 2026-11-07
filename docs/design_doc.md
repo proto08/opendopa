@@ -348,6 +348,8 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 次の動画を返す。`count` は1〜3。初回は `count=2&includeMap=1`(現在の動画と、先読み1本)。
 
+`tag` を足すと(複数可、4個まで。例: `tag=dataset:rental&tag=region:hokkaido`)、指定したすべてのタグを持つ動画(AND)だけから選ぶ。未知のタグ・5個以上は400。候補がなければ `items: []` と `reason: "pool_empty"`(`taste` は返す)。詳細は `docs/hashtag_design.md` §5.2。`GET /api/tags` は全タグと件数(`status='ok'` の動画だけを数える)を返す(同 §5.1)。
+
 処理:
 1. 匿名IDを確認する(Cookie。なければ発行する)。
 2. DBから、そのユーザーの `events`(`view_events` と `like_events` を時刻順)、配信済みの動画ID(`impressions`)、直近に配信したデータセットを読む。

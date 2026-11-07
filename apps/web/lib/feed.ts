@@ -13,6 +13,7 @@ import {
 } from "./queries/impressions";
 import { countViews, type LogRow, loadViewLog } from "./queries/log";
 import { loadMapPoints, type MapPoint } from "./queries/map";
+import { loadKnownTagIds, loadVideoIdsWithAllTags } from "./queries/tags";
 import { loadVideos, type VideoRow } from "./queries/videos";
 import { reasonLabel } from "./reasons";
 import { recsysFeed } from "./recsys-client";
@@ -33,7 +34,10 @@ export interface FeedDeps {
     anonId: string,
     picks: { videoId: string; reason: Reason }[],
     reset: boolean,
+    scopeIds?: string[],
   ): Promise<void>;
+  loadKnownTagIds(ids: string[]): Promise<Set<string>>;
+  loadVideoIdsWithAllTags(tagIds: string[]): Promise<string[]>;
   loadClusters(): Promise<ClusterRow[]>;
   loadMapPoints(): Promise<MapPoint[]>;
   loadViewLog(anonId: string, limit: number): Promise<LogRow[]>;
@@ -47,7 +51,9 @@ export function defaultDeps(): FeedDeps {
     loadImpressions: (a) => loadImpressions(pool, a),
     recsysFeed,
     loadVideos: (ids) => loadVideos(pool, ids),
-    recordImpressions: (a, p, r) => recordImpressions(pool, a, p, r),
+    recordImpressions: (a, p, r, s) => recordImpressions(pool, a, p, r, s),
+    loadKnownTagIds: (ids) => loadKnownTagIds(pool, ids),
+    loadVideoIdsWithAllTags: (ids) => loadVideoIdsWithAllTags(pool, ids),
     loadClusters: () => loadClusters(pool),
     loadMapPoints: () => loadMapPoints(pool),
     loadViewLog: (a, n) => loadViewLog(pool, a, n),
@@ -55,10 +61,21 @@ export function defaultDeps(): FeedDeps {
   };
 }
 
-/** クエリ文字列(`count` は 1〜3、`includeMap` は 0 / 1。外れたら 400) */
+/** 絞り込みに使えるタグの最大数(hashtag_design.md §5.2) */
+export const MAX_TAGS = 4;
+
+/**
+ * クエリ文字列(`count` は 1〜3、`includeMap` は 0 / 1、`tag` は繰り返せて 4 個まで。外れたら 400)。
+ * `tag` は重複を除いた配列になる。
+ */
 export const feedQuery = z.object({
   count: z.coerce.number().int().min(1).max(3).default(1),
   includeMap: z.enum(["0", "1"]).default("0"),
+  tag: z
+    .union([z.string().min(1), z.array(z.string().min(1))])
+    .optional()
+    .transform((v) => [...new Set(v === undefined ? [] : [v].flat())])
+    .pipe(z.array(z.string()).max(MAX_TAGS, `tag は ${MAX_TAGS} 個まで`)),
 });
 
 /** 配信しない `numbers`(検証用)を除いたシーン */
@@ -86,7 +103,17 @@ export async function getFeed(
   anonId: string,
   count: number,
   includeMap: boolean,
+  tags: string[] = [],
 ): Promise<FeedResponse> {
+  // 絞り込み: 未知のタグは 400。指定したすべてのタグを持つ動画(AND)だけを recsys の候補にする
+  let candidateIds: string[] | undefined;
+  if (tags.length > 0) {
+    const known = await deps.loadKnownTagIds(tags);
+    const unknown = tags.filter((t) => !known.has(t));
+    if (unknown.length > 0)
+      throw new HttpError(400, `tag: unknown tag ${unknown.join(", ")}`);
+    candidateIds = await deps.loadVideoIdsWithAllTags(tags);
+  }
   const [events, impressions] = await Promise.all([
     deps.loadEvents(anonId),
     deps.loadImpressions(anonId),
@@ -95,14 +122,26 @@ export async function getFeed(
     events,
     seenIds: impressions.seenIds,
     recentDatasets: impressions.recentDatasets,
+    ...(candidateIds && { candidateIds }),
     count,
   });
+  if (rec.reason === "pool_empty") {
+    return await withTaste(deps, anonId, rec, [], includeMap, "pool_empty");
+  }
 
   const videos = await deps.loadVideos(rec.picks.map((p) => p.videoId));
   // recsys の索引が DB より古く、公開で消えた・除外された動画は配信しない
   const picks = rec.picks.filter((p) => videos.has(p.videoId));
   if (picks.length === 0) throw new HttpError(503, "no video available");
-  await deps.recordImpressions(anonId, picks, rec.seenReset === true);
+  // 絞り込み中の一巡(seenReset)は、候補の配信済みだけを消す(候補の外の配信済みは残す)
+  if (candidateIds)
+    await deps.recordImpressions(
+      anonId,
+      picks,
+      rec.seenReset === true,
+      candidateIds,
+    );
+  else await deps.recordImpressions(anonId, picks, rec.seenReset === true);
 
   const items: FeedItem[] = picks.map((p) => {
     const v = videos.get(p.videoId)!;
@@ -116,6 +155,18 @@ export async function getFeed(
     };
   });
 
+  return withTaste(deps, anonId, rec, items, includeMap);
+}
+
+/** `items` に `taste`(と地図)を足して返す */
+async function withTaste(
+  deps: FeedDeps,
+  anonId: string,
+  rec: RecsysFeedResponse,
+  items: FeedItem[],
+  includeMap: boolean,
+  reason?: "pool_empty",
+): Promise<FeedResponse> {
   const [clusters, eventCount, log, points] = await Promise.all([
     deps.loadClusters(),
     deps.countViews(anonId),
@@ -127,5 +178,6 @@ export async function getFeed(
     taste: buildTaste(rec.taste, clusters, eventCount, log),
   };
   if (points) res.map = buildMap(points, clusters);
+  if (reason) res.reason = reason;
   return res;
 }
