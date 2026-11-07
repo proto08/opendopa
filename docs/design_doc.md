@@ -139,10 +139,24 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
   1. ロゴ「速報 OpenDopa NEWS」と、黄色のラベル「AI生成のフィクション風解説」(**常に表示、必須**)。
   2. 大きな数字(シアン色)。0から1.2秒でカウントアップする。単位とラベルが下に付く。
   3. 流れるコメント(右から左へ、7レーン、最大でレーンが空いているときだけ出す)。
-  4. 下部のテロップ(白い帯に見出し、左に赤のカテゴリ名の縦書き)。
+  4. 下部のテロップ(白い帯に見出し、左に赤のカテゴリ名の縦書き)。その上の左側に、動画のタグ(`#レンタカー #北海道`。§3.2a)。
   5. 字幕(1行ずつ、台本の秒数に合わせて切り替える)。
   6. 出典「出典:{データ名} / 行 #{番号}」(**常に表示、必須**)。
 - 背景には、カテゴリを表す大きな1文字の透かしを置く(例: 鉄、機、家、車、船)。
+- 左上のロゴの下に、タグ検索の虫眼鏡を置く(§3.2a)。
+
+### 3.2a タグと絞り込み
+
+詳しい設計と画面の細部は `docs/hashtag_design.md` §6、決めたことは `docs/decisions/` の `tags-*`、`bff-tag-filter`、`tag-search-ui-details`。
+
+- **動画のタグ**: `dataset` はシアン、`region` は白、選択中は黄色。タップで、そのタグで絞り込む(もう一度で外す)。右レールと重ならない幅にする。
+- **虫眼鏡**: 絞り込みがないときはアイコンだけ。絞り込み中は黄色で「絞り込み中 N本」(N は選んだタグの件数の最小値。件数が分からなければ本数は出さない)。押すと検索シートが開く。
+- **検索シート**: ステージの高さの74%で、下からせり出す(画面に1つ)。入力欄(あいまい検索。ブラウザ側)、選択中のタグ(`×` で外す)、候補リスト(`種別` / `地域`、`#タグ名`、`N本`)。入力が空なら「データの種類」と「件数の多い地域」上位8件。合うタグがなければ案内を出す。件数0のタグは候補に出さない。選べるのは4つまで。開いている間は、スクロールと↑↓ `j` `k` `l`、再生を止め、Esc で閉じる。フォーカスは、開いたら入力欄、閉じたら虫眼鏡へ。
+- **適用**: 候補を選ぶと適用して閉じる。`×` で外した分は閉じるときに適用する(タグが変わらなければ取り直さない)。変わったら、キューと先読みを捨てて条件つきで取り直し、先頭へ戻る。
+- **候補がないとき**(`pool_empty`): 最後の動画のあとに、「見終わりました。この条件の動画はありません。」と「タグを全部外す」の1画面を足す。
+- **URL**: 絞り込みは `?tag=…&tag=…` に持ち、リロードや共有で戻せる。URL のタグが不正で最初の取得が失敗したら、エラー画面に「タグを外して読み込む」を出す。
+
+web の画面は PR #169(Issue #156)で入る。マージされるまでは、この節は #169 のブランチの内容。
 
 ### 3.3 右レール(ステージの右端)
 
@@ -299,6 +313,21 @@ CREATE TABLE embeddings (
 );
 CREATE INDEX embeddings_hnsw ON embeddings USING hnsw (embedding vector_cosine_ops);  -- 任意(分析用)。recsys(Rust)は使わない(起動時に全件をメモリへ読む)
 
+CREATE TABLE tags (                       -- ハッシュタグ(docs/hashtag_design.md §4.2)
+  id     text PRIMARY KEY,                 -- 'region:hokkaido' / 'dataset:rental'
+  kind   text NOT NULL,                    -- 'dataset' | 'region'
+  label  text NOT NULL,                    -- '北海道'(# は付けない)
+  yomi   text NOT NULL,                    -- 'ほっかいどう'(検索用)
+  sort   int  NOT NULL DEFAULT 0
+);
+
+CREATE TABLE video_tags (
+  video_id text NOT NULL REFERENCES videos(id),
+  tag_id   text NOT NULL REFERENCES tags(id),
+  PRIMARY KEY (tag_id, video_id)
+);
+CREATE INDEX ON video_tags (video_id);
+
 CREATE TABLE meta (key text PRIMARY KEY, value jsonb NOT NULL);
 -- key='centroid': 全動画の重心ベクトル(好みの初期値)
 
@@ -334,6 +363,8 @@ CREATE INDEX ON view_events (anon_id, created_at);
 CREATE INDEX ON like_events (anon_id, created_at);
 ```
 
+`tags` / `video_tags` は、`pipeline publish` が書く(PR #172。`videos` のシーンJSON の `tags` から、1 トランザクションで `tags` を upsert、`video_tags` を全削除して作り直し、どの動画にも付かないタグを消す。`yomi` と `sort` は `pipeline/opendopa_pipeline/tags.py` の表から引く)。件数は `videos.status = 'ok'` の動画だけを数える。recsys の読み取りロールには権限を足さない(recsys は DB を読まず、候補を `candidateIds` で受け取る。§6.6)。
+
 匿名IDは、サーバーが発行して `od_aid` Cookie(httpOnly, SameSite=Lax, 有効期間1年)に入れる。クライアントから受け取らない。
 
 ---
@@ -348,7 +379,15 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 次の動画を返す。`count` は1〜3。初回は `count=2&includeMap=1`(現在の動画と、先読み1本)。
 
-`tag` を足すと(複数可、4個まで。例: `tag=dataset:rental&tag=region:hokkaido`)、指定したすべてのタグを持つ動画(AND)だけから選ぶ。未知のタグ・5個以上は400。候補がなければ `items: []` と `reason: "pool_empty"`(`taste` は返す)。詳細は `docs/hashtag_design.md` §5.2。`GET /api/tags` は全タグと件数(`status='ok'` の動画だけを数える)を返す(同 §5.1)。
+`tag` を足すと(複数可、4個まで。例: `tag=dataset:rental&tag=region:hokkaido`)、指定したすべてのタグを持つ動画(AND。`status='ok'` のみ)だけから選ぶ。重複する ID は 1 個と数える。未知のタグ・5個以上は、recsys を呼ぶ前に400。候補がなければ、200 で `items: []`、`reason: "pool_empty"`、`taste`(`includeMap=1` なら `map` も)を返し、`impressions` には何も記録しない。絞り込み中に recsys が `seenReset: true` を返したら、`impressions` は **候補の動画の分だけ**消す(候補の外の配信済みは残す)。絞り込み中も、視聴・いいねは通常どおり好みに反映する。詳細は `docs/hashtag_design.md` §5.2、`docs/decisions/2026-11-07-bff-tag-filter.md`。
+
+### 6.1a `GET /api/tags`
+
+全タグと件数を返す。動画がないタグも `count: 0` で含め、並びは `sort`、`id`。件数は `status='ok'` の動画だけを数える。
+
+```jsonc
+{ "tags": [ { "id": "region:hokkaido", "kind": "region", "label": "北海道", "yomi": "ほっかいどう", "count": 42 } ] }
+```
 
 処理:
 1. 匿名IDを確認する(Cookie。なければ発行する)。
@@ -541,7 +580,7 @@ uv run opendopa generate --dataset <id>        # 選定→原稿→シーン→�
 uv run opendopa decide   --dataset <id> --eval datasets/<id>.labels.csv   # 判断モデルの評価(人が付けた正解との一致率)
 uv run opendopa embed                          # 全動画の埋め込み・2D座標・クラスタ
 uv run opendopa tts      --dataset <id>        # 音声(TTS_PROVIDER が none ならスキップ)
-uv run opendopa publish                        # Blob とDBへ書き込む
+uv run opendopa publish                        # Blob とDBへ書き込む(`videos`、`embeddings`、タグ。PR #172)
 uv run opendopa all                            # 上を順に
 ```
 
@@ -553,7 +592,7 @@ uv run opendopa all                            # 上を順に
 4. **選定**: `select`(§8.4)で、動画にする行を絞る。
 5. **判断**: `decisions`(§8.3a)を行ごとに実行し、どの型のテンプレートにするかを決める(決定モデル)。安全チェックもここで行う。結果は `decisions` に記録する。
 6. **原稿**: `template_groups`(§8.3)から、選ばれた型の中で、埋められて長さに収まるテンプレートを選び、穴に値を入れる(§8.3.1)。
-7. **シーン**: 原稿、大きな数字、地図、コメントをまとめたシーンJSON(§9)にする。
+7. **シーン**: 原稿、大きな数字、地図、コメント、タグ(§9.3)をまとめたシーンJSON(§9)にする。
 8. **検証(品質ゲート)**: §8.6。通らない行は `excluded`。
 9. 出力: `out/<id>/scenes.jsonl`、`out/<id>/decisions_report.json`、除外の記録。
 
@@ -605,6 +644,10 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
   "map": null,                            // §9.1。地図がなければ null
   "sparkline": null,                      // [{x,y}...] 12点以内。なければ null
   "chips": [],                            // 特徴の小さなラベル(例: ["夜間","目視外"])
+  "tags": [                               // ハッシュタグ。必須(なければ []。§9.3)
+    { "id": "dataset:accident", "kind": "dataset", "label": "事故" },
+    { "id": "region:yamanashi", "kind": "region",  "label": "山梨県" }
+  ],
   "comments": [ { "t": 3.2, "text": "気をつけたい", "style": "normal" } ],   // style: 'normal'|'yellow'
   "source": { "datasetName": "無人航空機の事故等報告", "ref": "行 #1" },
   "numbers": [ ]                          // 検証用の記録(配信時は不要。DBには残す)
@@ -628,6 +671,12 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 - 大きな数字は `countUp` が true で `value` が数のとき、0から1.2秒で `value` までカウントアップ(桁区切り表示)。
 - 数字の桁数が多いときは、フォントサイズを小さくして、はみ出さないようにする(モックの `fontSize` の分岐を参照)。
 - 一時停止のときは、字幕、コメント、カウント、音声を止める。
+
+### 9.3 タグ(`tags`)
+
+- `id` は `<kind>:<slug>`(`^[a-z]+:[a-z0-9_-]+$`)、`kind` は `dataset` / `region`、`label` は `#` を付けない表示名。`tags` は必須で、付けるタグがなければ空配列。
+- データ種別のタグは、`datasets/<id>.yaml` の `tag:` から全データセットに付く。地域のタグは、`region_from:` の列の値から、都道府県の正規化表(47件)で引く。取れない動画(と、`naiko_ship`・`rail_*`)には地域タグを付けない。`naiko_route` と `flightplan` は、出発と到着の両方の都道府県を付ける(同じ県は1つ)。元データにない地名は作らない。LLM は使わない。列の定義は `docs/data.md` §10.14a。
+- 地方ブロック(`#東北`)と運輸局のタグは作らない。
 
 ---
 
