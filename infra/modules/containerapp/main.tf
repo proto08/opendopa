@@ -99,9 +99,11 @@ locals {
 }
 
 resource "azurerm_container_app_environment" "this" {
-  name                       = "cae-${var.name}"
-  resource_group_name        = var.resource_group_name
-  location                   = var.location
+  name                = "cae-${var.name}"
+  resource_group_name = var.resource_group_name
+  location            = var.location
+  # azurerm 5.x は logs_destination を明示しないと log_analytics_workspace_id を設定できない
+  logs_destination           = "log-analytics"
   log_analytics_workspace_id = var.log_analytics_workspace_id
   tags                       = var.tags
 }
