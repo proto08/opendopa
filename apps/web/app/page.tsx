@@ -1,9 +1,9 @@
-import { Feed } from "@/components/Feed";
+import { AppShell } from "@/components/AppShell";
 
 export default function Home() {
   return (
     <main>
-      <Feed />
+      <AppShell />
     </main>
   );
 }

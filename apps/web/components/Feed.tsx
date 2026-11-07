@@ -4,13 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { FeedItem, FeedResponse } from "@/lib/feedTypes";
 import { clampIndex, keyToDelta, observeActiveSlide } from "@/lib/feedNav";
 import { Slide } from "./Slide";
+import { useTasteApp } from "./taste-context";
 import "./feed.css";
 
-async function fetchFeed(count: number): Promise<FeedItem[]> {
-  const res = await fetch(`/api/feed?count=${count}`, { cache: "no-store" });
+/** 最初の取得だけ地図(`includeMap=1`)も受け取る */
+async function fetchFeed(count: number, includeMap: boolean): Promise<FeedResponse> {
+  const res = await fetch(`/api/feed?count=${count}${includeMap ? "&includeMap=1" : ""}`, {
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`/api/feed が ${res.status} を返しました`);
-  const body = (await res.json()) as FeedResponse;
-  return body.items;
+  return (await res.json()) as FeedResponse;
 }
 
 /** 縦スクロールのフィード。1 画面 1 動画で、見えている動画だけ再生する */
@@ -20,6 +23,7 @@ export function Feed() {
   const [active, setActive] = useState<number | null>(null);
   // 最後に再生中だった番号。切り替えの途中(active が null)でも Stage の window の基準にする
   const [anchor, setAnchor] = useState(0);
+  const app = useTasteApp();
   const rootRef = useRef<HTMLDivElement>(null);
   const loadingMore = useRef(false);
   const lastActive = useRef(0);
@@ -28,9 +32,12 @@ export function Feed() {
   const load = useCallback((count: number, initial: boolean) => {
     if (loadingMore.current) return;
     loadingMore.current = true;
-    fetchFeed(count)
-      .then((next) => {
-        setItems((prev) => [...prev, ...next]);
+    fetchFeed(count, initial)
+      .then((body) => {
+        // 好みと地図は、受け取って描くだけ(計算はサーバー)
+        if (body.map) app?.store.setMap(body.map);
+        app?.store.applyTaste(body.taste);
+        setItems((prev) => [...prev, ...body.items]);
         setStatus("ready");
       })
       .catch(() => {
@@ -40,7 +47,7 @@ export function Feed() {
       .finally(() => {
         loadingMore.current = false;
       });
-  }, []);
+  }, [app]);
 
   // 最初は、現在の動画と先読みの 2 本
   useEffect(() => {
