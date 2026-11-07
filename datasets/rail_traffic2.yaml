@@ -5,6 +5,7 @@ label: 鉄道の運輸成績
 source_name: 鉄道統計年報 運輸成績2
 wm_char: 鉄
 color: "#6366F1"
+tag: 鉄道
 files: [data/raw/rail_traffic2/02_tetsudou_unyuseiseki2.csv]
 grain: row
 rename: {CORPORATION_NAME: OPERATOR, COMPANY_NAME: OPERATOR, OPERATOR_NAME: OPERATOR}

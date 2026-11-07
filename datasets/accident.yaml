@@ -4,6 +4,8 @@ label: 事故等報告
 source_name: 無人航空機の事故等報告
 wm_char: 機
 color: "#FF7A59"
+tag: 事故
+region_from: [OCCURRENCE_LOCATION]
 files: [data/raw/accident/02_jikojyouhou.csv]
 grain: row
 rename: {}

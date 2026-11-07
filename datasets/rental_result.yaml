@@ -4,6 +4,8 @@ label: レンタカー貸渡実績
 source_name: レンタカー・カーシェアリング事業の貸渡実績報告
 wm_char: 車
 color: "#2EC4B6"
+tag: レンタカー
+region_from: [PREFECTURE_NAME]
 files: [data/raw/rental_result/01_yousiki1_kashiwatashijissekihoukokusho.csv]
 grain: group
 # OPERATOR_ID(匿名の事業者 ID)と REPORTING_PERIOD(和暦の文字列)は、集計後の行に残さない

@@ -47,9 +47,9 @@ FLEET_HEADER = [
     "TOTAL_SUM",
 ]
 FLEET_ROWS = [
-    ["甲", "A県", 111, 5000],
+    ["甲", "東京", 111, 5000],
     ["甲", "", 222, 5000],  # 甲の合計は 333
-    ["乙", "B県", 444, 6000],
+    ["乙", "沖縄県", 444, 6000],
     ["丙", "C県", "", ""],  # 車両数が欠損だけの運輸支局は動画にしない
     ["丁", "D県", 0, 0],  # 0 だけも同じ
     ["", "E県", 55, 55],  # 運輸支局が空の行は除く
@@ -172,3 +172,24 @@ def test_rental_fleet_shows_only_rank_and_share(fleet):
         assert "OWNED_VEHICLES_TOTAL" not in [c for c, _ in v.csv_row]
         assert not any(w in texts(v.scene) for w in ("台",))
     assert kou["map"] is None
+
+
+RENTAL = {"id": "dataset:rental", "kind": "dataset", "label": "レンタカー"}
+
+
+def test_rental_fleet_tags(fleet):
+    # 甲は、空の行を飛ばして「東京」(省略形)を東京都に正規化する。乙は沖縄県
+    scenes = {v.scene["source"]["ref"]: v.scene for v in fleet.videos}
+    assert scenes["BRANCH=甲"]["tags"] == [
+        RENTAL,
+        {"id": "region:tokyo", "kind": "region", "label": "東京都"},
+    ]
+    assert scenes["BRANCH=乙"]["tags"] == [
+        RENTAL,
+        {"id": "region:okinawa", "kind": "region", "label": "沖縄県"},
+    ]
+
+
+def test_rental_result_without_known_prefecture_has_only_dataset_tag(result):
+    # テストの「A県」は都道府県の表にない。元データにない地名を作らず、地域タグは付けない
+    assert by_pref(result)["A県"]["tags"] == [RENTAL]
