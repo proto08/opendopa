@@ -84,3 +84,20 @@ def test_every_dataset_has_a_dataset_tag(path: Path) -> None:
         assert ds.tag == "鉄道" and ds.region_from == []  # 運輸局は都道府県でない
     if ds.id in ("naiko_ship",):
         assert ds.region_from == []  # Address は事業者の所在地(使わない)
+
+
+def test_tag_row_has_yomi_and_sort() -> None:
+    from opendopa_pipeline.tags import PREFECTURE_TABLE, tag_row
+
+    assert tag_row({"id": "region:hokkaido", "kind": "region", "label": "北海道"}) == (
+        "region:hokkaido", "region", "北海道", "ほっかいどう", 0,
+    )  # fmt: skip
+    assert tag_row({"id": "dataset:rail", "kind": "dataset", "label": "鉄道"})[3:] == (
+        "てつどう",
+        3,
+    )
+    for p in PREFECTURE_TABLE:  # 全都道府県が引ける
+        tag_row({"id": f"region:{p.slug}", "kind": "region", "label": p.name})
+    from opendopa_pipeline.tags import DATASET_TAG_SLUGS, DATASET_TAG_YOMI
+
+    assert DATASET_TAG_SLUGS.keys() == DATASET_TAG_YOMI.keys()
