@@ -270,6 +270,58 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
 - インフラ変更: Actions の `Infra` から **Run workflow** → `plan` の要約を確認 → `infra-apply` の承認 → `apply`。
 - 最小構成から始める(無料試用など): 必須は Resource Group、Container Registry、Log Analytics、Postgres、Container Apps で、Azure OpenAI(`enable_openai`)、Blob(`enable_storage`)、Front Door(`enable_cdn`)は `terraform.tfvars` で `false` にできます(既定は `true`。`enable_openai = false` のときは `AZURE_OPENAI_*` が空になります)。変数は `.env.example` の `TF_VAR_*` と `infra/terraform.tfvars.example` を参照してください。
 
+## Azure 環境をゼロから作る・消す
+
+新しい `env_name` で、Azure 環境を最初から作る手順です。**Azure の課金とアクセス権に関わるため、人が実行します**(自動化したワークフローでは行いません)。CI/CD の初期設定(OIDC・GitHub の変数)は前節の「CD(デプロイ)とインフラ変更」のとおりです。
+
+前提: `az login` 済み(サブスクリプションで Owner か、Contributor と User Access Administrator)、`docker`、`terraform`(または `TF=tofu`)、`dbmate`(`mise install` で入る)。
+
+### 作る
+
+```bash
+# 1. state 用の Storage を作る(最初の1回だけ。infra/backend.hcl が書かれる)
+TFSTATE_SUFFIX=ab12 ENV_NAME=demo ./infra/bootstrap/bootstrap.sh
+
+# 2. 設定を用意する(terraform.tfvars はコミットしない)
+cp infra/terraform.tfvars.example infra/terraform.tfvars   # env_name を新しい名前にする
+export TF_VAR_postgres_admin_password='...'                # 16 文字以上
+export TF_VAR_internal_token='...'                         # 16 文字以上
+
+# 3. インフラを作る
+make infra-init && make infra-plan && make infra-apply
+
+# 4. DB のマイグレーションを流す(Postgres は Azure 内サービスからのみ許可のため、手元から流すときは一時的にファイアウォール規則を足す)
+#    DATABASE_URL は `terraform -chdir=infra output -raw database_url`
+DATABASE_URL="$(terraform -chdir=infra output -raw database_url)" dbmate up
+
+# 5. イメージをビルドして Container Apps を更新する
+make deploy
+```
+
+### 確認する
+
+```bash
+WEB_URL="$(terraform -chdir=infra output -raw web_url)"
+
+# /api/health が 200(DB 接続を含む。DB に繋がらなければ 503)
+curl -fsS -o /dev/null -w '%{http_code}\n' "$WEB_URL/api/health"
+
+# recsys が外部から届かない(内部 ingress のみ)。名前解決できない、または接続できないことを確かめる
+RECSYS_FQDN="$(terraform -chdir=infra output -raw recsys_internal_url | sed 's#^https\?://##')"
+curl -sS --max-time 10 "https://$RECSYS_FQDN/healthz" || echo "届かない(期待どおり)"
+```
+
+`/api/health/recsys` は web から recsys への到達を確認します。recsys に索引を読ませるには、pipeline の `publish` のあとに `make recsys-reload` を実行します(前述)。
+
+### 消す
+
+```bash
+terraform -chdir=infra destroy        # 作った環境を消す。確認の入力が要る
+# state 用の Storage(rg-opendopa-tfstate)は別に作ったものなので、不要なら人が az group delete で消す
+```
+
+`destroy` はデータ(DB・Blob)も消します。残したいデータがあれば、先に取り出してください。Front Door と Postgres は課金が続くので、使い終わったら消します。
+
 ## ドキュメント
 
 - [設計書](docs/design_doc.md)
