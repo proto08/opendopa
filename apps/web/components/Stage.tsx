@@ -1,7 +1,7 @@
 "use client";
 
 import type { Scene } from "@opendopa/shared";
-import { useEffect, type CSSProperties } from "react";
+import { useEffect, type CSSProperties, type ReactNode } from "react";
 import { useScenePlayer } from "@/lib/useScenePlayer";
 import { AiLabel } from "./AiLabel";
 import { BigNumber } from "./BigNumber";
@@ -9,16 +9,32 @@ import { Captions } from "./Captions";
 import { Comments } from "./Comments";
 import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
+import { SceneMap } from "./SceneMap";
 import { SourceLine } from "./SourceLine";
+import { useViewTracking } from "./taste-context";
 import { Telop } from "./Telop";
 import "./stage.css";
 
 /** 9:16 の動画ステージ。1 本のシーンを再生する(タップと Space で一時停止/再開) */
-export function Stage({ scene }: { scene: Scene }) {
-  const player = useScenePlayer(scene);
+export function Stage({
+  scene,
+  active = true,
+  hold = false,
+  children,
+}: {
+  scene: Scene;
+  active?: boolean;
+  /** true の間は再生を止める(シートが開いているとき) */
+  hold?: boolean;
+  /** 重ねて置くもの(右レールなど) */
+  children?: ReactNode;
+}) {
+  const player = useScenePlayer(scene, active, hold);
   const { toggle } = player;
+  useViewTracking(scene.videoId, active, player.paused);
 
   useEffect(() => {
+    if (!active) return; // フィードでは、見えている動画だけが Space に反応する
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.code !== "Space" || e.repeat) return;
       const target = e.target;
@@ -36,7 +52,7 @@ export function Stage({ scene }: { scene: Scene }) {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggle]);
+  }, [toggle, active]);
 
   return (
     <div
@@ -57,12 +73,14 @@ export function Stage({ scene }: { scene: Scene }) {
         <span className="logoName">OpenDopa NEWS</span>
       </div>
       <BigNumber data={scene.bigNumber} countProgress={player.countProgress} />
+      <SceneMap map={scene.map} />
       <Telop categoryName={scene.categoryName} headline={scene.headline} />
       <Captions lines={scene.lines} lineIndex={player.lineIndex} />
       <SourceLine source={scene.source} />
       <AiLabel />
       <Comments comments={scene.comments} totalSec={player.totalSec} playedSec={player.playedSec} />
       <PauseIcon paused={player.paused} toggles={player.toggles} />
+      {children}
     </div>
   );
 }

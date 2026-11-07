@@ -64,11 +64,10 @@ template_groups:
   - id: injury
     label: "人が負傷した"
     templates:
-      # 概要の2文目以降と機体の被害は使わない(負傷の部位や症状が入りうるため)
+      # 概要の引用(1文目も)と機体の被害は使わない(負傷の部位や症状が入りうるため)
       - id: injury_std
         lines:
           - "{date}、{place}で、無人航空機に関わる人の負傷が報告されました。"
-          - "{summary_1}"
           - "{casualty_sentence}"
           - {text: "再発防止策として、報告にはこう書かれています。{measure_first}", optional: true}
       - id: injury_short

@@ -1,0 +1,120 @@
+/* 下から出るシート(元データ・好み) */
+.sheetBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgb(0 0 0 / 55%);
+}
+
+.sheet {
+  width: min(100%, 520px);
+  max-height: 80dvh;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px 18px 0 0;
+  background: var(--navy);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  color: #fff;
+  font-family: var(--font-body);
+  animation: sheet-up 0.25s ease-out;
+}
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    animation: none;
+  }
+}
+
+.sheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.sheetTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.sheetClose {
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: transparent;
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sheetClose:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+
+.sheetBody {
+  overflow-y: auto;
+  padding: 14px 16px 24px;
+}
+
+/* 元データのシート */
+.csvMeta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.csvMeta dt {
+  color: var(--muted);
+}
+
+.csvMeta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.csvNote {
+  margin: 0 0 12px;
+  color: var(--yellow);
+  font-size: 13px;
+}
+
+.csvTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.csvTable th,
+.csvTable td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+
+.csvTable th {
+  color: var(--muted);
+  font-weight: 500;
+  white-space: nowrap;
+}

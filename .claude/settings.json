@@ -16,7 +16,12 @@
       "Bash(mise exec -- uv run opendopa:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
-      "Bash(git log:*)"
+      "Bash(git log:*)",
+      "Bash(git fetch:*)",
+      "Bash(bash mise-tasks/sleep-scan:*)",
+      "Bash(mise-tasks/sleep-scan:*)",
+      "Bash(gh api -X POST repos/*/issues/*/labels*)",
+      "Bash(gh api -X DELETE repos/*/issues/*/labels/*)"
     ],
     "deny": [
       "Read(./.env.local)",

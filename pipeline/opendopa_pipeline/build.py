@@ -92,12 +92,22 @@ def build_dataset(
     else:
         decisions = [{} for _ in rows]
 
+    for row, decs in zip(rows, decisions, strict=True):
+        _apply_drops(dataset, row, decs)
+
     videos = [
         _build_one(dataset, prepared, f"{dataset.id}-{n:04d}", rid, row, decs)
         for n, (rid, row, decs) in enumerate(zip(ids, rows, decisions, strict=True), start=1)
     ]
     _drop_duplicates(videos)
     return videos
+
+
+def _apply_drops(dataset: DatasetDef, row: dict[str, Any], decs: dict[str, dict[str, Any]]) -> None:
+    """判断で `dropped` になった列(広告らしい文など)を、その行だけ欠損にする。"""
+    for d in dataset.decisions:
+        if d.drop and decs.get(d.id, {}).get("dropped"):
+            row[d.drop] = None
 
 
 def _drop_duplicates(videos: list[Video]) -> None:
@@ -189,6 +199,11 @@ def _build_one(
         row=row,
         numbers=scene["numbers"],
         required=dataset.required,
+        extra_texts=[
+            scene["headline"],
+            *scene["chips"],
+            *(c["text"] for c in scene["comments"]),
+        ],
     )
     if failed:
         # 理由コードは、最初に不合格になった検査。説明には全部を残す

@@ -172,6 +172,10 @@ class Decision(_Model):
     options_from: str | None = None
     min_confidence: float | None = None
     exclude_if_probability_above: float | None = None
+    # noul で、確率が drop_if_probability_above を超えたら、行は除外せず、列 `drop`
+    # (derived の名前など)の値だけ欠損にする(広告らしい文だけを使わない、など)
+    drop: str | None = None
+    drop_if_probability_above: float | None = None
     fallback: dict[str, Any] | None = None
 
 
@@ -364,6 +368,12 @@ class DatasetDef(_Model):
         for d in self.decisions:
             if d.options_from not in (None, "template_groups"):
                 errors.append(f"decisions[{d.id}].options_from: template_groups のみ使えます")
+            if (d.drop is None) != (d.drop_if_probability_above is None):
+                errors.append(
+                    f"decisions[{d.id}]: drop と drop_if_probability_above は両方書いてください"
+                )
+            if d.drop is not None and d.kind != "noul":
+                errors.append(f"decisions[{d.id}].drop: noul の判断だけで使えます")
         return errors
 
     def holes(self) -> list[tuple[str, str]]:
@@ -416,6 +426,12 @@ def validate_against_columns(dataset: DatasetDef, columns: list[str] | set[str])
     for col in [*dataset.group_by, *dataset.aggregate]:
         if col not in after_derive:
             errors.append(f"group_by / aggregate: 列 {col!r} がありません")
+    for d in dataset.decisions:
+        for col in [*d.state, *([d.drop] if d.drop else [])]:
+            if col not in known:
+                errors.append(
+                    f"decisions[{d.id}]: 列 {col!r} は、列にも derived / stats にもありません"
+                )
     for col in dataset.required:
         if col not in known:
             errors.append(f"required: {col!r} は、列にも derived / stats にもありません")

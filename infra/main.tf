@@ -88,17 +88,6 @@ module "openai" {
   tags                = local.tags
 }
 
-# TTS_PROVIDER=azure のときだけ作る(既定の none / voicevox では作らない)
-module "speech" {
-  source = "./modules/speech"
-  count  = var.tts_provider == "azure" ? 1 : 0
-
-  name                = "spch-${local.name}${local.global_suffix}"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = azurerm_resource_group.main.location
-  tags                = local.tags
-}
-
 locals {
   database_url = format(
     "postgres://%s:%s@%s:5432/%s?sslmode=require",
@@ -126,6 +115,8 @@ module "containerapp" {
 
   web_env = {
     MEDIA_BASE_URL = module.cdn.base_url
+    TTS_PROVIDER   = var.tts_provider
+    TTS_CREDIT     = var.tts_credit
   }
   web_secrets = {
     DATABASE_URL                          = local.database_url

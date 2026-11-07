@@ -1,0 +1,209 @@
+# 空き家バンク: 成約物件(docs/data.md §8.3 と §10.4)。akiya_reg に準じる
+id: akiya_sold
+label: 空き家バンク(成約)
+source_name: 空き家バンク 成約物件
+wm_char: 成
+color: "#58A6D8"
+files: [data/raw/akiya_sold/02_seiyakubukken.csv]
+grain: row
+# 「/」を含む列名は式に書けないので置き換える。AMOUNT_RENT は売り出し時の価格
+rename: {AMOUNT/RENT: AMOUNT_RENT, CONTRACT_INFO_AMOUNT/RENT: CONTRACT_AMOUNT}
+null_values: ["", "指定なし"]
+zero_is_null: [AMOUNT_RENT, CONTRACT_AMOUNT]
+# 成約価格・売り出し価格が 0・欠損・10億円以上の行と、値下げ率が ±50% を超える行は動画にしない
+filters:
+  - {col: AMOUNT_RENT, not_null: true}
+  - {col: CONTRACT_AMOUNT, not_null: true}
+  - "AMOUNT_RENT < 1000000000"
+  - "CONTRACT_AMOUNT < 1000000000"
+  - "discount_pct > -50 and discount_pct < 50"
+
+derived:
+  # 賃貸は月額なので「月3.5万円」、売買は「350万円」
+  price:
+    from: CONTRACT_AMOUNT
+    op: format
+    fmt: yen
+    prefix_if: {col: PROPERTY_CATEGORY, contains: 賃貸, prefix: 月}
+  list_price:
+    from: AMOUNT_RENT
+    op: format
+    fmt: yen
+    prefix_if: {col: PROPERTY_CATEGORY, contains: 賃貸, prefix: 月}
+  # 値下げ率 = (売り出し価格 - 成約価格) / 売り出し価格(両方が正のときだけ)。数値は除外の判定用
+  discount_pct: {from: AMOUNT_RENT, op: pct_diff, against: CONTRACT_AMOUNT}
+  # 売り出し時より下がったときだけ、「◯%」の文を出す
+  discount_text:
+    from: AMOUNT_RENT
+    op: pct_diff
+    against: CONTRACT_AMOUNT
+    fmt: percent
+    only_positive: true
+  contract_date: {from: CONTRACT_INFO_DATE, op: format_datetime, fmt: ymd}
+  built: {from: DATE_OF_CONSTRUCTION, op: year_of, suffix: 年築}
+  station: {from: NEAREST_STATION, op: ensure_suffix, suffix: 駅}
+  garden_text:
+    from: GARDEN
+    op: map
+    map: {"有": "庭があります。", "有り": "庭があります。"}
+  retail_text:
+    from: RETAIL_PREMISES
+    op: map
+    map: {"有": "店舗の区画があります。", "有り": "店舗の区画があります。"}
+  business:
+    from: PROPERTY_CATEGORY
+    op: map
+    map: {売買事業用: 事業用, 賃貸事業用: 事業用}
+  # 自由記述は、広告・屋号・個人情報・数字を含む文を使わず、最初の1文だけ(40字以内)
+  strong_point: {from: STRONG_POINTS, op: free_sentence, max_chars: 40}
+  has_strong_points: {from: STRONG_POINTS, op: flag_present}
+
+select:
+  cap: 150
+  diversify_by: [PREFECTURE]
+  score:
+    - {expr: has_strong_points, weight: 1.0}
+
+big_number:
+  primary: {text: "{price}", unit: "", label: "成約価格"}
+
+headline: "{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が成約"
+chips: ["{PREFECTURE}", "{PROPERTY_CATEGORY}", "{CONSTRUCTION}", "{built}"]
+# 自由記述(広告や個人情報が混ざる)と、使わないIDは、元の行としても出さない
+hide: [STRONG_POINTS, TOILET_NOTE, BATH_NOTE, ID]
+
+# 面積(OCCUPATION_AREA)と敷地(SIZE_OF_LOT)の数字は、単位が確認できるまで読み上げない。
+# 最寄り駅までの距離(分とメートルが混ざる)も読み上げない
+template_groups:
+  - id: nature
+    label: "自然・静かな環境を紹介している"
+    templates:
+      - id: nature_std
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "紹介文には、「{strong_point}」とあります。"
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+          - {text: "売り出し時より{discount_text}低い価格での成約です。", optional: true}
+          - {text: "成約日は{contract_date}です。", optional: true}
+          - {text: "建物は{built}です。", optional: true}
+      - id: nature_short
+        short: true
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "紹介文には、「{strong_point}」とあります。"
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+  - id: access
+    label: "駅や生活の便利さを紹介している"
+    templates:
+      - id: access_std
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "最寄り駅は{station}です。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+          - {text: "売り出し時より{discount_text}低い価格での成約です。", optional: true}
+          - {text: "成約日は{contract_date}です。", optional: true}
+          - {text: "建物は{built}です。", optional: true}
+      - id: access_short
+        short: true
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "最寄り駅は{station}です。"
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+  - id: space
+    label: "広さや庭を紹介している"
+    templates:
+      - id: space_std
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "{garden_text}"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+          - {text: "売り出し時より{discount_text}低い価格での成約です。", optional: true}
+          - {text: "成約日は{contract_date}です。", optional: true}
+          - {text: "建物は{built}です。", optional: true}
+      - id: space_short
+        short: true
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "{garden_text}"
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+  - id: shop
+    label: "店舗や事業での利用を紹介している"
+    templates:
+      - id: shop_business
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "{business}の物件として登録されていました。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+          - {text: "売り出し時より{discount_text}低い価格での成約です。", optional: true}
+          - {text: "成約日は{contract_date}です。", optional: true}
+      - id: shop_retail
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - "{retail_text}"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+          - {text: "売り出し時より{discount_text}低い価格での成約です。", optional: true}
+          - {text: "成約日は{contract_date}です。", optional: true}
+      - id: shop_short
+        short: true
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+  - id: other
+    label: "上のどれでもない"
+    templates:
+      - id: other_std
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - {text: "紹介文には、「{strong_point}」とあります。", optional: true}
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+          - {text: "売り出し時より{discount_text}低い価格での成約です。", optional: true}
+          - {text: "成約日は{contract_date}です。", optional: true}
+          - {text: "建物は{built}です。", optional: true}
+          - {text: "構造は{CONSTRUCTION}です。", optional: true}
+      - id: other_short
+        short: true
+        lines:
+          - "成約情報です。{PREFECTURE}{CITY}の{PROPERTY_CATEGORY}が、{price}で成約しました。"
+          - {text: "売り出し時の価格は{list_price}でした。", optional: true}
+
+template_select: {decision: template}
+
+decisions:
+  - id: template
+    kind: choice
+    question: "この空き家バンクの成約物件は、紹介文や種別から見て、次のどの型に一番近いですか。"
+    # 渡すのはこの列だけ(自由記述は、使える1文にしたものを渡す)
+    state: [strong_point, PROPERTY_CATEGORY, RETAIL_PREMISES, station, garden_text]
+    options_from: template_groups
+    min_confidence: 0.55
+    fallback: {rule: keyword, default: other}
+  # 広告・屋号らしい文は、行は除外せず、その文だけ使わない(`rules` のときは、derived の
+  # キーワードと正規表現(free_sentence)で代用する)
+  - id: stronger_ad
+    kind: noul
+    question: "この成約物件の紹介文に、不動産会社の屋号や広告の言い回しが含まれていますか。"
+    state: [strong_point]
+    drop: strong_point
+    drop_if_probability_above: 0.5
+    fallback: {rule: regex_pii}
+
+fallback_rules:
+  keyword:
+    - {if: "PROPERTY_CATEGORY == '売買事業用' or PROPERTY_CATEGORY == '賃貸事業用' or RETAIL_PREMISES == '有' or RETAIL_PREMISES == '有り' or contains(strong_point, ['店舗', '事務所', '事業', '営業'])", then: shop}
+    - {if: "contains(strong_point, ['自然', '静か', '閑静', '緑', '山', '川', '海', '田舎', 'のどか', 'のんびり', '眺', '景色', '森', '畑'])", then: nature}
+    - {if: "contains(strong_point, ['駅', '便利', '利便', 'バス', 'スーパー', '交通', 'アクセス', '街中', 'まちなか'])", then: access}
+    - {if: "contains(strong_point, ['広', '庭', '敷地', '菜園', '駐車', '部屋数'])", then: space}
+    - {if: "station != null", then: access}
+    - {if: "garden_text != null", then: space}
+    - {else: other}
+
+comments:
+  pool_light: ["気になる", "決まってよかった", "こんな物件もあるんだ", "ほう", "なるほど", "へえ"]
+  rule: "else light"
+
+embed_text: "空き家バンク 成約 {PREFECTURE} {CITY} {PROPERTY_CATEGORY} {strong_point}"
+required: [PREFECTURE, CITY, PROPERTY_CATEGORY, AMOUNT_RENT, CONTRACT_AMOUNT]

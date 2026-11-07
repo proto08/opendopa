@@ -28,6 +28,9 @@ pub struct Config {
     pub explore: f32,
     /// 最初の N 本は、全データセットから偏らず選ぶ。
     pub cold_start_n: usize,
+    /// `discover_n` 本目までは、まだ出ていないデータセットが残っている間、新しいデータセットから選ぶ
+    /// (好みの信号がない利用者でも、全データセットを一巡して好みを見つけるため)。`cold_start_n` 以下なら無効。
+    pub discover_n: usize,
     /// 同じデータセットが連続できる最大数。
     pub max_streak: usize,
     /// 地図上の現在地を出すときの温度。
@@ -45,7 +48,8 @@ impl Default for Config {
             tau: 0.05,
             explore: 0.18,
             cold_start_n: 3,
-            max_streak: 2,
+            discover_n: 14,
+            max_streak: 3,
             tau_map: 0.05,
         }
     }

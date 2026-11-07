@@ -8,5 +8,6 @@ topk = 20
 tau = 0.05
 explore = 0.18
 cold_start_n = 3
-max_streak = 2
+discover_n = 14
+max_streak = 3
 tau_map = 0.05

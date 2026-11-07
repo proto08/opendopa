@@ -1,0 +1,46 @@
+/* 右レール: ボタンの大きさはステージ幅の 11cqw(設計書 §3.0) */
+.rail {
+  position: absolute;
+  right: 2cqw;
+  bottom: 40cqw;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 3cqw;
+  cursor: default;
+}
+
+.railButton {
+  width: 11cqw;
+  height: 11cqw;
+  padding: 2.2cqw;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(10 31 61 / 70%);
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.railButton svg {
+  width: 100%;
+  height: 100%;
+}
+
+.railButton:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+
+.railButton[data-liked="true"] {
+  color: var(--red);
+}
+
+/* 「好み」ボタンはスマホ(幅 899px 以下)だけ。PC では右にパネルがある */
+@media (min-width: 900px) {
+  .railTaste {
+    display: none;
+  }
+}

@@ -151,3 +151,71 @@ describe("大きな数字の文字サイズ", () => {
     expect(bigNumberFontSizeCqw("123.4")).toBe(21);
   });
 });
+
+describe("ScenePlayer.reset", () => {
+  it("一時停止して最初に戻す", () => {
+    let t = 0;
+    const tick: { cb?: () => void } = {};
+    const p = new ScenePlayer([{ durationSec: 2 }, { durationSec: 2 }], {
+      now: () => t,
+      schedule: (f) => ((tick.cb = f), 1),
+      cancel: () => {},
+    });
+    p.start();
+    t = 200;
+    tick.cb?.();
+    expect(p.getSnapshot().playedSec).toBeGreaterThan(0);
+    p.reset();
+    const s = p.getSnapshot();
+    expect(s.paused).toBe(true);
+    expect(s.playedSec).toBe(0);
+    expect(s.lineIndex).toBe(0);
+    expect(s.progress).toBe(0);
+  });
+});
+
+describe("ScenePlayer.hold / release(シートが開いている間の停止)", () => {
+  function make() {
+    let t = 0;
+    const tick: { cb?: () => void } = {};
+    const p = new ScenePlayer([{ durationSec: 4 }], {
+      now: () => t,
+      schedule: (f) => ((tick.cb = f), 1),
+      cancel: () => {},
+    });
+    return { p, advance: (ms: number) => ((t += ms), tick.cb?.()) };
+  }
+
+  it("hold で止まり、release で続きから再開する(アイコンは出さない)", () => {
+    const { p, advance } = make();
+    p.start();
+    advance(200);
+    p.hold();
+    const held = p.getSnapshot();
+    expect(held.paused).toBe(true);
+    expect(held.toggles).toBe(0);
+    advance(5000);
+    expect(p.getSnapshot().playedSec).toBeCloseTo(held.playedSec);
+    p.release();
+    expect(p.getSnapshot().paused).toBe(false);
+    advance(200);
+    expect(p.getSnapshot().playedSec).toBeGreaterThan(held.playedSec);
+  });
+
+  it("hold 中のタップでは再開しない", () => {
+    const { p } = make();
+    p.start();
+    p.hold();
+    p.toggle();
+    expect(p.getSnapshot().paused).toBe(true);
+  });
+
+  it("利用者が止めていたら、release しても再開しない", () => {
+    const { p } = make();
+    p.start();
+    p.pause();
+    p.hold();
+    p.release();
+    expect(p.getSnapshot().paused).toBe(true);
+  });
+});

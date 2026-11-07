@@ -133,6 +133,8 @@ export class ScenePlayer {
   private playedSec = 0;
   private paused = true;
   private toggles = 0;
+  /** シートなどで一時的に止めているとき true(利用者の一時停止とは区別する) */
+  private held = false;
   private lastMs = 0;
   private frame: Frame | null = null;
   private snapshot: PlayerSnapshot;
@@ -155,6 +157,40 @@ export class ScenePlayer {
     this.cancelFrame();
     this.playedSec = 0;
     this.toggles = 0;
+    this.held = false;
+    this.paused = false;
+    this.lastMs = this.deps.now();
+    this.publish();
+    this.scheduleTick();
+  }
+
+  /** 一時停止して、字幕・進行を最初に戻す(画面から外れたとき) */
+  reset(): void {
+    this.cancelFrame();
+    this.playedSec = 0;
+    this.toggles = 0;
+    this.held = false;
+    this.paused = true;
+    this.publish();
+  }
+
+  /**
+   * シートが開いている間、再生を止める。一時停止アイコンは出さない。
+   * すでに利用者が止めているときは何もしない(`release` でも再開しない)。
+   */
+  hold(): void {
+    if (this.paused || this.held) return;
+    this.advance();
+    this.paused = true;
+    this.held = true;
+    this.cancelFrame();
+    this.publish();
+  }
+
+  /** `hold` で止めた再生を続きから再開する。`hold` していなければ何もしない */
+  release(): void {
+    if (!this.held) return;
+    this.held = false;
     this.paused = false;
     this.lastMs = this.deps.now();
     this.publish();
@@ -185,6 +221,7 @@ export class ScenePlayer {
   }
 
   toggle(): void {
+    if (this.held) return; // シートが開いている間は、利用者の操作で再開しない
     if (this.paused) this.resume();
     else this.pause();
   }

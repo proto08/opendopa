@@ -272,3 +272,48 @@
   text-overflow: ellipsis;
   z-index: 3;
 }
+
+/* 地図(大きな数字の下)。色はカテゴリ色 */
+.sceneMap {
+  position: absolute;
+  top: 62cqw;
+  left: 4cqw;
+  width: 92cqw;
+  height: auto;
+  aspect-ratio: 100 / 68;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+.mapOutline {
+  fill: rgb(255 255 255 / 7%);
+  stroke: rgb(255 255 255 / 30%);
+  stroke-width: 0.35;
+  vector-effect: non-scaling-stroke;
+  stroke-linejoin: round;
+}
+.mapArea {
+  fill: color-mix(in srgb, var(--cat) 45%, transparent);
+  stroke: var(--cat);
+  stroke-width: 0.5;
+}
+.mapRoute {
+  fill: none;
+  stroke: var(--cat);
+  stroke-width: 0.9;
+  stroke-linecap: round;
+  stroke-dasharray: 2 1.6;
+}
+.mapDot {
+  fill: var(--cat);
+  stroke: #fff;
+  stroke-width: 0.4;
+}
+.mapLabel {
+  font-size: 3.4px;
+  font-weight: 900;
+  fill: #fff;
+  paint-order: stroke;
+  stroke: #000;
+  stroke-width: 0.7px;
+}

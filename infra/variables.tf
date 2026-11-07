@@ -84,14 +84,20 @@ variable "cors_allowed_origins" {
 }
 
 variable "tts_provider" {
-  description = "TTS_PROVIDER(none / voicevox / azure)。azure のときだけ Azure AI Speech を作る"
+  description = "web に渡す TTS_PROVIDER(none / voicevox)。voicevox のときだけフッターにクレジットを出す"
   type        = string
   default     = "none"
 
   validation {
-    condition     = contains(["none", "voicevox", "azure"], var.tts_provider)
-    error_message = "tts_provider は none / voicevox / azure のいずれかにする。"
+    condition     = contains(["none", "voicevox"], var.tts_provider)
+    error_message = "tts_provider は none / voicevox のどちらかにする。"
   }
+}
+
+variable "tts_credit" {
+  description = "web のフッターに出すクレジット(TTS_CREDIT)。声を変えたら合わせる。空なら web の既定(VOICEVOX:ずんだもん)"
+  type        = string
+  default     = ""
 }
 
 variable "internal_token" {
