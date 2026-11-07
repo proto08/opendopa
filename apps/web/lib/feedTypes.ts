@@ -23,4 +23,10 @@ export type FeedMap = {
   }[];
 };
 
-export type FeedResponse = { items: FeedItem[]; taste: Taste; map?: FeedMap };
+export type FeedResponse = {
+  items: FeedItem[];
+  taste: Taste;
+  map?: FeedMap;
+  /** 絞り込みの候補が尽きた(`items` は空)。タグがないときは出ない */
+  reason?: "pool_empty";
+};

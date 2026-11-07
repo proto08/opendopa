@@ -16,6 +16,10 @@ export DATABASE_URL="postgres://opendopa:opendopa@localhost:5432/$tdb?sslmode=di
 dbmate up >/dev/null
 dbmate up >/dev/null # 2回目: 何も起きず壊れない
 echo "ok: 空のDBに適用でき、2回流しても壊れない"
+dbmate down >/dev/null # 最新の1本(tags)の down が通り、up し直せる
+[ "$(tpsql -c "SELECT count(*) FROM pg_tables WHERE tablename IN ('tags','video_tags')")" = 0 ] || fail "down で tags が消えない"
+dbmate up >/dev/null
+echo "ok: 最新のマイグレーションの down が通り、up し直せる"
 
 fail() { echo "NG: $*" >&2; exit 1; }
 expect_fail() { # <説明> <実行する関数> <SQL>
@@ -25,7 +29,7 @@ expect_fail() { # <説明> <実行する関数> <SQL>
 
 # テーブル・インデックスがある
 tables=$(tpsql -c "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname='public' AND tablename <> 'schema_migrations'")
-want="clusters,datasets,embeddings,impressions,like_events,meta,videos,view_events"
+want="clusters,datasets,embeddings,impressions,like_events,meta,tags,video_tags,videos,view_events"
 [ "$tables" = "$want" ] || fail "テーブルが違う: $tables"
 for idx in embeddings_hnsw view_events_anon_id_created_at_idx like_events_anon_id_created_at_idx; do
   [ "$(tpsql -c "SELECT count(*) FROM pg_indexes WHERE indexname='$idx'")" = 1 ] || fail "インデックス $idx がない"
@@ -47,6 +51,12 @@ SQL
 expect_fail "impressions の (anon_id, video_id) 重複は失敗" tpsql "INSERT INTO impressions (anon_id,video_id,reason) VALUES ('a','v1','near')"
 expect_fail "view_events の view_id 重複は失敗" tpsql "INSERT INTO view_events (view_id,anon_id,video_id,watched_sec,ratio) VALUES ('x','b','v1',1,0.1)"
 expect_fail "存在しない video_id は外部キーで失敗" tpsql "INSERT INTO like_events (anon_id,video_id,liked) VALUES ('a','nope',true)"
+tpsql >/dev/null <<SQL
+INSERT INTO tags VALUES ('region:hokkaido','region','北海道','ほっかいどう',1);
+INSERT INTO video_tags VALUES ('v1','region:hokkaido');
+SQL
+expect_fail "video_tags の (tag_id, video_id) 重複は失敗" tpsql "INSERT INTO video_tags VALUES ('v1','region:hokkaido')"
+expect_fail "存在しない tag_id は外部キーで失敗" tpsql "INSERT INTO video_tags VALUES ('v1','region:none')"
 expect_fail "次元の違うベクトル(3次元)は失敗" tpsql "INSERT INTO clusters VALUES (2,'c','#000000','[1,2,3]',0,0)"
 
 # recsys の読み取り専用ロール
@@ -57,6 +67,8 @@ rpsql -c "SELECT id, dataset_id, status FROM videos" >/dev/null
 echo "ok: recsys は embeddings・clusters・meta・videos(id, dataset_id, status)を SELECT できる"
 expect_fail "recsys は videos.scene を読めない" rpsql "SELECT scene FROM videos"
 expect_fail "recsys は videos.csv_row を読めない" rpsql "SELECT csv_row FROM videos"
+expect_fail "recsys は tags を読めない" rpsql "SELECT * FROM tags"
+expect_fail "recsys は video_tags を読めない" rpsql "SELECT * FROM video_tags"
 expect_fail "recsys は impressions を読めない" rpsql "SELECT * FROM impressions"
 expect_fail "recsys は INSERT できない" rpsql "INSERT INTO meta VALUES ('x','{}')"
 expect_fail "recsys は UPDATE できない" rpsql "UPDATE clusters SET name='z'"

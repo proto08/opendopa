@@ -36,6 +36,9 @@ function fakeDeps(over: Record<string, unknown> = {}) {
         ],
       ]),
     recordImpressions: vi.fn(async () => {}),
+    loadKnownTagIds: async (ids: string[]) =>
+      new Set(ids.filter((i) => i.startsWith("dataset:"))),
+    loadVideoIdsWithAllTags: async () => ["v1"],
     loadClusters: async () => [],
     loadMapPoints: async () => [],
     loadViewLog: async () => [],
@@ -77,6 +80,27 @@ describe("GET /api/feed", () => {
       expect(res.status).toBe(400);
       expect(await res.json()).toHaveProperty("error");
     }
+  });
+
+  it("tag: 未知の ID と 5 個以上は 400、既知の ID は 200", async () => {
+    expect((await get("?tag=region:nowhere")).status).toBe(400);
+    const five = [1, 2, 3, 4, 5].map((i) => `tag=dataset:t${i}`).join("&");
+    expect((await get(`?${five}`)).status).toBe(400);
+    expect((await get("?tag=dataset:a&tag=dataset:b")).status).toBe(200);
+  });
+
+  it("tag: 候補が尽きたら 200 で items: [] と reason: pool_empty", async () => {
+    deps.current = fakeDeps({
+      loadVideoIdsWithAllTags: async () => [],
+      recsysFeed: async () => ({
+        picks: [],
+        reason: "pool_empty",
+        taste: { x: 0.5, y: 0.5, shares: [] },
+      }),
+    });
+    const res = await get("?tag=dataset:a");
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({ items: [], reason: "pool_empty" });
   });
 
   it("includeMap=1 のときだけ map が付く", async () => {

@@ -114,16 +114,18 @@
 }
 
 /* 下部のテロップ(白い帯に見出し、左に赤のカテゴリ名の縦書き) */
-.telop {
+.telopWrap {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 30cqw;
+  z-index: 2;
+}
+.telop {
   display: flex;
   align-items: stretch;
   background: var(--paper);
   color: var(--ink);
-  z-index: 2;
 }
 .telopCategory {
   writing-mode: vertical-rl;
@@ -316,4 +318,26 @@
   paint-order: stroke;
   stroke: #000;
   stroke-width: 0.7px;
+}
+
+/* 音声オフの表示(自動再生が止められているとき) */
+.muteBadge {
+  position: absolute;
+  top: 4.5cqw;
+  right: 4cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.4cqw;
+  padding: 1cqw 2.6cqw;
+  border-radius: 99cqw;
+  background: rgb(0 0 0 / 0.6);
+  color: #fff;
+  font-weight: 900;
+  font-size: 3cqw;
+  z-index: 4;
+  pointer-events: none;
+}
+.muteBadge svg {
+  width: 4.2cqw;
+  height: 4.2cqw;
 }

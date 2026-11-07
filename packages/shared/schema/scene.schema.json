@@ -19,6 +19,7 @@
     "map",
     "sparkline",
     "chips",
+    "tags",
     "comments",
     "source",
     "numbers"
@@ -59,6 +60,11 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "特徴の小さなラベル(例: 夜間、目視外)"
+    },
+    "tags": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/Tag" },
+      "description": "ハッシュタグ(絞り込み用。docs/hashtag_design.md §4.1)。なければ空配列"
     },
     "comments": { "type": "array", "items": { "$ref": "#/$defs/FlowComment" } },
     "source": { "$ref": "#/$defs/Source" },
@@ -130,6 +136,16 @@
         "t": { "type": "number", "minimum": 0, "description": "動画内の秒" },
         "text": { "type": "string" },
         "style": { "type": "string", "enum": ["normal", "yellow"] }
+      }
+    },
+    "Tag": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "label"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z]+:[a-z0-9_-]+$", "description": "<kind>:<slug>。例: region:hokkaido" },
+        "kind": { "type": "string", "enum": ["dataset", "region"] },
+        "label": { "type": "string", "minLength": 1, "description": "表示名(# は付けない)。例: 北海道" }
       }
     },
     "Source": {

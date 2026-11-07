@@ -51,9 +51,15 @@ export async function parseJsonBody<T>(
   return validate(schema, raw);
 }
 
-/** クエリ文字列を zod で検証する。外れたら 400。 */
+/** クエリ文字列を zod で検証する。外れたら 400。同じキーが複数あれば、その値は配列になる。 */
 export function parseQuery<T>(req: Request, schema: ZodType<T>): T {
-  return validate(schema, Object.fromEntries(new URL(req.url).searchParams));
+  const raw: Record<string, string | string[]> = {};
+  for (const [k, v] of new URL(req.url).searchParams) {
+    const prev = raw[k];
+    if (prev === undefined) raw[k] = v;
+    else raw[k] = Array.isArray(prev) ? [...prev, v] : [prev, v];
+  }
+  return validate(schema, raw);
 }
 
 function validate<T>(schema: ZodType<T>, raw: unknown): T {

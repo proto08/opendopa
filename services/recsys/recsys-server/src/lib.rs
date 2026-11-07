@@ -189,6 +189,9 @@ struct FeedRequest {
     seen_ids: Vec<String>,
     #[serde(default)]
     recent_datasets: Vec<String>,
+    /// 省略したら全体から選ぶ。あれば、その動画だけから選ぶ(空なら `pool_empty`)。
+    #[serde(default)]
+    candidate_ids: Option<Vec<String>>,
     count: i64,
 }
 
@@ -198,6 +201,9 @@ struct FeedResponse {
     picks: Vec<Pick>,
     taste: Taste,
     seen_reset: bool,
+    /// 候補が 1 本もないときだけ `"pool_empty"`。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<&'static str>,
 }
 
 async fn feed(
@@ -224,6 +230,7 @@ async fn feed(
         &req.seen_ids,
         &req.recent_datasets,
         req.count as usize,
+        req.candidate_ids.as_deref(),
         &mut rng,
     )
     .map_err(|e| ApiError::unavailable(e.to_string()))?;
@@ -233,6 +240,7 @@ async fn feed(
         picks: result.picks,
         taste,
         seen_reset: result.seen_reset,
+        reason: result.pool_empty.then_some("pool_empty"),
     }))
 }
 
@@ -535,6 +543,39 @@ mod tests {
         assert_eq!(st, StatusCode::OK);
         assert_eq!(body["seenReset"], json!(true));
         assert_eq!(body["picks"].as_array().unwrap().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn feed_candidate_ids_restrict_and_pool_empty() {
+        let app = loaded_app(6).await;
+        let (st, body) = post_json(
+            &app,
+            "/internal/feed",
+            json!({"events": [], "candidateIds": ["v1", "v4", "zzz"], "count": 3}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+        let mut ids: Vec<&str> = body["picks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|p| p["videoId"].as_str().unwrap())
+            .collect();
+        ids.sort();
+        assert_eq!(ids, ["v1", "v4"]);
+        assert!(body.get("reason").is_none());
+
+        let (st, body) = post_json(
+            &app,
+            "/internal/feed",
+            json!({"events": [], "candidateIds": [], "count": 1}),
+        )
+        .await;
+        assert_eq!(st, StatusCode::OK, "{body}");
+        assert_eq!(body["picks"], json!([]));
+        assert_eq!(body["reason"], json!("pool_empty"));
+        assert_eq!(body["seenReset"], json!(false));
+        assert_taste(&body["taste"]);
     }
 
     #[tokio::test]

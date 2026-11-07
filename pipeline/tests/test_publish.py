@@ -59,6 +59,14 @@ def make_root(tmp_path: Path, n_ok: int = 3, n_excluded: int = 1, audio: bool = 
                     "categoryName": "カテゴリ",
                     "headline": f"見出し{i}",
                     "durationSec": 20,
+                    "tags": [
+                        {"id": "dataset:rental", "kind": "dataset", "label": "レンタカー"},
+                        *(
+                            [{"id": "region:hokkaido", "kind": "region", "label": "北海道"}]
+                            if i % 2 == 0
+                            else []
+                        ),
+                    ],
                     "lines": [line],
                 }
             )
@@ -109,10 +117,10 @@ def db_url():
     with psycopg.connect(base, autocommit=True) as c:
         c.execute("CREATE EXTENSION IF NOT EXISTS vector")
         c.execute(f"CREATE SCHEMA {schema}")
-    sql = (REPO / "db/migrations/20261104000002_create_core_tables.sql").read_text()
-    up = sql.split("-- migrate:up")[1].split("-- migrate:down")[0]
     with psycopg.connect(url, autocommit=True) as c:
-        c.execute(up)
+        for name in ("20261104000002_create_core_tables", "20261107000001_create_tags"):
+            sql = (REPO / f"db/migrations/{name}.sql").read_text()
+            c.execute(sql.split("-- migrate:up")[1].split("-- migrate:down")[0])
     yield url
     with psycopg.connect(base, autocommit=True) as c:
         c.execute(f"DROP SCHEMA {schema} CASCADE")
@@ -133,6 +141,8 @@ def snapshot(url: str) -> dict:
             ),
             "clusters": q("SELECT id, name, centroid::text FROM clusters ORDER BY id"),
             "meta": q("SELECT key, value::text FROM meta ORDER BY key"),
+            "tags": q("SELECT id, kind, label, yomi, sort FROM tags ORDER BY id"),
+            "video_tags": q("SELECT video_id, tag_id FROM video_tags ORDER BY 1, 2"),
         }
 
 
@@ -197,6 +207,39 @@ def test_videos_missing_from_new_output_are_unpublished(tmp_path, db_url) -> Non
     with psycopg.connect(db_url) as c:
         row = c.execute("SELECT status, excluded_why FROM videos WHERE id='demo-0002'").fetchone()
     assert row == ("excluded", pub.UNPUBLISHED)
+
+
+def test_tags_are_written_without_duplicates(tmp_path, db_url) -> None:
+    root, out = make_root(tmp_path, n_ok=3)
+    run_publish(root, out, skip_blob=True, env=env_for(db_url))
+    run_publish(root, out, skip_blob=True, env=env_for(db_url))
+    s = snapshot(db_url)
+    assert s["tags"] == [
+        ("dataset:rental", "dataset", "レンタカー", "れんたかー", 0),
+        ("region:hokkaido", "region", "北海道", "ほっかいどう", 0),
+    ]
+    assert s["video_tags"] == [
+        ("demo-0000", "dataset:rental"),
+        ("demo-0000", "region:hokkaido"),
+        ("demo-0001", "dataset:rental"),
+        ("demo-0002", "dataset:rental"),
+        ("demo-0002", "region:hokkaido"),
+    ]
+
+
+def test_replacing_a_video_drops_old_video_tags(tmp_path, db_url) -> None:
+    root, out = make_root(tmp_path, n_ok=3)
+    run_publish(root, out, skip_blob=True, env=env_for(db_url))
+    # 2 回目: demo-0002 は消え、demo-0000 は地域タグを失う(タグは空にもできる)
+    root2, out2 = make_root(tmp_path / "b", n_ok=2, n_excluded=0)
+    scenes = out2 / "demo" / "scenes.jsonl"
+    rows = [json.loads(ln) for ln in scenes.read_text(encoding="utf-8").splitlines()]
+    rows[0]["tags"] = []
+    scenes.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows), "utf-8")
+    run_publish(root2, out2, skip_blob=True, env=env_for(db_url))
+    s = snapshot(db_url)
+    assert s["video_tags"] == [("demo-0001", "dataset:rental")]
+    assert [t[0] for t in s["tags"]] == ["dataset:rental"]  # 使われないタグは消える
 
 
 class _Hook(BaseHTTPRequestHandler):
@@ -307,3 +350,37 @@ def test_missing_embed_output(tmp_path) -> None:
     (out / "centroid.json").unlink()
     with pytest.raises(PublishError, match="embed"):
         run_publish(root, out, dry_run=True, env={})
+
+
+class _FakeCur:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self.params = params
+
+    def fetchall(self):
+        return self.rows
+
+
+class _FakeConn:
+    def __init__(self, rows):
+        self.rows = rows
+
+    def cursor(self):
+        return _FakeCur(self.rows)
+
+
+def test_changed_videos_detects_rows_that_moved(tmp_path) -> None:
+    root, out = make_root(tmp_path)
+    b = pub.load_bundle(root, out)
+    # 前回: demo-0000 は同じ内容、demo-0001 は別の行だった、demo-0002 は新しい動画
+    old = [("demo-0000", [["列", 0]]), ("demo-0001", [["列", 99]])]
+    assert pub.changed_videos(_FakeConn(old), b) == ["demo-0001"]
+    assert pub.changed_videos(_FakeConn([]), b) == []

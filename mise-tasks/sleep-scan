@@ -80,7 +80,9 @@ for n in $(jq -r '.[].number' <<<"$prs"); do
         pr: $d.number, title: $d.title, author: $d.user.login, draft: $d.draft,
         sha: $d.head.sha, mergeable_state: $d.mergeable_state,
         labels: [$d.labels[].name],
-        closes: ([($d.body // "") | scan("(?i)(?:closes|fixes|resolves|refs?) #([0-9]+)") | .[0] | tonumber]),
+        # この PR が扱うイシュー: 説明欄の Closes/Fixes/Resolves/Refs #N と、タイトルの (#N)
+        closes: (([($d.body // "") | scan("(?i)(?:closes|fixes|resolves|refs?) #([0-9]+)") | .[0] | tonumber]
+                  + [$d.title | scan("\\(#([0-9]+)\\)") | .[0] | tonumber]) | unique),
         i_reviewed: ($my_review != ""), is_mine: $is_mine, bot: ($d.user.type == "Bot"),
         others_after: ($after | length), busy: $busy
       }')
@@ -89,14 +91,21 @@ done
 
 # 前提(`前提: #34、#38`)を数えて、開いているものが残るかを見る
 open_issue_numbers=$(jq -c '[.[] | select(.pull_request | not) | .number]' <<<"$issues")
-issue_facts=$(jq -c --arg me "$ME" --argjson open "$open_issue_numbers" --argjson facts "$facts" '
+all_open=$(jq -c '[.[] | select(.pull_request | not)
+  | {number, parent: (((.body // "") | capture("親イシュー: #(?<n>[0-9]+)") | .n | tonumber)? // null)}]' <<<"$issues")
+issue_facts=$(jq -c --arg me "$ME" --argjson open "$open_issue_numbers" --argjson facts "$facts" --argjson all_open "$all_open" '
   [ .[] | select(.pull_request | not)
     | select(any(.assignees[]; .login == $me))
     | {
         issue: .number, title: .title, labels: [.labels[].name],
         requires: ((.body // "") | split("\n") | map(select(test("前提:"))) | first // ""
                    | sub("^.*前提:"; "") | [scan("#([0-9]+)") | .[0] | tonumber]),
-        has_pr: (.number as $n | $facts | any(.[]; .closes | index($n)))
+        has_pr: (.number as $n | $facts | any(.[]; .closes | index($n))),
+        # 親イシュー: 他のイシューが「親イシュー: #N」と書いているもの。子が終わるまで実装の対象にしない
+        is_parent: (.number as $n | $all_open | any(.[]; .parent == $n)),
+        # 「## 依存」に、前提として読めない文章(「…のあと」など)がある。機械では判断できないので、人が見る
+        text_dependency: ((.body // "") | [match("(?s)## 依存\n+(.*?)(?:\n## |$)").captures[0].string] | first // ""
+                          | gsub("\\s"; "") | (. != "" and (test("^[-・*]?(特に|依存は?)?(なし|ありません)") | not)))
       }
     | . + { blocked_by: (.requires - (.requires - $open)) }
   ]' <<<"$issues")
@@ -121,6 +130,7 @@ result=$(jq -n --arg me "$ME" --arg main "$MAIN_SHA" --argjson facts "$facts" --
       implement:   [$iss[] | select(.labels | index("type::tracking") | not)
                            | select(.labels | index("needs-human") | not)
                            | select(.has_pr | not) | select(.blocked_by | length == 0)
+                           | select(.is_parent | not) | select(.text_dependency | not)
                            | {issue, title}]
     },
     waiting: {
@@ -128,6 +138,9 @@ result=$(jq -n --arg me "$ME" --arg main "$MAIN_SHA" --argjson facts "$facts" --
       busy:             [$facts[] | select(.busy) | pick],
       merge_candidates: [$facts[] | select(.is_mine) | select(.labels | index("status::ready-to-merge"))
                                   | select(.mergeable_state == "clean") | pick],
+      parent_issues:    [$iss[] | select(.is_parent) | select(.has_pr | not) | {issue, title}],
+      text_dependency:  [$iss[] | select(.text_dependency) | select(.is_parent | not) | select(.has_pr | not)
+                               | {issue, title}],
       blocked_issues:   [$iss[] | select(.labels | index("type::tracking") | not)
                                | select(.has_pr | not) | select(.blocked_by | length > 0)
                                | {issue, title, waiting_on: .blocked_by}]

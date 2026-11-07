@@ -8,7 +8,8 @@
 **/.venv
 data/
 out/
-pipeline/
 infra/
-docs/
+# pipeline/ と docs/data.md は pipeline/Dockerfile が使う
+docs/*
+!docs/data.md
 **/*.tsbuildinfo

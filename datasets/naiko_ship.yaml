@@ -4,6 +4,7 @@ label: 内航海運の船
 source_name: 内航海運業の事業概況報告
 wm_char: 船
 color: "#2A9D8F"
+tag: 内航海運
 files: [data/raw/naiko_ship/01_naikoukaiungyou_jigyougaikyouhoukoku.csv]
 grain: row
 # 列名が途中で切れている建造年代の列に、名前を付ける

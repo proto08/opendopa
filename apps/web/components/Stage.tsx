@@ -1,12 +1,19 @@
 "use client";
 
 import type { Scene } from "@opendopa/shared";
-import { type CSSProperties, type ReactNode, useEffect } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useCallback,
+  useEffect,
+} from "react";
+import { takeUnlockGesture } from "@/lib/audioChannel";
 import { useScenePlayer } from "@/lib/useScenePlayer";
 import { AiLabel } from "./AiLabel";
 import { BigNumber } from "./BigNumber";
 import { Captions } from "./Captions";
 import { Comments } from "./Comments";
+import { MuteBadge } from "./MuteBadge";
 import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
 import { SceneMap } from "./SceneMap";
@@ -20,17 +27,27 @@ export function Stage({
   scene,
   active = true,
   hold = false,
+  selectedTags,
+  onTag,
   children,
 }: {
   scene: Scene;
   active?: boolean;
   /** true の間は再生を止める(シートが開いているとき) */
   hold?: boolean;
+  /** 絞り込み中のタグ ID(動画のタグを黄色にする) */
+  selectedTags?: readonly string[];
+  /** 動画のタグのタップ(絞り込みの切り替え) */
+  onTag?: (id: string) => void;
   /** 重ねて置くもの(右レールなど) */
   children?: ReactNode;
 }) {
   const player = useScenePlayer(scene, active, hold);
-  const { toggle } = player;
+  const { toggle: toggleRaw } = player;
+  // 音声を鳴らすための最初の操作は、一時停止の操作として扱わない
+  const toggle = useCallback(() => {
+    if (!takeUnlockGesture()) toggleRaw();
+  }, [toggleRaw]);
   useViewTracking(scene.videoId, active, player.paused);
 
   useEffect(() => {
@@ -74,7 +91,13 @@ export function Stage({
       </div>
       <BigNumber data={scene.bigNumber} countProgress={player.countProgress} />
       <SceneMap map={scene.map} />
-      <Telop categoryName={scene.categoryName} headline={scene.headline} />
+      <Telop
+        categoryName={scene.categoryName}
+        headline={scene.headline}
+        tags={scene.tags}
+        selectedTags={selectedTags}
+        onTag={onTag}
+      />
       <Captions lines={scene.lines} lineIndex={player.lineIndex} />
       <SourceLine source={scene.source} />
       <AiLabel />
@@ -83,6 +106,7 @@ export function Stage({
         totalSec={player.totalSec}
         playedSec={player.playedSec}
       />
+      {active && <MuteBadge />}
       <PauseIcon paused={player.paused} toggles={player.toggles} />
       {children}
     </div>

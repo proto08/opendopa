@@ -100,6 +100,8 @@ map:                               # 地点は 名前(穴を含む文)と 緯度
   type: points
   points: [{name: "{place}", lat: LAT, lon: LON}]
   # polygon は、rings(輪のリストの列。GeoJSON ローダが作る `rings`)と markers(出発などの地点)を書く
+tag: レンタカー                    # ハッシュタグ(データ種別)。tags.py の DATASET_TAG_SLUGS にある表示名(#151)
+region_from: [PREFECTURE_NAME]     # 地域タグの元の列。値の先頭の都道府県名を正規化表で引く。取れなければ付けない
 hide: [PHONE]                      # videos.jsonl の csv_row に出さない列(個人に関わる列。§15.2)
 comments:
   pool_calm: ["気をつけたい"]       # pool_<名前>。なければ既定(calm / light)
@@ -463,6 +465,21 @@ select:
 
 - 見出し指標: `TOTAL_ASSETS`, `TOTAL_LIABILITIES`, `TOTAL_EQUITY`(列名に単位がない。**単位:千円と推定。要確認**)、`TOTAL_EQUITY_PERCENT`(%)。
 - 動画: **比率だけ**を語る(「自己資本は総資産の{%}」と、同じ区分内の順位)。絶対額は、推定した単位で読み上げてよい(§0.2)。
+
+#### 10.14a 地域タグの元の列(ハッシュタグ。実装: `pipeline/opendopa_pipeline/tags.py`、設計: `docs/hashtag_design.md` §3.3)
+
+都道府県の正規化表(47 件。名称、slug、読み)は `tags.py` に1つ。値の先頭が都道府県名なら、それを引く。「東京」のような省略形は、全文が一致するときだけ引く(「東京ドーム」は引かない)。取れない行は地域タグを付けない。データ種別のタグ(`tag:`)は全データセットに付く。
+
+| データセット | 地域の元(`region_from`) | 確認の結果 |
+| --- | --- | --- |
+| `accident` | `OCCURRENCE_LOCATION` | 194 行中 3 行は取れない(海外の長い文) |
+| `rental_result` | `PREFECTURE_NAME` | 全行で取れる |
+| `rental_fleet` | `OFFICE_VEHICLE_ALLOCATION_LIST_LOCATION`(運輸支局ごとに `first` で集める) | 営業所の行の半数以上が空。運輸支局のうち、どの行にも値がないものは付かない |
+| `akiya_reg` / `akiya_sold` | `PREFECTURE` | 欠損なし。47 都道府県 |
+| `naiko_route` | `FROM_PREF`(積み港)、`TO_PREF`(降ろし港) | 両方とも欠損が約 4 割。取れた方だけ付け、同じ県は 1 つにする |
+| `naiko_ship` | なし | `Address` は事業者の所在地で、約 2/3 が空(事業者は特定しないため使わない)。`Supervisory_Transport_Bureau` は運輸局で都道府県にならない |
+| `flightplan` | `DEPARTURE_LOCATION`、`DESTINATION_LOCATION` | 「滋賀県守山市」のように先頭が都道府県。両方を引き、同じ県は 1 つにする |
+| `rail_*` | なし | `JURISDICTION`(運輸局)は都道府県にならない |
 
 ---
 

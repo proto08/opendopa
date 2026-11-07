@@ -4,6 +4,7 @@
 """
 
 import json
+import os
 from pathlib import Path
 from typing import Annotated
 
@@ -22,11 +23,18 @@ from opendopa_pipeline.draft import build_prompt, check_draft, sample_rows
 from opendopa_pipeline.embed.providers import create_embedder
 from opendopa_pipeline.embed.run import DEFAULT_K, run_embed
 from opendopa_pipeline.generate import format_summary, run_generate
-from opendopa_pipeline.ingest import IngestError, load_frame, load_path, row_dict
+from opendopa_pipeline.ingest import (
+    RAW_SOURCE_ENV,
+    IngestError,
+    load_frame,
+    load_path,
+    row_dict,
+)
 from opendopa_pipeline.llm import create_llm
 from opendopa_pipeline.prepare import prepare
 from opendopa_pipeline.profile import build_profile, format_table, prepare_raw
 from opendopa_pipeline.publish import format_result, run_publish
+from opendopa_pipeline.rawblob import fetch_raw
 from opendopa_pipeline.spec import load_dataset
 from opendopa_pipeline.tts.providers import create_synthesizer, provider_name_from_env
 from opendopa_pipeline.tts.run import format_result as format_tts_result
@@ -279,6 +287,22 @@ def dataset_ids() -> list[str]:
     return sorted(p.stem for p in (REPO_ROOT / "datasets").glob("*.yaml") if p.stem[0] != "_")
 
 
+@app.command(name="fetch-raw")
+def fetch_raw_cmd() -> None:
+    """Blob(コンテナ raw)の <dataset_id>/ 配下の元データを data/raw/<dataset_id>/ に取り込む。"""
+    _fetch_raw()
+
+
+def _fetch_raw() -> None:
+    try:
+        counts = fetch_raw(dataset_ids(), REPO_ROOT)
+    except (ValueError, OSError) as e:  # RawBlobError は ValueError
+        raise _fail(str(e)) from e
+    for dataset_id, n in counts.items():
+        typer.echo(f"  {dataset_id}: {n} ファイル")
+    typer.echo("取り込みました。以降は RAW_SOURCE=blob で、この配下をすべて読みます")
+
+
 @app.command(name="all")
 def run_all(
     out_dir: Annotated[Path, typer.Option("--out-dir", help="出力先の親")] = REPO_ROOT / "out",
@@ -291,7 +315,11 @@ def run_all(
 ) -> None:
     """datasets/*.yaml のすべてを generate → tts → embed → publish の順に実行する。
 
+    RAW_SOURCE=blob のときは、最初に元データを Blob から取り込む(ジョブの実行。Issue #144)。
     tts が長さ超過の動画を除外するので、embed(除外後の動画だけを読む)は tts のあとに行う。"""
+    if os.environ.get(RAW_SOURCE_ENV) == "blob":
+        typer.echo("== fetch-raw")
+        _fetch_raw()
     for dataset_id in dataset_ids():
         typer.echo(f"== generate: {dataset_id}")
         generate(dataset_id, out_dir, provider)

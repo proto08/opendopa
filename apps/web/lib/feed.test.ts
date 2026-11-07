@@ -29,6 +29,8 @@ function makeDeps(over: Partial<FeedDeps> = {}): FeedDeps {
     }),
     loadVideos: async (ids) => new Map(ids.map((i) => [i, video(i)])),
     recordImpressions: async () => {},
+    loadKnownTagIds: async (ids) => new Set(ids.filter((i) => i !== "bad:x")),
+    loadVideoIdsWithAllTags: async () => ["b", "c"],
     loadClusters: async () => [
       { id: 1, name: "ドローン", color: "#FF0000", cx: 0.1, cy: 0.2 },
     ],
@@ -59,6 +61,120 @@ describe("feedQuery", () => {
   it("includeMap は 0 か 1", () => {
     expect(parse({ includeMap: "1" }).success).toBe(true);
     expect(parse({ includeMap: "2" }).success).toBe(false);
+  });
+});
+
+describe("feedQuery の tag", () => {
+  const parse = (q: Record<string, string | string[]>) =>
+    feedQuery.safeParse(q);
+  it("なければ空配列。1 個は文字列でも配列でもよく、重複は除く", () => {
+    expect(parse({})).toMatchObject({ success: true, data: { tag: [] } });
+    expect(parse({ tag: "a:1" })).toMatchObject({ data: { tag: ["a:1"] } });
+    expect(parse({ tag: ["a:1", "b:2", "a:1"] })).toMatchObject({
+      data: { tag: ["a:1", "b:2"] },
+    });
+  });
+  it("4 個までは通り、5 個は外れる。空文字も外れる", () => {
+    expect(parse({ tag: ["a", "b", "c", "d"] }).success).toBe(true);
+    expect(parse({ tag: ["a", "b", "c", "d", "e"] }).success).toBe(false);
+    expect(parse({ tag: "" }).success).toBe(false);
+  });
+});
+
+describe("getFeed(タグの絞り込み)", () => {
+  it("タグがなければ candidateIds を渡さず、タグ用の問い合わせもしない", async () => {
+    const recsysFeed = vi.fn(makeDeps().recsysFeed);
+    const loadVideoIdsWithAllTags = vi.fn(async () => ["x"]);
+    const recordImpressions = vi.fn(async () => {});
+    const res = await getFeed(
+      makeDeps({ recsysFeed, loadVideoIdsWithAllTags, recordImpressions }),
+      "u1",
+      1,
+      false,
+      [],
+    );
+    expect(recsysFeed.mock.calls[0][0]).not.toHaveProperty("candidateIds");
+    expect(loadVideoIdsWithAllTags).not.toHaveBeenCalled();
+    expect(recordImpressions.mock.calls[0]).toHaveLength(3);
+    expect(res).not.toHaveProperty("reason");
+  });
+
+  it("AND で引いた動画 ID を candidateIds として渡す", async () => {
+    const recsysFeed = vi.fn(makeDeps().recsysFeed);
+    const loadVideoIdsWithAllTags = vi.fn(async () => ["b", "c"]);
+    await getFeed(
+      makeDeps({ recsysFeed, loadVideoIdsWithAllTags }),
+      "u1",
+      2,
+      false,
+      ["dataset:rental", "region:hokkaido"],
+    );
+    expect(loadVideoIdsWithAllTags).toHaveBeenCalledWith([
+      "dataset:rental",
+      "region:hokkaido",
+    ]);
+    expect(recsysFeed.mock.calls[0][0]).toMatchObject({
+      candidateIds: ["b", "c"],
+    });
+  });
+
+  it("未知のタグは 400(recsys は呼ばない)", async () => {
+    const recsysFeed = vi.fn(makeDeps().recsysFeed);
+    await expect(
+      getFeed(makeDeps({ recsysFeed }), "u1", 1, false, [
+        "dataset:rental",
+        "bad:x",
+      ]),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(recsysFeed).not.toHaveBeenCalled();
+  });
+
+  it("候補が尽きたら items: [] と reason: pool_empty(taste は返し、配信は記録しない)", async () => {
+    const recordImpressions = vi.fn(async () => {});
+    const res = await getFeed(
+      makeDeps({
+        loadVideoIdsWithAllTags: async () => [],
+        recordImpressions,
+        recsysFeed: async () => ({
+          picks: [],
+          reason: "pool_empty",
+          taste: { x: 0.1, y: 0.2, shares: [{ clusterId: 1, pct: 100 }] },
+        }),
+      }),
+      "u1",
+      1,
+      true,
+      ["dataset:rental"],
+    );
+    expect(res.items).toEqual([]);
+    expect(res.reason).toBe("pool_empty");
+    expect(res.taste.shares[0]).toMatchObject({ clusterId: 1, pct: 100 });
+    expect(res.map).toBeDefined();
+    expect(recordImpressions).not.toHaveBeenCalled();
+  });
+
+  it("絞り込み中の seenReset は、候補の範囲だけを消すよう recordImpressions に伝える", async () => {
+    const recordImpressions = vi.fn(async () => {});
+    await getFeed(
+      makeDeps({
+        recordImpressions,
+        recsysFeed: async () => ({
+          picks: [{ videoId: "b", reason: "near" }],
+          seenReset: true,
+          taste: { x: 0, y: 0, shares: [] },
+        }),
+      }),
+      "u1",
+      1,
+      false,
+      ["dataset:rental"],
+    );
+    expect(recordImpressions).toHaveBeenCalledWith(
+      "u1",
+      [{ videoId: "b", reason: "near" }],
+      true,
+      ["b", "c"],
+    );
   });
 });
 

@@ -4,6 +4,8 @@ label: 飛行計画
 source_name: 無人航空機の飛行計画
 wm_char: 空
 color: "#4FA3E0"
+tag: 飛行計画
+region_from: [DEPARTURE_LOCATION, DESTINATION_LOCATION]
 files: [data/raw/flightplan/01_hikoukeikaku.geojson]
 grain: row
 kind: geo

@@ -12,6 +12,19 @@ export function isLikeKey(key: string): boolean {
   return key === "l";
 }
 
+export type KeyAction =
+  | { type: "like" }
+  | { type: "move"; delta: -1 | 1 }
+  | { type: "none" };
+
+/** キーに対する操作。シート(元データ・好み・検索)が開いている間は、どのキーも効かせない */
+export function keyAction(key: string, sheetOpen: boolean): KeyAction {
+  if (sheetOpen) return { type: "none" };
+  if (isLikeKey(key)) return { type: "like" };
+  const delta = keyToDelta(key);
+  return delta === 0 ? { type: "none" } : { type: "move", delta };
+}
+
 /** キー入力の対象が入力欄など(ショートカットを効かせない場所)か */
 export function isEditableTarget(target: EventTarget | null): boolean {
   if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement))

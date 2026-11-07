@@ -71,6 +71,18 @@ variable "recsys_secrets" {
   sensitive   = true
 }
 
+variable "migrate_image" {
+  description = "マイグレーション Job のイメージ(db/Dockerfile)。空ならプレースホルダー(deploy.yml が差し替える)"
+  type        = string
+  default     = ""
+}
+
+variable "migrate_database_url" {
+  description = "マイグレーション Job の DATABASE_URL(管理者ロール。dbmate は libpq 互換の uselibpqcompat を解さないため、付けない)"
+  type        = string
+  sensitive   = true
+}
+
 variable "web_min_replicas" {
   type    = number
   default = 1
@@ -92,6 +104,7 @@ locals {
   placeholder_image = "mcr.microsoft.com/k8se/quickstart:latest"
   web_image         = var.web_image != "" ? var.web_image : local.placeholder_image
   recsys_image      = var.recsys_image != "" ? var.recsys_image : local.placeholder_image
+  migrate_image     = var.migrate_image != "" ? var.migrate_image : local.placeholder_image
 
   # for_each のキーは sensitive にできないため、キー(環境変数名)だけを取り出して使う
   web_secret_names    = nonsensitive(toset(keys(var.web_secrets)))
@@ -272,6 +285,64 @@ resource "azurerm_container_app" "web" {
   }
 
   depends_on = [azurerm_role_assignment.acr_pull]
+}
+
+# マイグレーション: 手動起動の Job。deploy.yml がイメージを差し替えて起動し、終わるまで待つ(ADR-0143)。
+# Postgres は Azure 内サービスからの接続を許可しているため、CI のランナーの IP を許可する必要がない。
+resource "azurerm_container_app_job" "migrate" {
+  name                         = "caj-${var.name}-migrate"
+  resource_group_name          = var.resource_group_name
+  location                     = var.location
+  container_app_environment_id = azurerm_container_app_environment.this.id
+  tags                         = var.tags
+
+  replica_timeout_in_seconds = 600
+  # 再試行しない(失敗は人が原因を見る)
+  replica_retry_limit = 0
+
+  manual_trigger_config {
+    parallelism              = 1
+    replica_completion_count = 1
+  }
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.pull.id]
+  }
+
+  registry {
+    server   = var.registry_login_server
+    identity = azurerm_user_assigned_identity.pull.id
+  }
+
+  secret {
+    name  = "database-url"
+    value = var.migrate_database_url
+  }
+
+  template {
+    container {
+      name   = "migrate"
+      image  = local.migrate_image
+      cpu    = 0.25
+      memory = "0.5Gi"
+
+      env {
+        name        = "DATABASE_URL"
+        secret_name = "database-url"
+      }
+    }
+  }
+
+  lifecycle {
+    ignore_changes = [template[0].container[0].image]
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}
+
+output "migrate_job_name" {
+  value = azurerm_container_app_job.migrate.name
 }
 
 output "environment_id" {

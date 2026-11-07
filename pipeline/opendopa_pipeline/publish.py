@@ -17,6 +17,7 @@ from typing import Any
 import numpy as np
 
 from opendopa_pipeline.spec import DatasetDef, load_dataset
+from opendopa_pipeline.tags import tag_row
 
 log = logging.getLogger(__name__)
 
@@ -206,6 +207,27 @@ def write_db(conn: Any, b: Bundle) -> None:
             "WHERE NOT (id = ANY(%s)) AND status <> 'excluded'",
             (UNPUBLISHED, [v.id for v in b.videos]),
         )
+        # タグは、使うものを upsert し、`video_tags` は全削除して作り直す(embeddings と同じ)。
+        # どの動画にも付かなくなったタグは消す(`videos` と違い、他から参照されない)
+        tags: dict[str, tuple[str, str, str, str, int]] = {}
+        pairs: list[tuple[str, str]] = []
+        for v in b.ok_videos:
+            for t in v.scene.get("tags", []):
+                tags[t["id"]] = tag_row(t)
+                pairs.append((v.id, t["id"]))
+        for row in tags.values():
+            cur.execute(
+                """INSERT INTO tags (id, kind, label, yomi, sort) VALUES (%s, %s, %s, %s, %s)
+                   ON CONFLICT (id) DO UPDATE SET kind = EXCLUDED.kind, label = EXCLUDED.label,
+                     yomi = EXCLUDED.yomi, sort = EXCLUDED.sort""",
+                row,
+            )
+        cur.execute("DELETE FROM video_tags")
+        for video_id, tag_id in dict.fromkeys(pairs):
+            cur.execute(
+                "INSERT INTO video_tags (video_id, tag_id) VALUES (%s, %s)", (video_id, tag_id)
+            )
+        cur.execute("DELETE FROM tags WHERE id <> ALL(%s)", (list(tags),))
         for c in b.clusters:
             cur.execute(
                 "INSERT INTO clusters (id, name, color, centroid, cx, cy) "
@@ -227,6 +249,21 @@ def write_db(conn: Any, b: Bundle) -> None:
             "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
             (Jsonb(b.centroid),),
         )
+
+
+def changed_videos(conn: Any, b: Bundle) -> list[str]:
+    """既にある動画のうち、元の行(`csv_row`)が今回の出力と違うものの ID。
+
+    動画 ID は CSV の行順に依存する(`build.py`)。元 CSV の行の増減・並べ替えで、閲覧・いいねの
+    履歴が別の動画を指す恐れがあるので、洗い替えの前に数える(警告のみ。公開は止めない)。
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, csv_row FROM videos WHERE id = ANY(%s) AND status = 'ok'",
+            ([v.id for v in b.videos],),
+        )
+        old = {row[0]: row[1] for row in cur.fetchall()}
+    return sorted(v.id for v in b.videos if v.id in old and old[v.id] != v.csv_row)
 
 
 def write_blobs(connection_string: str, b: Bundle) -> tuple[int, int]:
@@ -303,6 +340,15 @@ def run_publish(
         assert conn_str
         result.scene_blobs, result.media_blobs = write_blobs(conn_str, b)
     with psycopg.connect(database_url) as conn:  # 例外なら rollback、抜ければ commit
+        changed = changed_videos(conn, b)
+        if changed:
+            msg = (
+                f"{len(changed)} 本の動画で、元の行の内容が前回と違います"
+                f"(例: {', '.join(changed[:3])})。元 CSV の行の増減・並べ替えがあると、"
+                "閲覧・いいねの履歴が別の動画を指します(動画 ID は行順で決まる)"
+            )
+            log.warning(msg)
+            result.warnings.append(msg)
         write_db(conn, b)
 
     url, token = env.get("RECSYS_URL"), env.get("INTERNAL_TOKEN")

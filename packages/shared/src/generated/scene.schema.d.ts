@@ -65,6 +65,10 @@ export interface Scene {
    * 特徴の小さなラベル(例: 夜間、目視外)
    */
   chips: string[];
+  /**
+   * ハッシュタグ(絞り込み用。docs/hashtag_design.md §4.1)。なければ空配列
+   */
+  tags: Tag[];
   comments: FlowComment[];
   source: Source;
   /**
@@ -160,6 +164,21 @@ export interface PointsMap {
 export interface SparkPoint {
   x: number;
   y: number;
+}
+/**
+ * This interface was referenced by `Scene`'s JSON-Schema
+ * via the `definition` "Tag".
+ */
+export interface Tag {
+  /**
+   * <kind>:<slug>。例: region:hokkaido
+   */
+  id: string;
+  kind: "dataset" | "region";
+  /**
+   * 表示名(# は付けない)。例: 北海道
+   */
+  label: string;
 }
 /**
  * 流れるコメント

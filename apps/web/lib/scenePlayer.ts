@@ -7,6 +7,9 @@ export const COUNT_UP_SEC = 1.2;
 /** タブが裏に回るなどで時計が飛んだときに、1 回の更新で進める上限(秒) */
 const MAX_STEP_SEC = 0.25;
 
+/** 音声が鳴っている行の終わりで、音声の `ended` を待つ上限(秒)。読み込みが止まっても字幕が固まらないように */
+export const AUDIO_WAIT_MAX_SEC = 1.5;
+
 export type PlayerSnapshot = {
   /** ループ内の経過秒(0 以上 totalSec 未満) */
   elapsedSec: number;
@@ -14,6 +17,8 @@ export type PlayerSnapshot = {
   totalSec: number;
   /** 表示中の字幕の行 */
   lineIndex: number;
+  /** 表示中の行の頭からの経過秒(音声を途中から鳴らす位置) */
+  lineElapsedSec: number;
   /** 進行バーの割合(0〜1)。ループで 0 に戻る */
   progress: number;
   /** 再生を始めてからの累計秒。ループしても戻らない(カウントアップは 1 回だけ) */
@@ -40,10 +45,12 @@ export function computeSnapshot(
   const totalSec = totalDuration(durations);
   const loops = totalSec > 0 ? Math.floor(playedSec / totalSec) : 0;
   const elapsedSec = totalSec > 0 ? playedSec - loops * totalSec : 0;
+  const lineIndex = lineIndexAt(durations, elapsedSec);
   return {
     elapsedSec,
     totalSec,
-    lineIndex: lineIndexAt(durations, elapsedSec),
+    lineIndex,
+    lineElapsedSec: elapsedSec - lineStartSec(durations, lineIndex),
     progress: totalSec > 0 ? elapsedSec / totalSec : 0,
     playedSec,
     countProgress: Math.min(playedSec / COUNT_UP_SEC, 1),
@@ -63,6 +70,14 @@ export function lineIndexAt(
     if (elapsedSec < end) return i;
   }
   return Math.max(durations.length - 1, 0);
+}
+
+/** 行の頭の、ループ内の経過秒 */
+export function lineStartSec(
+  durations: readonly number[],
+  lineIndex: number,
+): number {
+  return totalDuration(durations.slice(0, lineIndex));
 }
 
 export const easeOutCubic = (t: number): number => 1 - (1 - t) ** 3;
@@ -141,6 +156,10 @@ export class ScenePlayer {
   private held = false;
   private lastMs = 0;
   private frame: Frame | null = null;
+  /** 音声が鳴っている行は、その音声の終わりまで次の行へ進めない(true を返している間) */
+  private audioGate: (() => boolean) | null = null;
+  private waitedLine = "";
+  private waitedSec = 0;
   private snapshot: PlayerSnapshot;
 
   constructor(
@@ -204,6 +223,23 @@ export class ScenePlayer {
     this.scheduleTick();
   }
 
+  /** 音声が鳴っている間、行の終わりで時計を待たせる判断を渡す(音声を時間の基準にする) */
+  setAudioGate(gate: (() => boolean) | null): void {
+    this.audioGate = gate;
+  }
+
+  /**
+   * 音声が行の最後まで鳴ったとき、字幕をその行の終わりまで進める(見積もりより早く終わったとき)。
+   * 一時停止中は何もしない。
+   */
+  finishLine(): void {
+    if (this.paused) return;
+    this.advance();
+    const { end } = this.currentLine();
+    this.playedSec = Math.max(this.playedSec, end);
+    this.publish();
+  }
+
   /** 時計を止めて破棄する */
   stop(): void {
     this.cancelFrame();
@@ -247,7 +283,33 @@ export class ScenePlayer {
       MAX_STEP_SEC,
     );
     this.lastMs = nowMs;
-    this.playedSec += step;
+    this.playedSec = this.gate(this.playedSec + step, step);
+  }
+
+  /** いまの行と、その行の終わりの累計秒 */
+  private currentLine(): { key: string; end: number } {
+    const total = totalDuration(this.durations);
+    const loops = total > 0 ? Math.floor(this.playedSec / total) : 0;
+    const line = lineIndexAt(this.durations, this.playedSec - loops * total);
+    return {
+      key: `${loops}:${line}`,
+      end: loops * total + lineStartSec(this.durations, line + 1),
+    };
+  }
+
+  /** 音声が鳴っている行の終わりを越えそうなら、行の中に留める(上限あり) */
+  private gate(next: number, step: number): number {
+    if (this.audioGate === null || totalDuration(this.durations) <= 0)
+      return next;
+    const { key, end } = this.currentLine();
+    if (key !== this.waitedLine) {
+      this.waitedLine = key;
+      this.waitedSec = 0;
+    }
+    if (next < end || this.waitedSec >= AUDIO_WAIT_MAX_SEC || !this.audioGate())
+      return next;
+    this.waitedSec += step;
+    return Math.max(this.playedSec, end - 1e-6);
   }
 
   private publish(): void {

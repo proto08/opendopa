@@ -35,6 +35,8 @@ pub struct PickResult {
     pub picks: Vec<Pick>,
     /// 未視聴が尽きたので、`seen_ids` を空として扱って選んだ。受け取った側が impressions を消す。
     pub seen_reset: bool,
+    /// `candidate_ids` を渡したが、索引にある候補が 1 本もなかった。`picks` は空。
+    pub pool_empty: bool,
 }
 
 /// 1 回の呼び出しで選べる本数の上限。
@@ -46,6 +48,9 @@ pub const MAX_COUNT: usize = 3;
 /// - `seen_ids`: 配信済みの動画 ID。未視聴が空なら、空として扱って全体から選び、`seen_reset=true`。
 /// - `recent_datasets`: 配信済みのデータセット。新しい順。
 /// - 選んだ動画は、次の選択の未視聴から外れ、連続数にも数える。
+/// - `candidate_ids`: `Some` なら、候補をその動画だけに絞る(索引にない ID は無視)。
+///   `None` なら全体から選ぶ。絞った結果が空なら、`pool_empty=true` で `picks` を空にして返す。
+///   絞った候補が全部配信済みなら、同じく `seen_reset=true` で候補全体から選ぶ。
 /// - 候補が尽きたら、`count` より少なく返す(1 本は必ず返す)。
 #[allow(clippy::too_many_arguments)] // 設計書の引数に、索引と設定を足したもの
 pub fn pick_next(
@@ -56,6 +61,7 @@ pub fn pick_next(
     seen_ids: &[String],
     recent_datasets: &[String],
     count: usize,
+    candidate_ids: Option<&[String]>,
     rng: &mut Rng,
 ) -> Result<PickResult, EmptyIndex> {
     if index.is_empty() {
@@ -64,9 +70,28 @@ pub fn pick_next(
     let videos = index.videos();
     let count = count.clamp(1, MAX_COUNT);
 
+    let allowed: Option<HashSet<&str>> =
+        candidate_ids.map(|ids| ids.iter().map(String::as_str).collect());
+    let candidates: Vec<usize> = (0..videos.len())
+        .filter(|&i| {
+            allowed
+                .as_ref()
+                .is_none_or(|a| a.contains(videos[i].id.as_str()))
+        })
+        .collect();
+    if candidates.is_empty() {
+        return Ok(PickResult {
+            picks: Vec::new(),
+            seen_reset: false,
+            pool_empty: true,
+        });
+    }
+
     let is_first = seen_ids.is_empty();
     let mut seen: HashSet<&str> = seen_ids.iter().map(String::as_str).collect();
-    let seen_reset = videos.iter().all(|v| seen.contains(v.id.as_str()));
+    let seen_reset = candidates
+        .iter()
+        .all(|&i| seen.contains(videos[i].id.as_str()));
     if seen_reset {
         seen.clear();
     }
@@ -86,7 +111,9 @@ pub fn pick_next(
 
     let mut picks = Vec::with_capacity(count);
     for n in 0..count {
-        let mut pool: Vec<usize> = (0..videos.len())
+        let mut pool: Vec<usize> = candidates
+            .iter()
+            .copied()
             .filter(|&i| !seen.contains(videos[i].id.as_str()))
             .collect();
         if pool.is_empty() {
@@ -137,7 +164,11 @@ pub fn pick_next(
             reason,
         });
     }
-    Ok(PickResult { picks, seen_reset })
+    Ok(PickResult {
+        picks,
+        seen_reset,
+        pool_empty: false,
+    })
 }
 
 /// 新しい順の `recent` の先頭 `max_streak` 本が全部同じデータセットなら、それを返す。
@@ -279,6 +310,20 @@ mod tests {
         count: usize,
         seed: u64,
     ) -> PickResult {
+        run_with(idx, cfg, ec, seen, recent, count, None, seed)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn run_with(
+        idx: &Index,
+        cfg: &Config,
+        ec: usize,
+        seen: &[String],
+        recent: &[String],
+        count: usize,
+        candidates: Option<&[String]>,
+        seed: u64,
+    ) -> PickResult {
         pick_next(
             idx,
             cfg,
@@ -287,6 +332,7 @@ mod tests {
             seen,
             recent,
             count,
+            candidates,
             &mut Rng::new(seed),
         )
         .unwrap()
@@ -396,8 +442,18 @@ mod tests {
         let mut seen: Vec<String> = Vec::new();
         let mut recent: Vec<String> = Vec::new();
         for k in 0..1000 {
-            let r =
-                pick_next(&idx, &cfg, &u(k as u64 % 7), k, &seen, &recent, 1, &mut rng).unwrap();
+            let r = pick_next(
+                &idx,
+                &cfg,
+                &u(k as u64 % 7),
+                k,
+                &seen,
+                &recent,
+                1,
+                None,
+                &mut rng,
+            )
+            .unwrap();
             assert!(!r.seen_reset);
             let id = r.picks[0].video_id.clone();
             recent.insert(0, ds_of(&idx, &id));
@@ -464,6 +520,74 @@ mod tests {
         assert!(!r.seen_reset);
     }
 
+    fn ids(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn candidate_ids_none_equals_all_candidates() {
+        let idx = index(4, 20, 11);
+        let all: Vec<String> = idx.videos().iter().map(|v| v.id.clone()).collect();
+        let cfg = Config::default();
+        for seed in 0..20 {
+            let a = run_with(&idx, &cfg, 5, &["x".into()], &[], 3, None, seed);
+            let b = run_with(&idx, &cfg, 5, &["x".into()], &[], 3, Some(&all), seed);
+            assert_eq!(a, b);
+        }
+    }
+
+    #[test]
+    fn candidate_ids_restrict_the_pool() {
+        let idx = index(4, 20, 12);
+        let cand = ids(&["d0-1", "d1-2", "d2-3", "d3-4", "nothing"]);
+        let cfg = Config::default();
+        for seed in 0..100 {
+            let r = run_with(&idx, &cfg, 10, &["x".into()], &[], 3, Some(&cand), seed);
+            assert!(!r.pool_empty);
+            assert_eq!(r.picks.len(), 3);
+            assert!(r.picks.iter().all(|p| cand.contains(&p.video_id)));
+        }
+    }
+
+    #[test]
+    fn candidate_ids_skip_seen_and_return_fewer() {
+        let idx = index(2, 5, 13);
+        let cand = ids(&["d0-0", "d0-1", "d1-0"]);
+        let r = run_with(
+            &idx,
+            &Config::default(),
+            10,
+            &ids(&["d0-0", "other"]),
+            &[],
+            3,
+            Some(&cand),
+            1,
+        );
+        assert!(!r.seen_reset);
+        let got: HashSet<&str> = r.picks.iter().map(|p| p.video_id.as_str()).collect();
+        assert_eq!(got, HashSet::from(["d0-1", "d1-0"]));
+    }
+
+    #[test]
+    fn candidate_ids_all_seen_resets_within_candidates() {
+        let idx = index(2, 5, 14);
+        let cand = ids(&["d0-0", "d1-0"]);
+        let r = run_with(&idx, &Config::default(), 10, &cand, &[], 1, Some(&cand), 1);
+        assert!(r.seen_reset);
+        assert!(cand.contains(&r.picks[0].video_id));
+    }
+
+    #[test]
+    fn empty_or_unknown_candidates_are_pool_empty() {
+        let idx = index(2, 5, 15);
+        for cand in [ids(&[]), ids(&["nothing"])] {
+            let r = run_with(&idx, &Config::default(), 0, &[], &[], 2, Some(&cand), 1);
+            assert!(r.pool_empty);
+            assert!(r.picks.is_empty());
+            assert!(!r.seen_reset);
+        }
+    }
+
     #[test]
     fn same_seed_same_result() {
         let idx = index(4, 50, 7);
@@ -484,6 +608,7 @@ mod tests {
             &[],
             &[],
             1,
+            None,
             &mut Rng::new(1),
         );
         assert_eq!(r, Err(EmptyIndex));

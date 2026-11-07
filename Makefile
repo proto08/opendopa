@@ -4,7 +4,7 @@ TF_DIR := infra
 # 使うコマンド。OpenTofu なら `make TF=tofu infra-plan`(環境変数 TF=tofu でもよい)
 TF ?= terraform
 
-.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy deploy-decider recsys-reload
+.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy deploy-decider recsys-reload deploy-pipeline pipeline-run
 
 infra-init:
 	$(TF) -chdir=$(TF_DIR) init -backend-config=backend.hcl
@@ -73,3 +73,26 @@ deploy-decider:
 	docker push "$$login_server/opendopa-decider:$(TAG)"; \
 	az containerapp update -g "$$rg" -n "$$app" --image "$$login_server/opendopa-decider:$(TAG)"; \
 	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$($(TF) -chdir=$(TF_DIR) output -raw decider_url)"
+
+# pipeline のイメージを push してジョブを更新する(Issue #144)。
+# 事前に infra の pipeline_job_enabled = true で apply 済みであること。
+deploy-pipeline:
+	@set -eu; \
+	login_server=$$($(TF) -chdir=$(TF_DIR) output -raw registry_login_server); \
+	registry=$$($(TF) -chdir=$(TF_DIR) output -raw registry_name); \
+	rg=$$($(TF) -chdir=$(TF_DIR) output -raw resource_group_name); \
+	job=$$($(TF) -chdir=$(TF_DIR) output -raw pipeline_job_name); \
+	az acr login --name "$$registry"; \
+	docker build --platform $(PLATFORM) -f pipeline/Dockerfile -t "$$login_server/opendopa-pipeline:$(TAG)" .; \
+	docker push "$$login_server/opendopa-pipeline:$(TAG)"; \
+	az containerapp job update -g "$$rg" -n "$$job" --image "$$login_server/opendopa-pipeline:$(TAG)"; \
+	echo "pipeline のジョブを更新しました: $$job"
+
+# ジョブを起動する(Blob の raw/<dataset_id>/*.csv から動画を洗い替える)。人が実行する。
+# 進み具合: az containerapp job execution list -g <rg> -n <job> -o table
+pipeline-run:
+	@set -eu; \
+	rg=$$($(TF) -chdir=$(TF_DIR) output -raw resource_group_name); \
+	job=$$($(TF) -chdir=$(TF_DIR) output -raw pipeline_job_name); \
+	az containerapp job start -g "$$rg" -n "$$job" --query name -o tsv; \
+	echo "起動しました: $$job (ログは Log Analytics の ContainerAppConsoleLogs_CL)"

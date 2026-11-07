@@ -93,6 +93,11 @@ output "web_url" {
   value       = module.containerapp.web_url
 }
 
+output "migrate_job_name" {
+  description = "マイグレーション Job の名前(deploy.yml の変数 MIGRATE_JOB_NAME に設定する)"
+  value       = module.containerapp.migrate_job_name
+}
+
 output "web_app_name" {
   description = "web の Container App 名(make deploy が使う)"
   value       = module.containerapp.web_name
@@ -116,4 +121,9 @@ output "decider_url" {
 output "decider_app_name" {
   description = "判断モデルの Container App 名(decider_enabled のときだけ)"
   value       = var.decider_enabled ? module.decider[0].name : null
+}
+
+output "pipeline_job_name" {
+  description = "pipeline の Container Apps Job 名(pipeline_job_enabled のときだけ)"
+  value       = var.pipeline_job_enabled ? module.pipeline_job[0].name : null
 }

@@ -1,0 +1,255 @@
+/* タグの画面(虫眼鏡、動画のタグ、検索シート、候補なしの案内)。大きさはステージ幅の cqw */
+
+/* 虫眼鏡: ロゴの下 */
+.searchWrap {
+  position: absolute;
+  top: 14cqw;
+  left: 4cqw;
+  z-index: 5;
+  cursor: default;
+}
+.searchButton {
+  height: 11cqw;
+  min-width: 11cqw;
+  padding: 2.2cqw;
+  display: flex;
+  align-items: center;
+  gap: 1.6cqw;
+  border: 0;
+  border-radius: 99cqw;
+  background: rgb(10 31 61 / 70%);
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.searchButton svg {
+  width: 6.6cqw;
+  height: 6.6cqw;
+  flex: none;
+}
+.searchButton[data-filtering="true"] {
+  background: var(--yellow);
+  color: var(--ink);
+  padding-right: 3.4cqw;
+}
+.searchLabel {
+  font-weight: 900;
+  font-size: 3.2cqw;
+  white-space: nowrap;
+}
+.searchButton:focus-visible,
+.videoTag:focus-visible,
+.poolEmptyButton:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+
+/* 動画のタグ: テロップの上。右レールと重ならない幅 */
+.videoTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.4cqw 2.4cqw;
+  padding: 0 17cqw 1.6cqw 4cqw;
+  cursor: default;
+}
+.videoTag {
+  padding: 0.6cqw 1cqw;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-weight: 900;
+  font-size: 3.6cqw;
+  color: #fff;
+  cursor: pointer;
+  text-shadow:
+    0.2cqw 0.2cqw 0 #000,
+    -0.2cqw 0.2cqw 0 #000,
+    0.2cqw -0.2cqw 0 #000,
+    -0.2cqw -0.2cqw 0 #000;
+}
+.videoTag[data-kind="dataset"] {
+  color: var(--cyan);
+}
+.videoTag[data-selected="true"] {
+  color: var(--yellow);
+}
+
+/* 検索シート: ステージの高さの 74% */
+.tagSheet {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 74%;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 2.4cqw;
+  padding: 4cqw;
+  border-radius: 4cqw 4cqw 0 0;
+  background: var(--navy);
+  border-top: 1px solid var(--line);
+  color: #fff;
+  font-size: 3.8cqw;
+  cursor: default;
+  user-select: text;
+  animation: tag-sheet-up 0.25s ease-out;
+}
+@keyframes tag-sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tagSheet {
+    animation: none;
+  }
+}
+.tagSheetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tagSheetTitle {
+  margin: 0;
+  font-size: 4.4cqw;
+  font-weight: 700;
+}
+.tagSheetClose,
+.tagSheetChip,
+.poolEmptyButton {
+  border: 1px solid var(--line);
+  border-radius: 99cqw;
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+.tagSheetClose {
+  padding: 1.4cqw 3.4cqw;
+}
+.tagSheetInput {
+  width: 100%;
+  padding: 2.6cqw 3cqw;
+  border: 1px solid var(--line);
+  border-radius: 2cqw;
+  background: var(--stage-bottom);
+  color: #fff;
+  font: inherit;
+  font-size: 4cqw;
+}
+.tagSheetInput:focus-visible,
+.tagSheetClose:focus-visible,
+.tagSheetChip:focus-visible,
+.tagSheetRow:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+.tagSheetSelected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.6cqw;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tagSheetChip {
+  padding: 1.2cqw 3cqw;
+  border-color: var(--yellow);
+  color: var(--yellow);
+}
+.tagSheetNote {
+  margin: 0;
+  color: var(--muted);
+  font-size: 3.4cqw;
+  line-height: 1.6;
+}
+.tagSheetList {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.tagSheetSection {
+  margin: 2cqw 0 1cqw;
+  font-size: 3.2cqw;
+  font-weight: 700;
+  color: var(--muted);
+}
+.tagSheetRows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tagSheetRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 3cqw;
+  padding: 2.6cqw 1cqw;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  color: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.tagSheetRow:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.tagSheetKind {
+  flex: none;
+  padding: 0.6cqw 2cqw;
+  border-radius: 99cqw;
+  font-size: 2.8cqw;
+  font-weight: 700;
+  background: var(--line);
+}
+.tagSheetKind[data-kind="dataset"] {
+  color: var(--cyan);
+}
+.tagSheetName {
+  flex: 1;
+  font-weight: 700;
+}
+.tagSheetName mark {
+  background: transparent;
+  color: var(--yellow);
+}
+.tagSheetCount {
+  color: var(--muted);
+  font-size: 3.2cqw;
+}
+
+/* フィードのスクロールを止める(検索シートが開いている間) */
+.feed[data-locked="true"] {
+  overflow-y: hidden;
+}
+
+/* 候補なしの案内(ステージの中) */
+.poolEmpty {
+  position: absolute;
+  inset: 30cqw 8cqw auto 8cqw;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5cqw;
+  text-align: center;
+  cursor: default;
+}
+.poolEmptyText {
+  margin: 0;
+  font-weight: 900;
+  font-size: 5cqw;
+  line-height: 1.6;
+}
+.poolEmptyButton {
+  padding: 2.4cqw 6cqw;
+  border-color: var(--yellow);
+  color: var(--yellow);
+  font-weight: 900;
+  font-size: 4cqw;
+}
