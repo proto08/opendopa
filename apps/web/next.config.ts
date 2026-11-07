@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   partialPrefetching: true,
   // workspace の共有パッケージ(TS のまま公開している)をビルドに含める
   transpilePackages: ["@opendopa/shared"],
+  // Application Insights の計測(instrumentation.ts)。バンドルせず node_modules のまま読む(#61)
+  serverExternalPackages: ["@azure/monitor-opentelemetry"],
 };
 
 export default nextConfig;
