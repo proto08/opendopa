@@ -206,3 +206,12 @@ def test_mechanical_name_avoids_taken() -> None:
     assert mechanical_name([b], frozenset({"Xの事故"})) == "Xの事故・東京都"
     assert mechanical_name([a], frozenset({"Xの事故", "Xの事故・東京都"})) == "Xの事故・東京都(2)"
     assert mechanical_name([Meta(dataset_name="X")], frozenset({"X"})) == "X(2)"
+
+
+def test_埋め込みの既定のプロバイダーは_azure(monkeypatch: pytest.MonkeyPatch) -> None:
+    from opendopa_pipeline.embed.providers import provider_name_from_env
+
+    monkeypatch.delenv("EMBED_PROVIDER", raising=False)
+    assert provider_name_from_env() == "azure"
+    monkeypatch.setenv("EMBED_PROVIDER", "local")
+    assert provider_name_from_env() == "local"

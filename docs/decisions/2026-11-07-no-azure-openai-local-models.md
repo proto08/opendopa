@@ -1,4 +1,6 @@
-# Azure OpenAI を使わず、埋め込みと判断モデルはローカルで動かす
+# Azure OpenAI を使わず、埋め込みと判断モデルはローカルで動かす(取り消し済み)
+
+> **取り消し(2026-11-07)**: 埋め込みは Azure OpenAI(`EMBED_PROVIDER=azure`)に戻し、判断モデルは Azure 上の自前モデル(`strands_azure`)にする(`2026-11-07-decider-on-azure-again.md`)。下の「決定」のうち、チャットモデルを使わない(`LLM_PROVIDER=none`)ことと、列定義 YAML の下書きを Claude Code が書くことは、そのまま有効。それ以外は履歴として残す。
 
 - 日付: 2026-11-07
 - 決定: 埋め込みは `EMBED_PROVIDER=local`(`multilingual-e5-large`)、判断モデルは評価に合格したら `jev_local`(それまでは `rules`)を既定にする。`LLM_PROVIDER` は `none`(クラスタ名は機械的な名前)。列定義 YAML の下書きは LLM API ではなく Claude Code が書く(`2026-11-07-draft-yaml-by-claude-code.md`)。モデルは、パイプラインを動かす PC で動かし、結果(ベクトル・シーン・音声)を `publish` で本番の DB と Blob に上げる。本番(Container Apps の web・recsys、DB、Blob/CDN)にモデルは載せない。設計書の §0.4、D14、§9 の Azure リソースと環境変数の表、M6b・§14.2b をこれに合わせた
