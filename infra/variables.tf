@@ -141,3 +141,45 @@ variable "web_max_replicas" {
   type        = number
   default     = 3
 }
+
+variable "decider_enabled" {
+  description = "判断モデル(strands_azure)の Container App を本体の環境に作る(CPU・外部 ingress)。常時 1 レプリカが課金され、トークンで守る API が公開されるので、必要なときだけ true にし、使い終わったら false に戻す(設計書 D14)"
+  type        = bool
+  default     = false
+}
+
+variable "decider_image" {
+  description = "判断モデルの API サーバーのイメージ。空ならプレースホルダー"
+  type        = string
+  default     = ""
+}
+
+variable "decider_cpu" {
+  description = "判断モデルのコンテナの CPU(consumption の上限は 4)"
+  type        = number
+  default     = 4
+}
+
+variable "decider_memory" {
+  description = "判断モデルのコンテナのメモリ(consumption の上限は 8Gi)"
+  type        = string
+  default     = "8Gi"
+}
+
+variable "decider_min_replicas" {
+  description = "判断モデルの最小レプリカ数(1 で常時起動。0 にすると止まっている間は課金されないが、起動のたびにモデルを読み込む)"
+  type        = number
+  default     = 1
+}
+
+variable "decider_token" {
+  description = "判断モデル API の認証トークン(STRANDS_DECIDER_TOKEN)。decider_enabled のとき必須。TF_VAR_decider_token で渡す"
+  type        = string
+  default     = ""
+  sensitive   = true
+
+  validation {
+    condition     = var.decider_token == "" || length(var.decider_token) >= 16
+    error_message = "decider_token は 16 文字以上にする。"
+  }
+}

@@ -4,7 +4,7 @@ TF_DIR := infra
 # 使うコマンド。OpenTofu なら `make TF=tofu infra-plan`(環境変数 TF=tofu でもよい)
 TF ?= terraform
 
-.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy
+.PHONY: infra-init infra-plan infra-apply infra-validate infra-fmt deploy deploy-decider
 
 infra-init:
 	$(TF) -chdir=$(TF_DIR) init -backend-config=backend.hcl
@@ -43,3 +43,21 @@ deploy:
 	az containerapp update -g "$$rg" -n "$$recsys_app" --image "$$login_server/opendopa-recsys:$(TAG)"; \
 	az containerapp update -g "$$rg" -n "$$web_app" --image "$$login_server/opendopa-web:$(TAG)"; \
 	echo "デプロイしました: $$web_url (確認: $$web_url/api/health)"
+
+# 判断モデル(strands_azure)の API サーバーのイメージを push して更新する。
+# 事前に infra の decider_enabled = true で apply 済みであること。常時 1 レプリカが課金されるため、人が実行する。
+# DECIDER_DOCKERFILE: 判断モデルのサーバーの Dockerfile(モデルの入手元・ライセンスの確認後に用意する)
+DECIDER_DOCKERFILE ?= services/decider/Dockerfile
+
+deploy-decider:
+	@set -eu; \
+	test -f "$(DECIDER_DOCKERFILE)" || { echo "$(DECIDER_DOCKERFILE) がありません"; exit 1; }; \
+	login_server=$$($(TF) -chdir=$(TF_DIR) output -raw registry_login_server); \
+	registry=$$($(TF) -chdir=$(TF_DIR) output -raw registry_name); \
+	rg=$$($(TF) -chdir=$(TF_DIR) output -raw resource_group_name); \
+	app=$$($(TF) -chdir=$(TF_DIR) output -raw decider_app_name); \
+	az acr login --name "$$registry"; \
+	docker build --platform $(PLATFORM) -f "$(DECIDER_DOCKERFILE)" -t "$$login_server/opendopa-decider:$(TAG)" .; \
+	docker push "$$login_server/opendopa-decider:$(TAG)"; \
+	az containerapp update -g "$$rg" -n "$$app" --image "$$login_server/opendopa-decider:$(TAG)"; \
+	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$($(TF) -chdir=$(TF_DIR) output -raw decider_url)"

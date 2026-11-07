@@ -107,3 +107,13 @@ output "recsys_internal_url" {
   description = "RECSYS_URL に設定される値(環境の中からだけ届く)"
   value       = module.containerapp.recsys_internal_url
 }
+
+output "decider_url" {
+  description = "STRANDS_DECIDER_URL に設定する値(外部 URL。decider_enabled のときだけ)"
+  value       = var.decider_enabled ? module.decider[0].url : null
+}
+
+output "decider_app_name" {
+  description = "判断モデルの Container App 名(decider_enabled のときだけ)"
+  value       = var.decider_enabled ? module.decider[0].name : null
+}
