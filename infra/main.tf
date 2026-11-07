@@ -6,9 +6,6 @@ locals {
   # グローバルで一意にする必要があるリソース名の末尾(衝突したら name_suffix を足す)
   global_suffix = var.name_suffix != "" ? "-${var.name_suffix}" : ""
 
-  # モデル名・地域などは設計書 §12.1 のとおり main.parameters.json で指定する
-  params = jsondecode(file("${path.module}/main.parameters.json"))
-
   tags = merge(
     {
       project     = local.project
@@ -58,8 +55,10 @@ module "postgres" {
   tags                   = local.tags
 }
 
+# Blob と配信は任意(enable_storage / enable_cdn)。最小構成では作らない選択ができる
 module "storage" {
   source = "./modules/storage"
+  count  = var.enable_storage ? 1 : 0
 
   # Storage Account の名前は英小文字・数字のみ・3〜24 文字・グローバルで一意
   name                 = "st${local.project}${var.env_name}${var.name_suffix}"
@@ -71,24 +70,21 @@ module "storage" {
 
 module "cdn" {
   source = "./modules/cdn"
+  count  = var.enable_cdn ? 1 : 0
 
   name                = local.name
   resource_group_name = azurerm_resource_group.main.name
-  origin_host         = module.storage.primary_blob_host
-  tags                = local.tags
-}
-
-module "openai" {
-  source = "./modules/openai"
-
-  name                = "oai-${local.name}${local.global_suffix}"
-  resource_group_name = azurerm_resource_group.main.name
-  location            = local.params.openai_location
-  deployments         = local.params.openai_deployments
+  origin_host         = module.storage[0].primary_blob_host
   tags                = local.tags
 }
 
 locals {
+  # MEDIA_BASE_URL: cdn があれば Front Door、なければ Blob の公開 URL、storage もなければ空(音声・シーンの配信なし)
+  media_base_url = (
+    var.enable_cdn ? module.cdn[0].base_url :
+    var.enable_storage ? "https://${module.storage[0].primary_blob_host}" : ""
+  )
+
   database_url = format(
     "postgres://%s:%s@%s:5432/%s?sslmode=require",
     module.postgres.administrator_login,
@@ -114,7 +110,7 @@ module "containerapp" {
   web_max_replicas           = var.web_max_replicas
 
   web_env = {
-    MEDIA_BASE_URL = module.cdn.base_url
+    MEDIA_BASE_URL = local.media_base_url
     TTS_PROVIDER   = var.tts_provider
     TTS_CREDIT     = var.tts_credit
   }

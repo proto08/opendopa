@@ -77,6 +77,23 @@ variable "postgres_sku_name" {
   default     = "B_Standard_B1ms"
 }
 
+variable "enable_storage" {
+  description = "Blob(Storage Account)を作る。音声とシーンJSONの置き場。最小構成では false にできる(false にすると、pipeline の publish 先と配信がなくなる)"
+  type        = bool
+  default     = true
+}
+
+variable "enable_cdn" {
+  description = "Front Door(CDN)を作る。enable_storage = true が必要。false なら MEDIA_BASE_URL は Blob の URL を直接指す"
+  type        = bool
+  default     = true
+
+  validation {
+    condition     = !var.enable_cdn || var.enable_storage
+    error_message = "enable_cdn = true には enable_storage = true が必要(Front Door の配信元が Blob のため)。"
+  }
+}
+
 variable "cors_allowed_origins" {
   description = "Blob の CORS で許可するオリジン。web の URL が決まったら絞る"
   type        = list(string)
