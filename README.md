@@ -297,6 +297,7 @@ PG="$(terraform -chdir=infra output -raw postgres_fqdn | cut -d. -f1)"   # サ�
 MYIP="$(curl -s https://api.ipify.org)"
 az postgres flexible-server firewall-rule create -g "$RG" -n "$PG" --rule-name tmp-migrate \
   --start-ip-address "$MYIP" --end-ip-address "$MYIP"
+#    recsys 用の読み取り専用ロールは dbmate より先に作る(GRANT のマイグレーションはロールがないと何もしない)。手順は後述の「初回データを入れる」の 1
 DATABASE_URL="$(terraform -chdir=infra output -raw database_url)" mise exec -- dbmate up
 az postgres flexible-server firewall-rule delete -g "$RG" -n "$PG" --rule-name tmp-migrate --yes   # 必ず消す
 
@@ -318,6 +319,48 @@ curl -sS --max-time 10 "https://$RECSYS_FQDN/healthz" || echo "届かない(期�
 ```
 
 `/api/health/recsys` は web から recsys への到達を確認します。recsys に索引を読ませるには、pipeline の `publish` のあとに `make recsys-reload` を実行します(前述)。
+
+### 初回データを入れる
+
+`make deploy` の直後は DB が空で、フィードに動画が出ません。次の順で入れます。**Azure への書き込みなので人が実行します。** `.env.local` には手元用の `DATABASE_URL` が入っていて mise が読み込むため、Azure 向けの値は必ず各コマンドの前で上書きします(`.env.local` は編集しません)。以降は手順 4 の一時ファイアウォール規則(`tmp-migrate`)を作った状態で行い、最後に消します。
+
+```bash
+ADMIN_URL="$(terraform -chdir=infra output -raw database_url)"     # 管理者ロール。sslmode=require
+RO_PASSWORD='...'                                                   # 読み取り専用ロールのパスワード(英数字のみ推奨。URL に入れるため)
+
+# 1. 読み取り専用ロール opendopa_recsys を作る(最初の1回。dbmate up より先)
+psql "$ADMIN_URL" -c "CREATE ROLE opendopa_recsys LOGIN PASSWORD '$RO_PASSWORD'"
+#    dbmate up を先に流してしまった場合は、ロールを作ったあとに次の GRANT を psql で流す
+#    (db/migrations/*grant_recsys* と同じ内容)
+#    GRANT SELECT ON embeddings, clusters, meta TO opendopa_recsys;
+#    GRANT SELECT (id, dataset_id, status) ON videos TO opendopa_recsys;
+
+# 2. マイグレーション(手順 4 のとおり)
+DATABASE_URL="$ADMIN_URL" mise exec -- dbmate up
+
+# 3. recsys に読み取り専用ロールの URL を渡す(Terraform。ホストは database_url と同じ)
+RO_URL="$(echo "$ADMIN_URL" | sed "s#//[^@]*@#//opendopa_recsys:$RO_PASSWORD@#")"
+export TF_VAR_recsys_database_url="$RO_URL"      # CI の infra ワークフローを使うなら GitHub の TF_RECSYS_DATABASE_URL に同じ値
+make infra-plan && make infra-apply
+
+# 4. 動画・埋め込み・クラスタを DB に、シーン JSON と音声を Blob に入れる(リポジトリのルートで)
+export DATABASE_URL="$ADMIN_URL"
+export STORAGE_CONNECTION_STRING="$(terraform -chdir=infra output -raw storage_connection_string)"
+# 埋め込みを Azure OpenAI で作るなら AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_EMBED_DEPLOYMENT も
+# terraform output の値で設定する。音声は TTS_PROVIDER=voicevox(手元で VOICEVOX を起動しておく)
+cd pipeline && uv run opendopa all
+#    件数だけ確かめるなら: uv run opendopa publish --dry-run
+
+# 5. recsys に索引を読み直させる(publish のあと。reload の警告が出るのは正常。az login 済みで)
+cd .. && make recsys-reload
+
+# 6. 一時ファイアウォール規則を消す(手順 4 と同じ。必ず消す)
+az postgres flexible-server firewall-rule delete -g "$RG" -n "$PG" --rule-name tmp-migrate --yes
+```
+
+順序の理由: ロール → マイグレーション(GRANT がロールを前提にする)→ `TF_VAR_recsys_database_url`(recsys が読む URL)→ publish(索引の元データ)→ `make recsys-reload`(recsys は起動時にだけ索引を読む)。`publish` は `videos` を `id` で upsert し、`embeddings` と `clusters` を入れ直します(視聴・いいねの履歴は消しません。`docs/decisions/2026-11-07-etl-job-and-video-refresh.md`)。再実行しても同じ結果になります。
+
+確認: `curl "$WEB_URL/api/health/recsys"` が 200、`$WEB_URL` を開いてフィードに動画が出て、音声が再生されること。出ないときは、`az containerapp logs show` で recsys のログ(起動時の索引の読み込み件数)を見ます。
 
 ### 消す
 
