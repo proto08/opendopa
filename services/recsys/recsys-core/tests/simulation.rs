@@ -121,8 +121,18 @@ fn simulate(index: &Index, config: &Config, user: User, favorite: &str, seed: u6
             .iter()
             .filter(|e| matches!(e, Event::View { .. }))
             .count();
-        let result =
-            pick_next(index, config, &u, event_count, &seen, &recent, 1, &mut rng).unwrap();
+        let result = pick_next(
+            index,
+            config,
+            &u,
+            event_count,
+            &seen,
+            &recent,
+            1,
+            None,
+            &mut rng,
+        )
+        .unwrap();
         let pick = &result.picks[0];
         if pick.reason == Reason::Adventure {
             adventures += 1;
@@ -245,7 +255,7 @@ fn performance_pick_and_position() {
     const RUNS: u32 = 200;
     let t = Instant::now();
     for _ in 0..RUNS {
-        pick_next(&index, &config, &u, 10, &seen, &recent, 3, &mut rng).unwrap();
+        pick_next(&index, &config, &u, 10, &seen, &recent, 3, None, &mut rng).unwrap();
     }
     let pick_ms = t.elapsed().as_secs_f64() * 1000.0 / RUNS as f64;
 
@@ -327,5 +337,64 @@ fn sweep() {
                 stat(&|o| o.first_fav),
             );
         }
+    }
+}
+
+/// 候補が数本のときの動き(Issue #153)。候補は rail 3 本・akiya 2 本。疑似ユーザーは rail を最後まで見る。
+/// 候補の外は出ず、一巡するまで重複せず、一巡したら `seen_reset` になる。
+#[test]
+fn few_candidates_discovery_streak_and_reset() {
+    let config = Config::default();
+    let candidates: Vec<String> = ["rail_000", "rail_001", "rail_002", "akiya_000", "akiya_001"]
+        .map(String::from)
+        .to_vec();
+    for seed in 1..=10u64 {
+        let index = synthetic_index(seed);
+        let u0 = centroid(&index);
+        let mut rng = Rng::new(seed * 31);
+        let (mut events, mut seen, mut recent) = (Vec::new(), Vec::<String>::new(), Vec::new());
+        let mut log = Vec::new();
+        let mut resets = 0;
+        for n in 0..15 {
+            let u = replay(&u0, &events, &index, &config);
+            let r = pick_next(
+                &index,
+                &config,
+                &u,
+                n,
+                &seen,
+                &recent,
+                1,
+                Some(&candidates),
+                &mut rng,
+            )
+            .unwrap();
+            assert!(!r.pool_empty);
+            let pick = &r.picks[0];
+            assert!(candidates.contains(&pick.video_id), "候補の外が選ばれた");
+            if r.seen_reset {
+                resets += 1;
+                assert_eq!(seen.len(), candidates.len(), "全部見たときだけリセット");
+                seen.clear();
+            }
+            assert!(!seen.contains(&pick.video_id), "一巡の間は重複しない");
+            let dataset = index.video(&pick.video_id).unwrap().dataset_id.clone();
+            let ratio = if dataset == "rail" { 1.0 } else { 0.05 };
+            events.push(Event::View {
+                video_id: pick.video_id.clone(),
+                ratio,
+            });
+            seen.push(pick.video_id.clone());
+            recent.insert(0, dataset);
+            log.push(format!("{}:{:?}", pick.video_id, pick.reason));
+        }
+        println!("seed {seed}: リセット {resets} 回 / {}", log.join(" "));
+        assert_eq!(resets, 2, "15 本 = 5 本 x 3 周で、2 回リセット");
+        // 発見: 最初の 2 本は別のデータセット(rail と akiya の両方が出る)。
+        let first_two: Vec<&str> = log[..2].iter().map(|s| &s[..4]).collect();
+        assert!(
+            first_two.contains(&"rail") && first_two.contains(&"akiy"),
+            "seed {seed}: 最初の 2 本で両方のデータセットが出る: {first_two:?}"
+        );
     }
 }
