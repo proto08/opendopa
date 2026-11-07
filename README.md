@@ -199,7 +199,7 @@ Azure への認証は OIDC(フェデレーション資格情報)です。クラ�
 
 | ワークフロー | きっかけ | 内容 |
 | --- | --- | --- |
-| `.github/workflows/deploy.yml` | `main` の CI が成功したあと(手動実行も可) | web と recsys のイメージをビルド → Container Registry に push → Container Apps を更新 → `/api/health` を確認 |
+| `.github/workflows/deploy.yml` | `main` の CI が成功したあと(手動実行も可) | web・recsys・マイグレーションのイメージをビルド → Container Registry に push → **マイグレーション Job を流す(失敗したらここで止まる)** → Container Apps を更新 → `/api/health` を確認 |
 | `.github/workflows/infra.yml` | 手動実行(`workflow_dispatch`) | `terraform plan`(要約に出る)→ environment `infra-apply` の承認 → `terraform apply`(承認した plan をそのまま適用) |
 
 変数(`AZURE_CLIENT_ID_DEPLOY` / `AZURE_CLIENT_ID_INFRA`)が空のあいだ、これらは何もせず終わります。下の設定を人が行ってから動きます。**以下はすべて Azure の課金とアクセス権に関わるため、人が実行します。**
@@ -251,7 +251,7 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
 | --- | --- |
 | `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | テナント ID / サブスクリプション ID |
 | `AZURE_CLIENT_ID_DEPLOY` / `AZURE_CLIENT_ID_INFRA` | 上の 2 つのアプリ登録のクライアント ID |
-| `AZURE_RESOURCE_GROUP` / `ACR_NAME` / `WEB_APP_NAME` / `RECSYS_APP_NAME` | `terraform output` の `resource_group_name` / `registry_name` / `web_app_name` / `recsys_app_name` |
+| `AZURE_RESOURCE_GROUP` / `ACR_NAME` / `WEB_APP_NAME` / `RECSYS_APP_NAME` / `MIGRATE_JOB_NAME` | `terraform output` の `resource_group_name` / `registry_name` / `web_app_name` / `recsys_app_name` / `migrate_job_name`(`MIGRATE_JOB_NAME` が空のあいだ、マイグレーションの手順は飛ばされる。Job を作る infra の apply 後に設定する) |
 | `TF_ENV_NAME` / `TF_NAME_SUFFIX` | `terraform.tfvars` の `env_name` / `name_suffix`(suffix なしなら空) |
 | `TFSTATE_RESOURCE_GROUP` / `TFSTATE_STORAGE_ACCOUNT` | `infra/backend.hcl` の `resource_group_name` / `storage_account_name` |
 
@@ -267,6 +267,7 @@ az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-typ
 ### 3. 使い方
 
 - デプロイ: `main` に merge すると、CI が通ったあとに `Deploy` が走ります。手動で再デプロイするときは Actions の `Deploy` から **Run workflow** します。
+- マイグレーション: `db/migrations` に足した SQL は、デプロイのときに Container Apps Job(`db/Dockerfile`、`dbmate up`)が未適用の分だけ流します。アプリの更新より前に流れるため、旧バージョンのアプリが動いているあいだに適用されても壊れない変更(列の追加など)にしてください。
 - インフラ変更: Actions の `Infra` から **Run workflow** → `plan` の要約を確認 → `infra-apply` の承認 → `apply`。
 - 最小構成から始める(無料試用など): 必須は Resource Group、Container Registry、Log Analytics、Postgres、Container Apps で、Azure OpenAI(`enable_openai`)、Blob(`enable_storage`)、Front Door(`enable_cdn`)は `terraform.tfvars` で `false` にできます(既定は `true`。`enable_openai = false` のときは `AZURE_OPENAI_*` が空になります)。変数は `.env.example` の `TF_VAR_*` と `infra/terraform.tfvars.example` を参照してください。
 

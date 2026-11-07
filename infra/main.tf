@@ -118,6 +118,17 @@ locals {
   )
 }
 
+# dbmate(lib/pq)は uselibpqcompat を解さないため、マイグレーション Job にはそれを付けない URL を渡す
+locals {
+  migrate_database_url = format(
+    "postgres://%s:%s@%s:5432/%s?sslmode=require",
+    module.postgres.administrator_login,
+    urlencode(var.postgres_admin_password),
+    module.postgres.fqdn,
+    module.postgres.database_name,
+  )
+}
+
 # web と recsys。イメージは make deploy(az containerapp update)で差し替える(ADR-0018 A1)
 module "containerapp" {
   source = "./modules/containerapp"
@@ -130,6 +141,7 @@ module "containerapp" {
   registry_login_server      = module.registry.login_server
   web_image                  = var.web_image
   recsys_image               = var.recsys_image
+  migrate_database_url       = local.migrate_database_url
   web_min_replicas           = var.web_min_replicas
   web_max_replicas           = var.web_max_replicas
 

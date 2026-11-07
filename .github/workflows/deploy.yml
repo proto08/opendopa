@@ -1,5 +1,6 @@
 # CD: main の CI が成功したら、web と recsys のイメージをビルドして ACR に push し、Container Apps を更新する。
 # 設計書 §12.4、ADR-0019。Azure へは OIDC(フェデレーション資格情報)で認証し、長期のシークレットは置かない。
+# マイグレーションは Container Apps Job(db/Dockerfile)で、アプリの更新の前に流す。失敗したらアプリは更新しない(ADR-0143)。
 # 設定手順は README の「CD(デプロイ)」。AZURE_CLIENT_ID_DEPLOY が未設定のあいだは、何もせず成功で終わる。
 name: Deploy
 
@@ -39,6 +40,7 @@ jobs:
       ACR_NAME: ${{ vars.ACR_NAME }}
       WEB_APP: ${{ vars.WEB_APP_NAME }}
       RECSYS_APP: ${{ vars.RECSYS_APP_NAME }}
+      MIGRATE_JOB: ${{ vars.MIGRATE_JOB_NAME }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -59,8 +61,31 @@ jobs:
           echo "LOGIN_SERVER=$server" >> "$GITHUB_ENV"
           docker build --platform linux/amd64 -f services/recsys/Dockerfile -t "$server/opendopa-recsys:$tag" .
           docker build --platform linux/amd64 -f apps/web/Dockerfile -t "$server/opendopa-web:$tag" .
+          docker build --platform linux/amd64 -f db/Dockerfile -t "$server/opendopa-migrate:$tag" .
           docker push "$server/opendopa-recsys:$tag"
+          docker push "$server/opendopa-migrate:$tag"
           docker push "$server/opendopa-web:$tag"
+      # MIGRATE_JOB_NAME が空のあいだ(Job を作る infra の apply 前)は飛ばす
+      - name: マイグレーションを流す(失敗したらここで止める)
+        if: ${{ vars.MIGRATE_JOB_NAME != '' }}
+        run: |
+          set -euo pipefail
+          az containerapp job update -g "$RESOURCE_GROUP" -n "$MIGRATE_JOB" --image "$LOGIN_SERVER/opendopa-migrate:$TAG"
+          exec_name="$(az containerapp job start -g "$RESOURCE_GROUP" -n "$MIGRATE_JOB" --query name -o tsv)"
+          echo "マイグレーションを開始しました: $exec_name"
+          for i in $(seq 1 60); do
+            status="$(az containerapp job execution show -g "$RESOURCE_GROUP" -n "$MIGRATE_JOB" --job-execution-name "$exec_name" --query properties.status -o tsv)"
+            echo "状態: $status(${i}/60)"
+            case "$status" in
+              Succeeded) exit 0 ;;
+              Failed|Stopped|Degraded)
+                echo "マイグレーションが失敗しました($status)。アプリは更新しません。Log Analytics の ContainerAppConsoleLogs_CL(Job: $MIGRATE_JOB)を見てください" >&2
+                exit 1 ;;
+            esac
+            sleep 10
+          done
+          echo "マイグレーションが 10 分で終わりませんでした。アプリは更新しません" >&2
+          exit 1
       - name: Container Apps を更新する
         run: |
           set -euo pipefail
