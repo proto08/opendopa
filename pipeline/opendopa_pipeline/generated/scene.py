@@ -2,9 +2,11 @@
 #   filename:  scene.schema.json
 
 from __future__ import annotations
+
 from enum import StrEnum
-from pydantic import BaseModel, ConfigDict, Field, RootModel
 from typing import Annotated, Any, Literal
+
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 class Kind(StrEnum):
@@ -62,6 +64,26 @@ class FlowComment(BaseModel):
     """
     text: str
     style: Style
+
+
+class Kind1(StrEnum):
+    dataset = "dataset"
+    region = "region"
+
+
+class Tag(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    id: Annotated[str, Field(pattern="^[a-z]+:[a-z0-9_-]+$")]
+    """
+    <kind>:<slug>。例: region:hokkaido
+    """
+    kind: Kind1
+    label: Annotated[str, Field(min_length=1)]
+    """
+    表示名(# は付けない)。例: 北海道
+    """
 
 
 class Source(BaseModel):
@@ -207,6 +229,10 @@ class Scene(BaseModel):
     chips: list[str]
     """
     特徴の小さなラベル(例: 夜間、目視外)
+    """
+    tags: list[Tag]
+    """
+    ハッシュタグ(絞り込み用。docs/hashtag_design.md §4.1)。なければ空配列
     """
     comments: list[FlowComment]
     source: Source
