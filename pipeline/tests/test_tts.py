@@ -16,7 +16,7 @@ from opendopa_pipeline.tts.providers import (
     mp3_duration,
     wav_to_mp3,
 )
-from opendopa_pipeline.tts.run import run_tts, voice_scene
+from opendopa_pipeline.tts.run import LINE_PAD_SEC, run_tts, voice_scene
 from opendopa_pipeline.tts.speak import apply_dict, load_dict
 
 FIXTURE = Path(__file__).parents[2] / "packages" / "shared" / "fixtures" / "accident-0001.json"
@@ -103,6 +103,9 @@ def test_voice_scene_sets_audio_and_duration(tmp_path) -> None:
         assert line["audio"]["url"] == f"{scene['videoId']}/{i}.mp3"
         assert (tmp_path / "v" / f"{i}.mp3").exists()
         assert line["audio"]["durationSec"] == pytest.approx(len(stub.spoken[i]) * 0.2, abs=0.15)
+        # 行の秒数は、音声の長さに余白を足したもの(最後の行は 15 秒に延ばされることがある)
+        if i < len(voiced["lines"]) - 1:
+            assert line["durationSec"] == pytest.approx(line["audio"]["durationSec"] + LINE_PAD_SEC)
     # 辞書を適用した文だけ speak に入る。字幕は元の表記のまま
     assert voiced["lines"][0]["speak"].startswith("むじんこうくうき")
     assert voiced["lines"][0]["text"].startswith("無人航空機")
@@ -140,6 +143,14 @@ def test_run_tts_excludes_videos_over_30_seconds(tmp_path) -> None:
     assert not (ds / "media" / "accident-0002").exists()
     assert (ds / "media" / "accident-0001" / "0.mp3").exists()
     assert "accident-0002,tts,length" in (ds / "excluded.csv").read_text()
+
+
+def test_length_check_counts_line_padding(tmp_path) -> None:
+    # 音声だけなら約 29.4 秒で収まるが、行ごとの余白(0.3 秒 × 3)を足すと 30 秒を超える
+    scene = scene_dict(["あ" * 49, "い" * 49, "う" * 49])
+    ds = make_out(tmp_path, [scene])
+    res = run_tts(ds, StubTts(0.2), {})
+    assert list(res.excluded) == [scene["videoId"]]
 
 
 def test_none_provider_creates_no_files(tmp_path) -> None:

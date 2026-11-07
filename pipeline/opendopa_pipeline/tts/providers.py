@@ -1,6 +1,6 @@
-"""TTS のプロバイダー(`TTS_PROVIDER=none|voicevox|azure`)。
+"""TTS のプロバイダー(`TTS_PROVIDER=none|voicevox`)。
 
-どちらも 1 行(字幕 1 つ)の文を mp3 のバイト列にして返す。VOICEVOX は wav を返すので mp3 に変換する。
+1 行(字幕 1 つ)の文を mp3 のバイト列にして返す。VOICEVOX は wav を返すので mp3 に変換する。
 HTTP は標準ライブラリだけで呼ぶ(`post` を差し替えればテストできる)。
 """
 

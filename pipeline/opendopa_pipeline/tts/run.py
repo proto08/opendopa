@@ -21,6 +21,10 @@ from opendopa_pipeline.script import MIN_SEC
 from opendopa_pipeline.tts.providers import Synthesizer, TtsError, mp3_duration
 from opendopa_pipeline.tts.speak import apply_dict
 
+# 行の durationSec に足す余白(秒)。再生開始の遅れ(読み込み・デコード・出力遅延)で、
+# 切り替えのときに音声の末尾が切られないようにする。audio.durationSec は実際の長さのまま
+LINE_PAD_SEC = 0.3
+
 
 @dataclass
 class TtsResult:
@@ -45,6 +49,7 @@ def voice_scene(
 ) -> tuple[dict[str, Any], int]:
     """1 本のシーンに音声を付けた新しい dict と、作ったファイル数。`media_dir` は `<videoId>` の中。
 
+    行の秒数は音声の長さ + `LINE_PAD_SEC`。
     15 秒に満たないときは、最後の字幕の秒数を延ばして 15 秒にする(音声の長さはそのまま)。
     """
     media_dir.mkdir(parents=True, exist_ok=True)
@@ -59,7 +64,7 @@ def voice_scene(
         new = {
             **line,
             "audio": {"url": f"{scene['videoId']}/{n}.mp3", "durationSec": sec},
-            "durationSec": sec,
+            "durationSec": round(sec + LINE_PAD_SEC, 2),
         }
         if speak != line["text"]:
             new["speak"] = speak
