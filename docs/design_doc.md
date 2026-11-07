@@ -427,13 +427,14 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 
 | メソッド・パス | 送る | 返す |
 | --- | --- | --- |
-| `POST /internal/feed` | `{events, seenIds, recentDatasets, count}` | `{picks:[{videoId, reason}], seenReset, taste:{x, y, shares:[{clusterId, pct}]}}` |
+| `POST /internal/feed` | `{events, seenIds, recentDatasets, candidateIds?, count}` | `{picks:[{videoId, reason}], seenReset, reason?, taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/taste` | `{events}` | `{taste:{x, y, shares:[{clusterId, pct}]}}` |
 | `POST /internal/reload` | なし | 動画の索引を、DBから読み直す(公開のあとに呼ぶ)。成功は `{status, videos}`、失敗は 502 で古い索引のまま |
 | `GET /healthz` | なし | 200(索引の件数を含む)。索引の読み込み前は 503 |
 | `GET /internal/ping` | なし | 200。認証つきの疎通確認(ADR-0013 A4) |
 
 - `seenIds`: 配信済みの動画ID。`recentDatasets`: 配信済みのデータセットを新しい順に。
+- `candidateIds`(省略可): あれば、候補をその動画だけに絞る(索引にない ID は無視)。省略したら全体から選ぶ。絞った候補が 1 本もなければ `picks: []` と `reason: "pool_empty"`(レスポンス直下の `reason`。`picks[].reason` とは別。省略時は付かない)を返す。`docs/hashtag_design.md` §5.2。
 - `seenReset`: 未視聴が尽きたので、`seenIds` を空として扱って選んだ印。`true` なら Next.js が、そのユーザーの `impressions` を削除する(recsys は書き込まない。ADR-0040 A1)。
 - `reason` は `first` / `explore_cold` / `near` / `adventure`。表示名(`reasonLabel`)は Next.js が付ける。
 - 最初の数本を偏らせる判断の `eventCount` は、`events` のうち `view` の数。
