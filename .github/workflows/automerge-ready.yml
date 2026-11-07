@@ -16,7 +16,7 @@ name: Auto-merge(ready-to-merge)
 on:
   # コードは checkout しない(ラベルの変更で動かすため pull_request_target にしている)
   pull_request_target:
-    types: [labeled]
+    types: [labeled, closed]
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ permissions:
 jobs:
   automerge:
     runs-on: ubuntu-latest
-    if: github.event.label.name == 'status::ready-to-merge' && github.actor != 'dependabot[bot]'
+    if: github.event.action == 'labeled' && github.event.label.name == 'status::ready-to-merge' && github.actor != 'dependabot[bot]'
     steps:
       - name: 条件を確かめて、自動マージを予約する
         run: |
@@ -52,4 +52,39 @@ jobs:
           REPO: ${{ github.repository }}
           NUMBER: ${{ github.event.pull_request.number }}
           PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 自動マージ(github-actions[bot] によるマージ)だと、本文の `Closes #N` でイシューが閉じないことがあった
+  # (#122 のマージで #119 が open のまま残った)。マージされた PR が閉じるはずのイシューのうち、
+  # まだ open のものを閉じる。すでに閉じていれば何もしない。
+  close-issues:
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed' && github.event.pull_request.merged == true && github.event.pull_request.base.ref == github.event.repository.default_branch
+    permissions:
+      issues: write
+      pull-requests: read
+    steps:
+      - name: マージされた PR が閉じるはずのイシューを閉じる
+        run: |
+          set -euo pipefail
+          owner=${REPO%/*}; name=${REPO#*/}
+          gh api graphql -F owner="$owner" -F name="$name" -F number="$NUMBER" -f query='
+            query($owner: String!, $name: String!, $number: Int!) {
+              repository(owner: $owner, name: $name) {
+                pullRequest(number: $number) {
+                  closingIssuesReferences(first: 50) { nodes { number state repository { nameWithOwner } } }
+                }
+              }
+            }' \
+            | jq -r --arg repo "$REPO" '
+                .data.repository.pullRequest.closingIssuesReferences.nodes[]
+                | select(.state == "OPEN" and .repository.nameWithOwner == $repo) | .number' \
+            | while read -r issue; do
+                echo "#$issue を閉じる"
+                gh issue close "$issue" --repo "$REPO" --reason completed \
+                  --comment "#$NUMBER でマージ済み(自動クローズが働かなかったため、ワークフローで閉じた)"
+              done
+        env:
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
