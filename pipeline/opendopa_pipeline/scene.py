@@ -153,6 +153,7 @@ def build_scene(
             "map": scene_map(dataset, row),
             "sparkline": sparkline(dataset, row),
             "chips": chips,
+            "tags": [],  # タグの付与は別 Issue(docs/hashtag_design.md §3.3)
             "comments": comments,
             "source": {"datasetName": dataset.source_name, "ref": source_ref},
             "numbers": numbers,
