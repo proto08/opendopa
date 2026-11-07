@@ -82,7 +82,7 @@ for n in $(jq -r '.[].number' <<<"$prs"); do
         labels: [$d.labels[].name],
         # この PR が扱うイシュー: 説明欄の Closes/Fixes/Resolves/Refs #N と、タイトルの (#N)
         closes: (([($d.body // "") | scan("(?i)(?:closes|fixes|resolves|refs?) #([0-9]+)") | .[0] | tonumber]
-                  + [$d.title | scan("#([0-9]+)") | .[0] | tonumber]) | unique),
+                  + [$d.title | scan("\\(#([0-9]+)\\)") | .[0] | tonumber]) | unique),
         i_reviewed: ($my_review != ""), is_mine: $is_mine, bot: ($d.user.type == "Bot"),
         others_after: ($after | length), busy: $busy
       }')
@@ -105,7 +105,7 @@ issue_facts=$(jq -c --arg me "$ME" --argjson open "$open_issue_numbers" --argjso
         is_parent: (.number as $n | $all_open | any(.[]; .parent == $n)),
         # 「## 依存」に、前提として読めない文章(「…のあと」など)がある。機械では判断できないので、人が見る
         text_dependency: ((.body // "") | [match("(?s)## 依存\n+(.*?)(?:\n## |$)").captures[0].string] | first // ""
-                          | gsub("\\s"; "") | (. != "" and (test("なし|ない|ありません") | not)))
+                          | gsub("\\s"; "") | (. != "" and (test("^[-・*]?(特に|依存は?)?(なし|ありません)") | not)))
       }
     | . + { blocked_by: (.requires - (.requires - $open)) }
   ]' <<<"$issues")
