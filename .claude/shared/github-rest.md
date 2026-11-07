@@ -24,3 +24,14 @@ Claude Code のクラウド環境では、`gh pr list` / `gh pr view` / `gh pr c
 - マージは必ず `sha` を付ける(確認した head と違う commit をマージしないため)。405 は、main が進んだなどで一時的にマージできない印。`mergeable_state` を取り直して、`clean` なら1回だけ再試行する。
 - ラベルの付け替えは、付ける → 外す の順に2回呼ぶ(`status::*` は排他。`docs/kanban.md`)。
 - 一覧が100件を超えるときは `--paginate` を付ける。
+
+## git の fetch / push が SSH で失敗するとき
+
+この環境では SSH が通らないことがある(`Please make sure you have the correct access rights`)。リモートの設定は変えず、`gh` の認証を使って HTTPS で行う。
+
+```bash
+git -c credential.helper='!gh auth git-credential' fetch https://github.com/<R>.git main:refs/remotes/origin/main
+git -c credential.helper='!gh auth git-credential' push https://github.com/<R>.git <ブランチ名>
+```
+
+サブエージェントにも、この節を読むよう伝える(失敗してから手探りしない)。

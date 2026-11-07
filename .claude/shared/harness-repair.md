@@ -44,7 +44,3 @@
 ## 直接 push してよい例外
 
 main が壊れていて、PR の CI が回せないときだけ。それ以外は PR にする。force push はしない。
-
-## 環境メモ
-
-- `git fetch` / `git push` が SSH で失敗するときは `git -c credential.helper='!gh auth git-credential' <fetch|push> https://github.com/<R>.git ...` を使う(設定は変えない)。
