@@ -58,8 +58,10 @@ module "postgres" {
   tags                   = local.tags
 }
 
+# Blob と配信は任意(enable_storage / enable_cdn)。最小構成では作らない選択ができる
 module "storage" {
   source = "./modules/storage"
+  count  = var.enable_storage ? 1 : 0
 
   # Storage Account の名前は英小文字・数字のみ・3〜24 文字・グローバルで一意
   name                 = "st${local.project}${var.env_name}${var.name_suffix}"
@@ -71,15 +73,18 @@ module "storage" {
 
 module "cdn" {
   source = "./modules/cdn"
+  count  = var.enable_cdn ? 1 : 0
 
   name                = local.name
   resource_group_name = azurerm_resource_group.main.name
-  origin_host         = module.storage.primary_blob_host
+  origin_host         = module.storage[0].primary_blob_host
   tags                = local.tags
 }
 
+# Azure OpenAI は任意(enable_openai)。最小構成(無料試用など)では false にできる
 module "openai" {
   source = "./modules/openai"
+  count  = var.enable_openai ? 1 : 0
 
   name                = "oai-${local.name}${local.global_suffix}"
   resource_group_name = azurerm_resource_group.main.name
@@ -89,6 +94,20 @@ module "openai" {
 }
 
 locals {
+  # MEDIA_BASE_URL: cdn があれば Front Door、なければ Blob の公開 URL、storage もなければ空(音声・シーンの配信なし)
+  media_base_url = (
+    var.enable_cdn ? module.cdn[0].base_url :
+    var.enable_storage ? "https://${module.storage[0].primary_blob_host}" : ""
+  )
+
+  # openai を作らないときは、AZURE_OPENAI_* を空にする(参照を壊さない)
+  openai_env = {
+    AZURE_OPENAI_ENDPOINT         = var.enable_openai ? module.openai[0].endpoint : ""
+    AZURE_OPENAI_EMBED_DEPLOYMENT = var.enable_openai ? "embedding" : ""
+  }
+  # キーは秘密。空のシークレットは作れないので、openai があるときだけ渡す
+  openai_secrets = var.enable_openai ? { AZURE_OPENAI_API_KEY = module.openai[0].primary_access_key } : {}
+
   # pg 8.x は sslmode=require を証明書検証ありとして扱う。uselibpqcompat=true で libpq 互換(暗号化のみ)にする
   database_url = format(
     "postgres://%s:%s@%s:5432/%s?sslmode=require&uselibpqcompat=true",
@@ -114,22 +133,23 @@ module "containerapp" {
   web_min_replicas           = var.web_min_replicas
   web_max_replicas           = var.web_max_replicas
 
-  web_env = {
-    MEDIA_BASE_URL = module.cdn.base_url
+  web_env = merge(local.openai_env, {
+    MEDIA_BASE_URL = local.media_base_url
     TTS_PROVIDER   = var.tts_provider
     TTS_CREDIT     = var.tts_credit
-  }
-  web_secrets = {
+  })
+  web_secrets = merge(local.openai_secrets, {
     DATABASE_URL                          = local.database_url
     INTERNAL_TOKEN                        = var.internal_token
     APPLICATIONINSIGHTS_CONNECTION_STRING = module.monitoring.application_insights_connection_string
-  }
+  })
 
-  recsys_env = {
+  recsys_env = merge(local.openai_env, {
     EMBED_DIM = "1024"
-  }
+  })
   # RECSYS_DATABASE_URL は読み取り専用ロールの接続文字列。ロールを作るマイグレーションの後に tfvars で渡す
   recsys_secrets = merge(
+    local.openai_secrets,
     { INTERNAL_TOKEN = var.internal_token },
     var.recsys_database_url != "" ? { RECSYS_DATABASE_URL = var.recsys_database_url } : {},
   )

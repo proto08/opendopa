@@ -53,39 +53,39 @@ output "database_url" {
 
 output "storage_account_name" {
   description = "Blob の Storage Account 名"
-  value       = module.storage.name
+  value       = var.enable_storage ? module.storage[0].name : null
 }
 
 output "storage_connection_string" {
   description = "STORAGE_CONNECTION_STRING に設定する値(パイプラインの publish 用)"
-  value       = module.storage.primary_connection_string
+  value       = var.enable_storage ? module.storage[0].primary_connection_string : null
   sensitive   = true
 }
 
 output "media_base_url" {
-  description = "MEDIA_BASE_URL に設定する値(Front Door)。音声は /media/、シーンJSONは /scenes/"
-  value       = module.cdn.base_url
+  description = "MEDIA_BASE_URL に設定する値(Front Door。enable_cdn = false なら Blob の URL、enable_storage = false なら空)。音声は /media/、シーンJSONは /scenes/"
+  value       = local.media_base_url
 }
 
 output "azure_openai_endpoint" {
-  description = "AZURE_OPENAI_ENDPOINT に設定する値"
-  value       = module.openai.endpoint
+  description = "AZURE_OPENAI_ENDPOINT に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? module.openai[0].endpoint : null
 }
 
 output "azure_openai_api_key" {
-  description = "AZURE_OPENAI_API_KEY に設定する値"
-  value       = module.openai.primary_access_key
+  description = "AZURE_OPENAI_API_KEY に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? module.openai[0].primary_access_key : null
   sensitive   = true
 }
 
 output "azure_openai_embed_deployment" {
-  description = "AZURE_OPENAI_EMBED_DEPLOYMENT に設定する値"
-  value       = "embedding"
+  description = "AZURE_OPENAI_EMBED_DEPLOYMENT に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? "embedding" : null
 }
 
 output "azure_openai_chat_deployment" {
-  description = "AZURE_OPENAI_CHAT_DEPLOYMENT に設定する値"
-  value       = "chat"
+  description = "AZURE_OPENAI_CHAT_DEPLOYMENT に設定する値(enable_openai = false なら null)"
+  value       = var.enable_openai ? "chat" : null
 }
 
 output "web_url" {
