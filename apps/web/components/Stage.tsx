@@ -11,6 +11,7 @@ import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
 import { SceneMap } from "./SceneMap";
 import { SourceLine } from "./SourceLine";
+import { useViewTracking } from "./taste-context";
 import { Telop } from "./Telop";
 import "./stage.css";
 
@@ -18,6 +19,7 @@ import "./stage.css";
 export function Stage({ scene, active = true }: { scene: Scene; active?: boolean }) {
   const player = useScenePlayer(scene, active);
   const { toggle } = player;
+  useViewTracking(scene.videoId, active, player.paused);
 
   useEffect(() => {
     if (!active) return; // フィードでは、見えている動画だけが Space に反応する
