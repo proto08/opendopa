@@ -43,12 +43,14 @@
 
 | 部品 | 既定の実装 | 代わりの実装 | 環境変数 |
 | --- | --- | --- | --- |
-| 埋め込み | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`) | ローカルの `multilingual-e5-large`(1024次元) | `EMBED_PROVIDER=azure\|local` |
-| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | `azure`(Azure AI Speech) | `TTS_PROVIDER=none\|azure\|voicevox` |
-| 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `strands_azure`(Azure上で動かす Strands Decider 2B。失敗・低確信度のときは `rules`) | `jev_local`、`jev_api`(TypeSafe Jev)、`azure_openai`(構造化出力) | `DECIDER_PROVIDER=rules\|strands_azure\|jev_local\|jev_api\|azure_openai` |
-| LLM(テンプレート案、クラスタ名) | Azure OpenAI のチャットモデル | なし(クラスタ名は機械的な名前にフォールバック) | `LLM_PROVIDER=azure\|none` |
+| 埋め込み | Azure OpenAI `text-embedding-3-small`(`dimensions=1024`) | ローカルの `multilingual-e5-large`(1024次元。パイプラインを動かす PC で実行) | `EMBED_PROVIDER=azure\|local` |
+| 音声(TTS) | `none`(字幕のみ。最初はこれで通す)。採用は `voicevox` | なし(Azure AI Speech は使わない) | `TTS_PROVIDER=none\|voicevox` |
+| 判断(決定モデル) | `rules`(全体を通すまで)。評価に合格したら `strands_azure`(Azure 上の Container App で動かす Strands Decider 2B。失敗・低確信度のときは `rules`) | `jev_local`(手元で動かす Jev 系 2B)、`jev_api`(TypeSafe Jev)。`azure_openai` は使わない方針 | `DECIDER_PROVIDER=rules\|jev_local\|jev_api\|strands_azure\|azure_openai` |
+| LLM(クラスタ名) | `none`(クラスタ名は機械的な名前にフォールバック)。テンプレート案(列定義 YAML の下書き)は LLM API ではなく Claude Code が書く(§8.9) | Azure OpenAI のチャットモデル(使わない方針) | `LLM_PROVIDER=none\|azure` |
 
-ローカルの埋め込み(`EMBED_PROVIDER=local`)は `intfloat/multilingual-e5-large`(1024次元)に決定。入力の先頭に、動画の本文には `passage: `、検索文には `query: ` を付け、正規化したベクトルを保存する。Azure と次元(1024)が同じなので、DBの列は共通。ただし、モデルが違うため、**ベクトルを混ぜない**(切り替えたら全動画を埋め込み直す)。
+**方針(2026-11-07 改)**: 埋め込みは Azure OpenAI(`EMBED_PROVIDER=azure`)、判断モデルは Azure 上の自前モデル(`strands_azure`。評価に合格するまでは `rules`)。チャットモデル(`LLM_PROVIDER`)は使わず `none`。詳細は `docs/decisions/2026-11-07-decider-on-azure-again.md` と `docs/decisions/2026-11-07-no-azure-openai-local-models.md`。
+
+代わりの実装のローカル埋め込み(`EMBED_PROVIDER=local`)は `intfloat/multilingual-e5-large`(1024次元)に決定。入力の先頭に、動画の本文には `passage: `、検索文には `query: ` を付け、正規化したベクトルを保存する。Azure と次元(1024)が同じなので、DBの列は共通。ただし、モデルが違うため、**ベクトルを混ぜない**(切り替えたら全動画を埋め込み直す)。
 
 `TTS_PROVIDER=none` のときの字幕のタイミングは、1秒あたり6.5文字で見積もる。
 
@@ -99,7 +101,7 @@ OpenDopa は、国土交通省 Project LINKS が公開するオープンデー�
 | D11 | 配信 | Azure Blob Storage + CDN(Front Door)。音声とシーンJSONの置き場 |
 | D12 | 原稿生成 | 列定義 + **完成した台本のテンプレート**(型ごとに数本、YAML) + 共通エンジン(Python)。型の選択は決定モデル、穴埋めはコード。行ごとにLLMを呼ばない |
 | D13 | Databricks | 使わない |
-| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら、Azure上で動かす Strands Decider 2B(`strands_azure`)に切り替える。配備先(GPU付きContainer Apps か Azure ML)とモデルの入手元・ライセンスは実装時に確認し、評価の結果は `docs/DECISIONS.md` に記録する |
+| D14 | 判断モデル(Jev系) | **使う**。原稿生成で、どの型(テンプレート群)にするかを選ぶ(choice)ほか、安全チェック(noul)に使う(§8.3a)。ただし、全体を通すまでは `rules` で動かし、評価(§14.2b)に合格したら、Azure上で動かす Strands Decider 2B(`strands_azure`)に切り替える。配備先(本体と同じ Container Apps Environment の CPU の Container App。外部 ingress + Bearer トークン。`docs/decisions/2026-11-06-decider-cpu-external.md`)とモデルの入手元・ライセンスは実装時に確認し、評価の結果は `docs/DECISIONS.md` に記録する |
 | D15 | 音声 | **VOICEVOX**。最初は `none` で通し、あとから `voicevox` に切り替える。声(キャラクター)・速度・読み辞書は実装時に決める |
 | D16 | 地図の背景 | 日本の輪郭をアプリに同梱する(Natural Earthを元にした公開データ。npmの`world-atlas`など) |
 | D17 | ベクトル計算 | **Rustの別サービス(`services/recsys`)**。**状態を持たない計算サービス**で、Next.js から、イベントの履歴などを受け取り、好みの位置・割合と、次の動画を返す。DBには書き込まない(起動時に、動画の埋め込みを読み取りのみ)。Container Apps の内部サービス(§6.6) |
@@ -457,7 +459,8 @@ recsys は、Container Apps の**内部のみ**(外部に公開しない)のサ�
 | `TAU` | 0.05 | 候補から確率で選ぶときの温度(コサイン類似度に対して) |
 | `EXPLORE` | 0.18 | 冒険枠の確率 |
 | `COLD_START_N` | 3 | 最初のN本は、全データセットから偏らず選ぶ |
-| `MAX_STREAK` | 2 | 同じデータセットが連続できる最大数 |
+| `DISCOVER_N` | 14 | N本目までは、まだ出ていないデータセットが残る間、新しいデータセットから選ぶ(好みの信号がなくても、全データセットを一巡して好みを見つける)。`COLD_START_N` 以下なら無効 |
+| `MAX_STREAK` | 3 | 同じデータセットが連続できる最大数 |
 | `TAU_MAP` | 0.05 | 地図上の現在地を出すときの温度 |
 
 この値で確定する。問題が出たら、疑似ユーザーのテスト(§14.2)をもとに、あとから調整する。調整しやすいよう、すべて設定ファイルから読む形にする。
@@ -491,7 +494,7 @@ like(false):  いいねを取り消し、そのユーザーの全イベントを
 function pickNext(anon, u, eventCount, lastDatasets):
   unseen = videos where status='ok' and id not in impressions(anon)
   if unseen is empty: seenIds を空として扱って全体から選び直し、seenReset=true を返す(Next.js が impressions を削除する)
-  if eventCount < COLD_START_N:
+  if eventCount < COLD_START_N or (eventCount < DISCOVER_N and 未出のデータセットが unseen に残っている):
       データセットごとに1本ずつ順に(まだ出ていないデータセットから)ランダムに選ぶ。reason='explore_cold'
   elif random() < EXPLORE:
       類似度が unseen の下位半分から、直前と違うデータセットを優先して一様に選ぶ。reason='adventure'
@@ -530,6 +533,7 @@ summary = eventCount == 0 ? 'まだ見ていないので、好みはわかりま
 
 ```
 uv run opendopa profile  --dataset <id>        # 列のプロファイルを出す(列ごとの欠損率、種類数、最長の文字数、役割の推定、上位の値)
+uv run opendopa draft-yaml --dataset <id>      # 新しいデータセット用: 列定義YAMLの下書きの材料を out/<id>/draft_prompt.md に出す(下書きは Claude Code が書く。--check <file> で機械検査)
 uv run opendopa generate --dataset <id>        # 選定→原稿→シーン→検証→ out/<id>/scenes.jsonl
 uv run opendopa decide   --dataset <id> --eval datasets/<id>.labels.csv   # 判断モデルの評価(人が付けた正解との一致率)
 uv run opendopa embed                          # 全動画の埋め込み・2D座標・クラスタ
@@ -687,16 +691,15 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | PostgreSQL Flexible Server | DB。拡張 `vector` を許可する(`azure.extensions` に `VECTOR`) |
 | Storage Account(Blob) | 公開コンテナ `media`(音声)と `scenes`(シーンJSON) |
 | Front Door(または Azure CDN) | `media`/`scenes` の配信 |
-| Azure OpenAI | 埋め込み、チャットのデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認 |
-| 判断モデルの配備先(GPU付きContainer Apps、またはAzure ML) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。**内部のみ** |
-| Azure AI Speech | `TTS_PROVIDER=azure` のとき(VOICEVOX採用のため、既定では不要) |
+| 判断モデルの配備先(本体と同じ環境の CPU の Container App) | `DECIDER_PROVIDER=strands_azure` のとき。Strands Decider 2B を動かす。外部 ingress だが Bearer トークン必須。既定では作らない(`decider_enabled`) |
+| Azure OpenAI | 埋め込み(`EMBED_PROVIDER=azure`)のデプロイ(§0.4)。利用可能なモデル名・地域は、実装時に確認。チャットのデプロイは不要(`LLM_PROVIDER=none`) |
 | Key Vault(任意) | 接続文字列とキー |
 
 地域は、日本の東(Japan East)に決定。モデル名は実装時に確認し、`infra/main.parameters.json` で指定する。サービスが使えない地域は、次の候補を選んでよい(記録する)。
 
 ### 12.2 Terraform の構成
 
-- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `speech`, `monitoring`, `registry`)。
+- 構成は `infra/` に置く。ルートは `main.tf`、`variables.tf`、`outputs.tf`、`providers.tf`、`versions.tf`。リソースはモジュールに分ける(`modules/postgres`, `containerapp`, `storage`, `cdn`, `openai`, `monitoring`, `registry`)。
 - プロバイダーは `hashicorp/azurerm`。実装時に最新の安定版を選び、`versions.tf` で固定する(この文書ではバージョンを固定しない)。
 - **状態(state)** は、Azure Storage のBlobに置く(`backend "azurerm"`)。バックエンド用のStorage Accountは、最初の1回だけ手動(またはブートストラップ用の小さなスクリプト)で作る。
 - 環境は変数 `env_name`(例: `dev`)で分け、リソース名に含める。`terraform.tfvars` はコミットしない(`terraform.tfvars.example` を置く)。
@@ -711,8 +714,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | recsys のアプリ | `azurerm_container_app`(ingress は `external_enabled = false`) |
 | PostgreSQL | `azurerm_postgresql_flexible_server`, `azurerm_postgresql_flexible_server_database`, `azurerm_postgresql_flexible_server_configuration`(`azure.extensions` に `VECTOR` を許可) |
 | Blob と配信 | `azurerm_storage_account`, `azurerm_storage_container`, `azurerm_cdn_frontdoor_profile` ほか |
-| Azure OpenAI | `azurerm_cognitive_account`(kind: `OpenAI`)、`azurerm_cognitive_deployment`(埋め込みとチャット) |
-| Azure AI Speech | `azurerm_cognitive_account`(kind: `SpeechServices`) |
 | 秘密の値(任意) | `azurerm_key_vault`, `azurerm_key_vault_secret` |
 
 - `CREATE EXTENSION vector;` は、Terraform ではなく、アプリのDBマイグレーション(`db/migrations/`、dbmate)で実行する。
@@ -730,8 +731,6 @@ CSVの列に関わるこの部分は、別文書 **`docs/data.md`** の §8.3〜
 | `RECSYS_DATABASE_URL` | recsys が、起動時に埋め込みを読むための、**読み取り専用**のDB接続(Next.js の `DATABASE_URL` とは別のロール) |
 | `EMBED_PROVIDER`, `EMBED_DIM` | §0.4 |
 | `TTS_PROVIDER`, `LLM_PROVIDER`, `DECIDER_PROVIDER` |
-| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBED_DEPLOYMENT`, `AZURE_OPENAI_CHAT_DEPLOYMENT` | Azure OpenAI |
-| `AZURE_SPEECH_KEY`, `AZURE_SPEECH_REGION` | Azure AI Speech |
 | `STORAGE_CONNECTION_STRING` | Blob への書き込み(パイプラインの `publish`) |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | 監視 |
 
@@ -758,7 +757,7 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 | M4b | Next.js のBFF(`/api/feed` `/api/view` `/api/like`): DBの読み書き、recsys の呼び出し、シーンJSONの整形 | 仕様どおりのJSON。疑似ユーザーのテスト(§14.2)が通る |
 | M5 | 好みパネル(地図、割合、要約、視聴の記録)とAPIの連携、元データのシート | モックと同じ見た目。操作で黄色い点が動く |
 | M6 | 残り13データセットの列定義YAML(§10)を、1つずつ追加 | 各データで `generate` が品質ゲートを通る本数が出る。数字の不一致0 |
-| M6b | `strands_azure` を足し(モデルをAzureに配備)、事故50行で評価する(§14.2b) | 一致率80%以上なら `DECIDER_PROVIDER=strands_azure` を既定にする。未満なら `rules` のまま、結果を記録 |
+| M6b | `strands_azure` を足し(Azure 上で動かす)、事故50行で評価する(§14.2b) | 一致率80%以上なら `DECIDER_PROVIDER=strands_azure` を既定にする。未満なら `rules` のまま、結果を記録 |
 | M7 | 地図の部品(航路、範囲、点)。日本の輪郭の同梱 | `naiko_route`, `flightplan`, `rental_result` の動画に地図が出る |
 | M8 | 音声(`TTS_PROVIDER`)。まず `none` のまま完成させ、余裕があれば追加 | 音声ありのときは字幕と音声が同期する |
 | M9 | 仕上げ: 監視、デモの流れ、READMEとデモ手順 | §14.3 の受け入れ基準を満たす |
@@ -789,13 +788,14 @@ GitHub Actions: `main` へのpushで、`pnpm lint && pnpm test`(Web)、`uv run p
 - ユーザーA: 「鉄道」のデータセットの動画だけ、最後まで見る(視聴率1.0)。他はすぐ飛ばす(0.05)。
 - ユーザーB: 「空き家」に、いいねを押す。他は普通(0.5)。
 - 各ユーザー100本ぶん動かし、**何本目から、好みのデータセットの動画が配信の過半数を超えるか**を測る。
-- 合格の目安: 20本以内に過半数を超えること。冒険枠(約18%)は、好み以外の動画が混ざることを確認する。
+- 合格の目安(#119 で見直した): ①ユーザー A・B とも、好みのデータセットの初出が20本以内。②初出と一巡(`DISCOVER_N`)の遅いほうのあと、20本のうち好みが平均で13本(65%)以上、どの seed でも8本以上。③好み以外が100本のうち10本以上(冒険枠が働いている)。
+  - 当初の目安「20本以内に、好みが配信の累計の過半数を超える」は、一巡(最大14本)のあいだ新しいデータセットを強制するため、設計と合わない。累計の過半数は測って出力するだけにした。理由と実測は `docs/decisions/2026-11-07-recsys-discovery-and-streak.md`(前の実測は `2026-11-06-recsys-simulation-results.md`)。
 - 係数(§7.1)は、この結果で調整する。
 
 ### 14.2b 判断モデルの評価
 
 - `datasets/accident.labels.csv`: 人(あなた)が事故50行に、`template`(物件の損壊 / 人の負傷 / 制御不能・墜落・落下 / その他)の正解を付ける。`rules` で下書きを作って、人が直すと速い。
-- `uv run opendopa decide --dataset accident --eval datasets/accident.labels.csv` で、`rules` と `strands_azure`(と、あれば `jev_api`)の一致率、フォールバックの割合、1問あたりの時間を出す。
+- `uv run opendopa decide --dataset accident --eval datasets/accident.labels.csv` で、`rules` と `strands_azure`(と、あれば `jev_local`・`jev_api`)の一致率、フォールバックの割合、1問あたりの時間を出す。
 - 合格: `strands_azure` の一致率が80%以上、かつフォールバックが30%以下。合格しなければ `rules` を既定のままにする。
 - 結果は `docs/DECISIONS.md` に記録する。
 

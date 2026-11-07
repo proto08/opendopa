@@ -1,7 +1,8 @@
 "use client";
 
 import type { Scene } from "@opendopa/shared";
-import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
+import { LineAudio } from "./lineAudio";
 import { ScenePlayer, type PlayerSnapshot } from "./scenePlayer";
 
 export type UseScenePlayer = PlayerSnapshot & { toggle: () => void };
@@ -14,6 +15,8 @@ export function useScenePlayer(
   scene: Pick<Scene, "videoId" | "lines">,
   /** false の間は止めて最初に戻す(フィードで画面から外れている動画) */
   active = true,
+  /** true の間は再生を止める(シートが開いているとき)。false に戻すと続きから再開する */
+  hold = false,
 ): UseScenePlayer {
   const player = useMemo(
     // 動画が変わったら作り直す。lines の中身は videoId に対して不変とみなす
@@ -28,33 +31,22 @@ export function useScenePlayer(
     return () => player.stop();
   }, [player, active]);
 
+  useEffect(() => {
+    if (!active || !hold) return;
+    player.hold();
+    return () => player.release();
+  }, [player, active, hold]);
+
   const toggle = useCallback(() => player.toggle(), [player]);
   const snap = useSyncExternalStore(player.subscribe, player.getSnapshot, player.getSnapshot);
 
   const audioUrl = active ? (scene.lines[snap.lineIndex]?.audio?.url ?? null) : null;
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  // 行が変わる、またはループするたびに、その行の音声を頭から鳴らす
+  const lineAudio = useMemo(() => new LineAudio(), []);
+  // 行が変わる・ループする・一時停止/再開するたびに、音声を字幕に合わせる
   useEffect(() => {
-    if (!audioUrl) return;
-    const audio = new Audio(audioUrl);
-    audioRef.current = audio;
-    audio.play().catch(() => {
-      // 自動再生がブラウザに止められたときは、無音で字幕だけ進める
-    });
-    return () => {
-      audio.pause();
-      audioRef.current = null;
-    };
-    // 行・周回の変化だけで鳴らし直す(一時停止の切り替えでは鳴らし直さない)
-  }, [audioUrl, snap.lineIndex, snap.loops]);
-
-  // 一時停止で音声を止め、再開で続きから鳴らす
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    if (snap.paused) audio.pause();
-    else audio.play().catch(() => {});
-  }, [snap.paused]);
+    lineAudio.sync(audioUrl, `${snap.lineIndex}:${snap.loops}`, snap.paused);
+  }, [lineAudio, audioUrl, snap.lineIndex, snap.loops, snap.paused]);
+  useEffect(() => () => lineAudio.stop(), [lineAudio]);
 
   return { ...snap, toggle };
 }

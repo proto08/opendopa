@@ -88,17 +88,6 @@ output "azure_openai_chat_deployment" {
   value       = "chat"
 }
 
-output "azure_speech_region" {
-  description = "AZURE_SPEECH_REGION(tts_provider=azure のときだけ)"
-  value       = one(module.speech[*].region)
-}
-
-output "azure_speech_key" {
-  description = "AZURE_SPEECH_KEY(tts_provider=azure のときだけ)"
-  value       = one(module.speech[*].primary_access_key)
-  sensitive   = true
-}
-
 output "web_url" {
   description = "web の URL。/api/health が 200 なら DB に繋がっている"
   value       = module.containerapp.web_url
@@ -117,4 +106,14 @@ output "recsys_app_name" {
 output "recsys_internal_url" {
   description = "RECSYS_URL に設定される値(環境の中からだけ届く)"
   value       = module.containerapp.recsys_internal_url
+}
+
+output "decider_url" {
+  description = "STRANDS_DECIDER_URL に設定する値(外部 URL。decider_enabled のときだけ)"
+  value       = var.decider_enabled ? module.decider[0].url : null
+}
+
+output "decider_app_name" {
+  description = "判断モデルの Container App 名(decider_enabled のときだけ)"
+  value       = var.decider_enabled ? module.decider[0].name : null
 }

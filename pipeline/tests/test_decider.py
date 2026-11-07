@@ -9,6 +9,7 @@ import yaml
 from opendopa_pipeline.decider import (
     Decision,
     DecisionEngine,
+    DecisionRequest,
     Option,
     create_decider,
     provider_name_from_env,
@@ -292,3 +293,175 @@ def test_provider_from_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_unknown_provider_is_an_error(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="strands_azure"):
         create_decider("strands_azure", make_dataset(tmp_path))
+
+
+# ---- strands_azure(スタブの内部 API) ----
+
+
+class _Stub:
+    """`POST /v1/decide` を返すスタブサーバー。`handler(body) -> (status, json)`。"""
+
+    def __init__(self, handler):
+        import http.server
+        import threading
+
+        outer = self
+        self.requests: list[dict] = []
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):  # noqa: N802
+                body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                outer.requests.append(
+                    {"path": self.path, "auth": self.headers.get("Authorization"), "body": body}
+                )
+                status, payload = handler(body)
+                data = json.dumps(payload).encode()
+                self.send_response(status)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                try:
+                    self.wfile.write(data)
+                except BrokenPipeError:  # クライアントがタイムアウトで切った
+                    pass
+
+            def log_message(self, *a):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.url = f"http://127.0.0.1:{self.server.server_port}"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def stub():
+    made: list[_Stub] = []
+
+    def make(handler):
+        s = _Stub(handler)
+        made.append(s)
+        return s
+
+    yield make
+    for s in made:
+        s.close()
+
+
+def _strands(stub_obj, token="tok", timeout=5.0):
+    from opendopa_pipeline.decider.strands_azure import StrandsAzureDecider
+
+    return StrandsAzureDecider(stub_obj.url, token, timeout)
+
+
+def _answer(body):
+    out = []
+    for r in body["requests"]:
+        if r["kind"] == "choice":
+            out.append({"distribution": {"injury": 0.8, "other": 0.2}})
+        else:
+            out.append({"probability": 0.05})
+    return 200, {"results": out}
+
+
+def test_strands_azure_registered_and_needs_url(tmp_path, monkeypatch):
+    ds = make_dataset(tmp_path)
+    monkeypatch.delenv("STRANDS_DECIDER_URL", raising=False)
+    with pytest.raises(ValueError, match="STRANDS_DECIDER_URL"):
+        create_decider("strands_azure", ds)
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "http://example.invalid")
+    assert create_decider("strands_azure", ds).name == "strands_azure"
+
+
+def test_strands_azure_converts_and_sends_token(stub):
+    s = stub(_answer)
+    d = _strands(s)
+    opts = [Option("injury", "負傷"), Option("other", "その他")]
+    dec = d.decide("choice", {"a": 1}, "q", opts)
+    assert (dec.choice, dec.provider, dec.used_fallback) == ("injury", "strands_azure", False)
+    assert dec.confidence == pytest.approx(0.8)
+    assert dec.distribution == {"injury": pytest.approx(0.8), "other": pytest.approx(0.2)}
+    n = d.decide("noul", {"a": 1}, "q")
+    assert n.probability == 0.05 and n.confidence == pytest.approx(0.95)
+    assert s.requests[0]["path"] == "/v1/decide"
+    assert s.requests[0]["auth"] == "Bearer tok"
+    assert s.requests[0]["body"]["requests"][0]["options"][0] == {"id": "injury", "label": "負傷"}
+
+
+def test_strands_azure_batch_is_one_call(stub):
+    s = stub(_answer)
+    reqs = [DecisionRequest("noul", {"i": i}, "q") for i in range(3)]
+    assert len(_strands(s).decide_batch(reqs)) == 3
+    assert len(s.requests) == 1
+
+
+@pytest.mark.parametrize("mode", ["5xx", "timeout", "low", "garbage"])
+def test_strands_azure_failures_fall_back_without_stopping(tmp_path, stub, mode):
+    def handler(body):
+        if mode == "5xx":
+            return 503, {"error": "down"}
+        if mode == "timeout":
+            time.sleep(1.0)
+            return _answer(body)
+        if mode == "low":
+            return 200, {
+                "results": [
+                    {"distribution": {"injury": 0.5, "other": 0.5}}
+                    if r["kind"] == "choice"
+                    else {"probability": 0.5}
+                    for r in body["requests"]
+                ]
+            }
+        return 200, {
+            "results": [
+                {"distribution": {"zzz": 1}} if r["kind"] == "choice" else {}
+                for r in body["requests"]
+            ]
+        }
+
+    s = stub(handler)
+    ds = make_dataset(tmp_path)
+    decider = _strands(s, timeout=0.2 if mode == "timeout" else 5.0)
+    engine = DecisionEngine(ds, decider, timeout=0.2 if mode == "timeout" else 30.0)
+    rows = [{"CASUALTIES_SUMMARY": "なし", "INCIDENT_SUMMARY": "走行中に停止した"}]
+    rec = engine.run(rows, lambda row: ALL)[0]
+    assert rec["template"]["used_fallback"] is True
+    assert rec["template"]["provider"] == "rules"
+    if mode != "low":  # pii は min_confidence がないので、低確信度だけではフォールバックしない
+        assert rec["pii"]["used_fallback"] is True
+        assert engine.report()["fallback_rate"] == 1.0
+
+
+def test_strands_azure_logs_fallback_count(tmp_path, stub, caplog):
+    s = stub(lambda body: (503, {"error": "down"}))
+    decider = _strands(s)
+    engine = DecisionEngine(make_dataset(tmp_path), decider, timeout=30.0)
+    rows = [{"CASUALTIES_SUMMARY": "なし", "INCIDENT_SUMMARY": f"行{i}"} for i in range(2)]
+    with caplog.at_level("WARNING"):
+        engine.run(rows, lambda row: ALL)
+    assert decider.failed > 0
+    assert any(
+        "strands_azure が" in m and "件失敗し rules にフォールバックした" in m
+        for m in caplog.messages
+    )
+
+
+def test_strands_azure_no_log_on_success(stub, caplog):
+    decider = _strands(stub(_answer))
+    with caplog.at_level("WARNING"):
+        decider.decide("noul", {"a": 1}, "q")
+    assert decider.failed == 0 and not caplog.messages
+
+
+def test_strands_azure_トークンがあるとき_http_の外部_url_は拒否する(tmp_path, monkeypatch):
+    ds = make_dataset(tmp_path)
+    monkeypatch.setenv("STRANDS_DECIDER_TOKEN", "tok")
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "http://decider.example.com")
+    with pytest.raises(ValueError, match="https"):
+        create_decider("strands_azure", ds)
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "https://decider.example.com")
+    assert create_decider("strands_azure", ds).name == "strands_azure"
+    monkeypatch.setenv("STRANDS_DECIDER_URL", "http://127.0.0.1:9")
+    assert create_decider("strands_azure", ds).name == "strands_azure"

@@ -207,7 +207,7 @@ class Decision:
 | 名前 | 内容 |
 | --- | --- |
 | `rules` | ルール(`fallback_rules`、正規表現)。全体を通すまでの既定。判断モデルが使えないときの代わり |
-| `strands_azure` | **採用**。AWSの Strands Decider 2B を、Azure上(GPU付きContainer Apps か Azure ML)で動かし、内部APIとして呼ぶ。評価(§14.2b)に合格したら既定にする。モデルの入手元・ライセンスは実装時に確認する |
+| `strands_azure` | **採用**。AWSの Strands Decider 2B を、Azure上(本体と同じ環境の CPU の Container App)で動かし、Bearer トークン付きの API として呼ぶ。評価(§14.2b)に合格したら既定にする。モデルの入手元・ライセンスは実装時に確認する |
 | `jev_local` | ローカルで動かす、Jevふうの判断モデル。候補は、Hugging Face の `chaoliangUNSW/Jev-Style-2B-Decision-v3`(約1.9B、Apache-2.0、`jev-style` パッケージでローカルAPIとして起動できる。Apple Siliconは `jev-style[mlx]`)。実装時に、モデルカードの手順とライセンスを確認する(提供元はTypeSafe AIとは別の組織) |
 | `jev_api` | TypeSafe Jev(ホスト型のAPI。`TYPESAFE_API_KEY`)。費用・利用条件は要確認 |
 | `azure_openai` | Azure OpenAI の構造化出力で、同じ質問に答えさせる(確率は、複数回の試行の割合などで近似してよい) |
@@ -300,15 +300,15 @@ select:
 実行結果として、データセットごとに「生成件数、除外件数と理由の内訳、推定秒数の最小・中央・最大」を標準出力とJSONに残す。
 
 
-### 8.9(補足)テンプレート案を作らせるLLMプロンプトの要点
+### 8.9(補足)テンプレート案を書かせるプロンプトの要点
 
-LLMに渡す: データセットのプロファイル(列名、型、欠損率、種類数、最長文字数、上位の値)、サンプル10行、YAMLスキーマ(§8.3)、禁止事項。指示の要点:
+下書きは Claude Code が書く(Azure OpenAI などの LLM API は使わない。`opendopa draft-yaml` が材料を `out/<id>/draft_prompt.md` に出す)。材料: データセットのプロファイル(列名、型、欠損率、種類数、最長文字数、上位の値)、サンプル10行、YAMLスキーマ(§8.3)、禁止事項。指示の要点:
 - 値にあることだけを述べる。原因・責任・被害の推測は書かない。
 - 穴埋めは、列定義にある列名の `{}` だけを使う。
 - ニュース番組風の、落ち着いた語り口。
 - 出力はYAMLだけ。
 - 型(グループ)ごとに、完成した文章のテンプレートを、標準・短い版・言い回し違いで書く。1行は、読み上げて5〜8秒に収める。
-LLMの出力は、列名が列定義に存在するかを機械で検査してから、人が確認する。**LLMが書くのは「ひな型」だけで、数字は必ずエンジンが入れる。**
+書かれた下書きは、`opendopa draft-yaml --check <file>` で、列名が列定義に存在するかなどを機械で検査してから、人が確認する。**書くのは「ひな型」だけで、数字は必ずエンジンが入れる。**
 
 
 ## 10. データセット別の定義(届いた14ファイル)
@@ -473,7 +473,7 @@ LLMの出力は、列名が列定義に存在するかを機械で検査して�
 **追加の手順**(エンジンの変更なしでできること):
 1. `data/raw/<id>/` にCSVを置く。
 2. `uv run opendopa profile --dataset <id>` で列の一覧を出す。
-3. LLM(`LLM_PROVIDER=azure`)に、プロファイルとサンプル10行を渡して、列定義YAMLの案を作らせる(プロンプトは§8.9)。
+3. `uv run opendopa draft-yaml --dataset <id>` で下書きの材料(`out/<id>/draft_prompt.md`)を出し、Claude Code に読ませて `datasets/<id>.draft.yaml` を書かせる。`--check datasets/<id>.draft.yaml` で、YAML の構文・穴の列名・型ごとの `short` を機械で検査する(プロンプトは§8.9、`pipeline/prompts/draft_yaml.md`)。
 4. 人が確認して直し、`datasets/<id>.yaml` に置く。
 5. `generate` を実行し、品質ゲートの結果を見る。
 

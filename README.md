@@ -177,6 +177,7 @@ PR と `main` への push で、GitHub Actions(`.github/workflows/ci.yml`)が検
 | `pipeline` | `ruff format --check`、`ruff check`、`uv run pytest` | `pipeline`、`packages/shared/schema`、`datasets` |
 | `recsys` | `cargo fmt --check`、`cargo clippy`、`cargo test` | `services/recsys` |
 | `types` | 生成した型が JSON Schema と一致しているか(`mise run gen-types:check`) | `packages/shared`、`pipeline` の依存 |
+| `infra` | `terraform fmt -check`、`terraform validate`(`mise run lint:infra`。Azure には接続しない) | `infra` |
 | `ci-ok` | 上のジョブの結果をまとめる(常に走る) | 常に |
 
 `mise.toml` と `ci.yml` を変えたときは、すべてのジョブが走ります。ツールのバージョンは `mise.toml` が正で、キャッシュは pnpm のストア、uv、cargo(`target/`)に効いています。
@@ -191,6 +192,82 @@ PR と `main` への push で、GitHub Actions(`.github/workflows/ci.yml`)が検
 4. 必要なら **Require a pull request before merging** も有効にして保存する
 
 `web` などのジョブを個別に必須にしないでください。パスフィルタでスキップされたジョブは必須チェックを満たせず、PR が止まるおそれがあります。`ci-ok` は、スキップを成功として扱い、失敗・キャンセルだけを落とします。なお、チェックを追加できるのは、一度 PR で走ったあとです。
+
+## CD(デプロイ)とインフラ変更
+
+Azure への認証は OIDC(フェデレーション資格情報)です。クライアントシークレットなど、Azure の長期の資格情報は GitHub に置きません(ADR-0019)。
+
+| ワークフロー | きっかけ | 内容 |
+| --- | --- | --- |
+| `.github/workflows/deploy.yml` | `main` の CI が成功したあと(手動実行も可) | web と recsys のイメージをビルド → Container Registry に push → Container Apps を更新 → `/api/health` を確認 |
+| `.github/workflows/infra.yml` | 手動実行(`workflow_dispatch`) | `terraform plan`(要約に出る)→ environment `infra-apply` の承認 → `terraform apply`(承認した plan をそのまま適用) |
+
+変数(`AZURE_CLIENT_ID_DEPLOY` / `AZURE_CLIENT_ID_INFRA`)が空のあいだ、これらは何もせず終わります。下の設定を人が行ってから動きます。**以下はすべて Azure の課金とアクセス権に関わるため、人が実行します。**
+
+### 1. Azure 側(最初の1回)
+
+前提: `az login` 済み、Terraform の state 用 Storage(`infra/bootstrap/bootstrap.sh`)と、`mise run infra-apply` による最初のインフラ作成が済んでいること。以下の `<...>` は自分の値に置き換えます。
+
+アプリ登録は 2 つ作ります(権限を分けるため)。
+
+| アプリ登録 | 使う場面 | ロール |
+| --- | --- | --- |
+| `opendopa-gh-deploy` | `deploy.yml` | Container Registry に `AcrPush`、リソースグループ `rg-opendopa-<env>` に `Container Apps Contributor`(イメージの更新に必要な最小の権限) |
+| `opendopa-gh-infra` | `infra.yml` | サブスクリプションに `Contributor` と `Role Based Access Control Administrator`(Terraform が `AcrPull` の割り当てを作るため)、state の Storage Account に `Storage Blob Data Contributor` |
+
+```bash
+# 例: deploy 用(infra 用も同じ要領で名前とロールを変える)
+APP_ID=$(az ad app create --display-name opendopa-gh-deploy --query appId -o tsv)
+az ad sp create --id "$APP_ID"
+# フェデレーション資格情報: environment dev の実行だけを信頼する
+az ad app federated-credential create --id "$APP_ID" --parameters '{
+  "name": "gh-env-dev",
+  "issuer": "https://token.actions.githubusercontent.com",
+  "subject": "repo:proto08/opendopa:environment:dev",
+  "audiences": ["api://AzureADTokenExchange"]
+}'
+SP_ID=$(az ad sp show --id "$APP_ID" --query id -o tsv)
+az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
+  --role AcrPush --scope "$(az acr show -n <ACR名> --query id -o tsv)"
+az role assignment create --assignee-object-id "$SP_ID" --assignee-principal-type ServicePrincipal \
+  --role "Container Apps Contributor" --scope "$(az group show -n rg-opendopa-<env> --query id -o tsv)"
+```
+
+`opendopa-gh-infra` のフェデレーション資格情報の subject は 2 つ(`repo:proto08/opendopa:environment:infra-plan` と `repo:proto08/opendopa:environment:infra-apply`)です。
+
+### 2. GitHub 側
+
+**Settings → Environments** で次の 3 つを作ります。
+
+| environment | 用途 | 設定 |
+| --- | --- | --- |
+| `dev` | deploy | 承認なし(必要なら Deployment branches を `main` に限定する) |
+| `infra-plan` | plan | 承認なし |
+| `infra-apply` | apply | **Required reviewers** に承認者を入れる。Deployment branches を `main` に限定する |
+
+**Settings → Secrets and variables → Actions → Variables** に次を登録します(値は秘密ではありません)。
+
+| 変数 | 値 |
+| --- | --- |
+| `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` | テナント ID / サブスクリプション ID |
+| `AZURE_CLIENT_ID_DEPLOY` / `AZURE_CLIENT_ID_INFRA` | 上の 2 つのアプリ登録のクライアント ID |
+| `AZURE_RESOURCE_GROUP` / `ACR_NAME` / `WEB_APP_NAME` / `RECSYS_APP_NAME` | `terraform output` の `resource_group_name` / `registry_name` / `web_app_name` / `recsys_app_name` |
+| `TF_ENV_NAME` / `TF_NAME_SUFFIX` | `terraform.tfvars` の `env_name` / `name_suffix`(suffix なしなら空) |
+| `TFSTATE_RESOURCE_GROUP` / `TFSTATE_STORAGE_ACCOUNT` | `infra/backend.hcl` の `resource_group_name` / `storage_account_name` |
+
+**Secrets** には、アプリの設定値だけを、`infra-plan` と `infra-apply` の両方の environment secrets として登録します(Azure の資格情報ではありません)。
+
+| Secret | 内容 |
+| --- | --- |
+| `TF_POSTGRES_ADMIN_PASSWORD` | `TF_VAR_postgres_admin_password` と同じ値(16 文字以上) |
+| `TF_INTERNAL_TOKEN` | `TF_VAR_internal_token` と同じ値(16 文字以上) |
+| `TF_RECSYS_DATABASE_URL` | `TF_VAR_recsys_database_url`(読み取り専用ロールを作る前は空) |
+| `TF_PLAN_PASSPHRASE` | plan ファイル(artifact)を暗号化・復号するパスフレーズ。長いランダム文字列を、`infra-plan` と `infra-apply` の両方に**同じ値**で登録する。plan ファイルには DB パスワードなどが入り、このリポジトリは public で artifact を誰でも取得できるため、暗号化して渡す |
+
+### 3. 使い方
+
+- デプロイ: `main` に merge すると、CI が通ったあとに `Deploy` が走ります。手動で再デプロイするときは Actions の `Deploy` から **Run workflow** します。
+- インフラ変更: Actions の `Infra` から **Run workflow** → `plan` の要約を確認 → `infra-apply` の承認 → `apply`。
 
 ## ドキュメント
 

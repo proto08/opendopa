@@ -35,6 +35,15 @@ PR:       review-wait → pr-review → changes-requested → fixing → review-
 - 作業を終えるとき(成功・失敗・中断のどれでも)、自分が付けた作業中の状態(`in-progress` / `pr-review` / `fixing` / `merge-check` / `conflict`)は必ず外すか、次の状態に付け替える
 - ラベルの付け替えは、他人のPRにも行ってよい(投稿ではない)。ただし、付けてよいのはこの表の状態だけ
 
+## `needs-human`(人の確認待ち)
+
+`status::*` とは別に付ける、**排他でないラベル**。実機でしか確かめられないこと(Azure・VOICEVOX の実接続など)や、人の承認・判断が要ることを待っている PR・イシューに付ける。
+
+- 付いている間は、`/sleep` の対象から外れる(`mise run sleep-scan` が除く)。何度も見に行かない
+- 付ける人: `/sleep` の担当が、「コードでは直せず、人の確認が要る」と判断して終えるとき。理由は PR のコメントか報告に書く
+- 外す人: 確認が済んだ人。外すと、次の `sleep-scan` で対象に戻る
+- `status::ready-to-merge` が付いていても、`needs-human` があれば自動マージ(`.github/workflows/automerge-ready.yml`)は予約されない
+
 ## 他の人の作業中を避ける
 
 他の人の AI が `pr-review` / `merge-check` を付けて作業中のPRに、重ねて着手しない。
