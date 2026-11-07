@@ -41,4 +41,4 @@ gh pr view <番号> --json isDraft,mergeable,reviewDecision,statusCheckRollup
 
 - レビュー担当が「指摘なし」で `status::ready-to-merge` を付けると、ワークフローが `gh pr merge --auto` を予約する
 - 予約するのは、作成者以外の最後のレビューが「指摘なし」で、`needs-human` がなく、ドラフトでないときだけ
-- 実際のマージは、必須チェックが通ってから GitHub が行う。`/sleep` は、自分の PR を自分ではマージしない(コンフリクトを解消して push した PR のマージは `conflict.md` の規則のまま)
+- 実際のマージは、必須チェックが通ってから GitHub が行う。`/sleep` は、自分の PR を自分ではマージしない(例外は2つ: コンフリクトを解消して push した PR は `conflict.md`、ハーネス修復の PR は `harness-repair.md` の規則)
