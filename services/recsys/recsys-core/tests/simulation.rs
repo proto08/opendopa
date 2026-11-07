@@ -21,6 +21,9 @@ const STEPS: usize = 100;
 /// 受け入れ条件: この本数以内に、好みが累計の過半数を超える。
 const LIMIT: usize = 20;
 
+/// 目標: 初出と一巡のあとの LIMIT 本のうち、好みの本数の平均がこの割合以上(連続は 3 本まで、冒険枠は約 18%)。
+const TARGET_SHARE: f64 = 0.65;
+
 /// 標準正規分布に近い乱数(一様乱数 12 個の和 - 6)。
 fn gauss(rng: &mut Rng) -> f32 {
     ((0..12).map(|_| rng.next_f64()).sum::<f64>() - 6.0) as f32
@@ -89,7 +92,8 @@ struct Outcome {
     majority_at: Option<usize>,
     /// 好みのデータセットが初めて配信された本数。
     first_fav: Option<usize>,
-    /// 初出の次の本から LIMIT 本ぶんのうち、好みだった本数(その本数が配信されていなければ `None`)。
+    /// 初出と一巡(`discover_n` 本)の遅いほうの次の本から LIMIT 本ぶんのうち、好みだった本数
+    /// (その本数が配信されていなければ `None`)。一巡のあいだは新しいデータセットを強制するので、数えない。
     fav_after_discovery: Option<usize>,
     /// 配信した STEPS 本のうち、好み以外の本数。
     off_taste: usize,
@@ -109,6 +113,7 @@ fn simulate(index: &Index, config: &Config, user: User, favorite: &str, seed: u6
     let (mut fav, mut majority_at, mut adventures) = (0usize, None, 0usize);
     let mut first_fav = None;
     let mut hits: Vec<bool> = Vec::new();
+    let discover_n = config.discover_n;
 
     for n in 1..=STEPS {
         let u = replay(&u0, &events, index, config);
@@ -157,6 +162,7 @@ fn simulate(index: &Index, config: &Config, user: User, favorite: &str, seed: u6
         majority_at,
         first_fav,
         fav_after_discovery: first_fav
+            .map(|d| d.max(discover_n))
             .filter(|d| d + LIMIT <= STEPS)
             .map(|d| hits[d..d + LIMIT].iter().filter(|h| **h).count()),
         off_taste: STEPS - fav,
@@ -182,7 +188,7 @@ fn check(user: User, favorite: &str, expect_found_within: Option<usize>) {
                 "seed {seed}: 好みの初出が {at} 本目(目安 {limit} 本以内)"
             );
         }
-        // 好みを知ったあとの学習: 初出のあとの LIMIT 本で、好みが多数派に近い(連続制限と冒険枠で、上限は 6 割前後)。
+        // 好みを知ったあとの学習: 初出のあとの LIMIT 本で、好みが多数派に近い(連続制限と冒険枠があるので、全部は好みにならない)。
         if let Some(n) = o.fav_after_discovery {
             assert!(
                 n * 5 >= LIMIT * 2,
@@ -202,8 +208,9 @@ fn check(user: User, favorite: &str, expect_found_within: Option<usize>) {
     let mean = shares.iter().sum::<usize>() as f64 / shares.len() as f64;
     println!("初出のあと{LIMIT}本中の好み 平均 {mean:.1} 本");
     assert!(
-        mean > LIMIT as f64 / 2.0,
-        "平均 {mean:.1} 本で、過半数に届かない"
+        mean >= LIMIT as f64 * TARGET_SHARE,
+        "平均 {mean:.1} 本で、目標の {:.0}% に届かない",
+        TARGET_SHARE * 100.0
     );
 }
 
@@ -214,7 +221,7 @@ fn user_a_watching_rail_converges() {
 
 #[test]
 fn user_b_liking_akiya_converges() {
-    check(User::Liker, "akiya", None);
+    check(User::Liker, "akiya", Some(LIMIT));
 }
 
 /// 2,100 本 × 1024 次元での処理時間。debug ビルドでは意味がないので、通常は走らせない:
@@ -262,10 +269,9 @@ fn sweep() {
     let variants: Vec<(&str, Config)> = vec![
         ("既定", base.clone()),
         (
-            "neutral=0.5 neg=0.6",
+            "discover_n=3(#119 より前)",
             Config {
-                watch_neutral: 0.5,
-                alpha_neg: 0.6,
+                discover_n: 3,
                 ..base.clone()
             },
         ),
@@ -277,16 +283,24 @@ fn sweep() {
             },
         ),
         (
-            "cold_start_n=0",
+            "max_streak=4",
             Config {
-                cold_start_n: 0,
+                max_streak: 4,
                 ..base.clone()
             },
         ),
         (
-            "explore=0.3",
+            "explore=0.12",
             Config {
-                explore: 0.3,
+                explore: 0.12,
+                ..base.clone()
+            },
+        ),
+        (
+            "max_streak=3 explore=0.12",
+            Config {
+                max_streak: 3,
+                explore: 0.12,
                 ..base.clone()
             },
         ),

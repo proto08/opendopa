@@ -104,7 +104,9 @@ pub fn pick_next(
             }
         }
 
-        let cold = event_count < config.cold_start_n;
+        // 最初の cold_start_n 本、または discover_n 本目まで未出のデータセットが残る間は、新しいデータセットから選ぶ。
+        let cold = event_count < config.cold_start_n
+            || (event_count < config.discover_n && has_fresh_dataset(index, &pool, &shown));
         let (i, reason) = if is_first && n == 0 {
             let i = if cold {
                 pick_by_new_dataset(index, &pool, &shown, rng)
@@ -143,6 +145,13 @@ fn streak_dataset<'a>(recent: &[&'a str], max_streak: usize) -> Option<&'a str> 
     let head = recent.get(..max_streak)?;
     let first = *head.first()?;
     head.iter().all(|d| *d == first).then_some(first)
+}
+
+/// `pool` に、まだ出ていないデータセットの動画があるか。
+fn has_fresh_dataset(index: &Index, pool: &[usize], shown: &HashSet<&str>) -> bool {
+    let videos = index.videos();
+    pool.iter()
+        .any(|&i| !shown.contains(videos[i].dataset_id.as_str()))
 }
 
 /// まだ出ていないデータセットを一様に選び、その中から一様に選ぶ。
@@ -322,6 +331,7 @@ mod tests {
         let seen = vec!["d0-0".to_string()];
         let mut cfg = Config {
             explore: 0.0,
+            discover_n: 0,
             ..Config::default()
         };
         for seed in 0..20 {
@@ -340,6 +350,7 @@ mod tests {
         let idx = index(2, 100, 3);
         let cfg = Config {
             explore: 0.0,
+            discover_n: 0,
             ..Config::default()
         };
         let user = u(99);
@@ -360,6 +371,7 @@ mod tests {
         let idx = index(3, 40, 4);
         let cfg = Config {
             explore: 1.0,
+            discover_n: 0,
             ..Config::default()
         };
         let user = u(99);
@@ -377,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn no_dataset_streak_of_three_in_1000_picks() {
+    fn no_dataset_streak_over_max_in_1000_picks() {
         let idx = index(4, 500, 5);
         let cfg = Config::default();
         let mut rng = Rng::new(77);
@@ -390,10 +402,11 @@ mod tests {
             let id = r.picks[0].video_id.clone();
             recent.insert(0, ds_of(&idx, &id));
             seen.push(id);
-            if recent.len() >= 3 {
+            let m = cfg.max_streak + 1;
+            if recent.len() >= m {
                 assert!(
-                    !(recent[0] == recent[1] && recent[1] == recent[2]),
-                    "{k} 本目で同じデータセットが 3 連続"
+                    !recent[..m].iter().all(|d| *d == recent[0]),
+                    "{k} 本目で同じデータセットが {m} 連続"
                 );
             }
         }
