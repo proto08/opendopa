@@ -92,6 +92,17 @@ DATASET_TAG_SLUGS: dict[str, str] = {
 }
 
 
+# データ種別の検索用の読み(DATASET_TAG_SLUGS と同じキー)
+DATASET_TAG_YOMI: dict[str, str] = {
+    "レンタカー": "れんたかー",
+    "事故": "じこ",
+    "空き家": "あきや",
+    "鉄道": "てつどう",
+    "内航海運": "ないこうかいうん",
+    "飛行計画": "ひこうけいかく",
+}
+
+
 def find_prefecture(text: str) -> Prefecture | None:
     """先頭の都道府県名(「東京都千代田区」)、または全文が省略形(「東京」)なら、その都道府県。
 
@@ -124,3 +135,16 @@ def scene_tags(
             seen.add(pref.slug)
             out.append(region_tag(pref))
     return out
+
+
+def tag_row(tag: Mapping[str, str]) -> tuple[str, str, str, str, int]:
+    """シーンJSON のタグ → `tags` の行 `(id, kind, label, yomi, sort)`。
+
+    `yomi` と `sort` は、シーンJSON にはなく、ここの表から引く(データ種別は定義順、
+    地域は JIS の順)。表にないタグは `KeyError`。
+    """
+    kind, label = tag["kind"], tag["label"]
+    if kind == "dataset":
+        return tag["id"], kind, label, DATASET_TAG_YOMI[label], list(DATASET_TAG_SLUGS).index(label)
+    pref = _BY_NAME[label]
+    return tag["id"], kind, label, pref.yomi, PREFECTURE_TABLE.index(pref)
