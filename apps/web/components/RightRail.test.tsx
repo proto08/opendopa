@@ -22,6 +22,15 @@ describe("RightRail", () => {
     expect(rail(true)).toContain('aria-pressed="true"');
     expect(rail(false)).toContain('aria-pressed="false"');
   });
+
+  it("キー入力を止めない(ボタンにフォーカスがあっても l / j / k が window に届く)", () => {
+    // RightRail はフックを使わないので、関数として呼んで根の要素の props を調べる
+    const root = RightRail({ liked: false, onLike: noop, onCsv: noop, onTaste: noop, onNext: noop });
+    expect(root.props.onKeyDown).toBeUndefined();
+    expect(root.props.onKeyUp).toBeUndefined();
+    // クリックは止める(ステージの一時停止/再開に伝えない)
+    expect(typeof root.props.onClick).toBe("function");
+  });
 });
 
 describe("CsvSheet", () => {

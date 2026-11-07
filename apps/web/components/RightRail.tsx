@@ -2,7 +2,7 @@
 
 import "./rail.css";
 
-/** ステージの右端のボタン(設計書 §3.3)。ボタンの押下はステージの一時停止/再開に伝えない */
+/** ステージの右端のボタン(設計書 §3.3)。クリックはステージの一時停止/再開に伝えない(キーは止めない: ボタンにフォーカスがあっても l や j を効かせる) */
 export function RightRail({
   liked,
   onLike,
@@ -22,7 +22,6 @@ export function RightRail({
       role="group"
       aria-label="操作"
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
     >
       <button
         type="button"
