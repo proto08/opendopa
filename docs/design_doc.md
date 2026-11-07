@@ -381,14 +381,6 @@ CREATE INDEX ON like_events (anon_id, created_at);
 
 `tag` を足すと(複数可、4個まで。例: `tag=dataset:rental&tag=region:hokkaido`)、指定したすべてのタグを持つ動画(AND。`status='ok'` のみ)だけから選ぶ。重複する ID は 1 個と数える。未知のタグ・5個以上は、recsys を呼ぶ前に400。候補がなければ、200 で `items: []`、`reason: "pool_empty"`、`taste`(`includeMap=1` なら `map` も)を返し、`impressions` には何も記録しない。絞り込み中に recsys が `seenReset: true` を返したら、`impressions` は **候補の動画の分だけ**消す(候補の外の配信済みは残す)。絞り込み中も、視聴・いいねは通常どおり好みに反映する。詳細は `docs/hashtag_design.md` §5.2、`docs/decisions/2026-11-07-bff-tag-filter.md`。
 
-### 6.1a `GET /api/tags`
-
-全タグと件数を返す。動画がないタグも `count: 0` で含め、並びは `sort`、`id`。件数は `status='ok'` の動画だけを数える。
-
-```jsonc
-{ "tags": [ { "id": "region:hokkaido", "kind": "region", "label": "北海道", "yomi": "ほっかいどう", "count": 42 } ] }
-```
-
 処理:
 1. 匿名IDを確認する(Cookie。なければ発行する)。
 2. DBから、そのユーザーの `events`(`view_events` と `like_events` を時刻順)、配信済みの動画ID(`impressions`)、直近に配信したデータセットを読む。
@@ -409,6 +401,14 @@ CREATE INDEX ON like_events (anon_id, created_at);
     "clusters": [ { "id":4, "name":"ドローンの接触事故", "color":"#FF7A59", "cx":0.31, "cy":0.62 } ]
   }
 }
+```
+
+### 6.1a `GET /api/tags`
+
+全タグと件数を返す。動画がないタグも `count: 0` で含め、並びは `sort`、`id`。件数は `status='ok'` の動画だけを数える。
+
+```jsonc
+{ "tags": [ { "id": "region:hokkaido", "kind": "region", "label": "北海道", "yomi": "ほっかいどう", "count": 42 } ] }
 ```
 
 ### 6.2 `POST /api/view`
