@@ -19,14 +19,12 @@ argument-hint: "[イシュー番号 ...]"
 | マージ確認(自分がレビュー済みのPR) | `.claude/sleep/merge-check.md` |
 | コンフリクト解消(自分のPR) | `.claude/sleep/conflict.md` |
 | 実装・レビュー対応(イシュー) | `.claude/sleep/implement.md` |
+| ハーネス自身の修復(PR 方式・セルフレビュー・触ってよい範囲) | `.claude/shared/harness-repair.md` |
 | 共通規則(マージ・レビュー観点・決定の記録・REST の操作) | `.claude/shared/*.md` |
 
 ## 原則
 
-- **ハーネス周りの不具合は自己修復する**(ユーザー承認済み)。`sleep-scan`・`.claude/` の手順書・`mise-tasks/` など、/sleep 自身の仕組みが壊れていたら(例: SSH 形式の remote で REPO を誤判定して 404)、その回のうちに直す。直すのは仕組みの不具合に限り、アプリのコードには広げない。
-  - 小さな修正は、PR を作らず **main に直接 commit・push してよい**(`git push` が SSH で失敗するときは `git -c credential.helper='!gh auth git-credential' push https://github.com/<R>.git main`)。fetch も同様に HTTPS で行う。
-  - commit メッセージは日本語。force push はしない。`mise run lint` と `mise run test` が通ることを確かめてから push する。
-  - 直したことは最終報告に書く。判断が要る大きな変更(権限・認証・手順の方針変更)は、直さずに報告に書く。
+- **ハーネス(この手順書・`sleep-scan` など)の不具合や改善点は、自分で直す**(ユーザー承認済み)。手順は `.claude/shared/harness-repair.md`(PR を作り、別のサブエージェントがセルフレビューし、指摘なしなら自動マージ。触ってよい範囲もそこに書いてある)。この修復の PR 作成・マージは、下の「投稿」「マージ」の制限に数えない。権限・認証・CI・アプリのコードには触れず、報告だけする。
 - **質問しない・許可を待たない**。`AskUserQuestion` は使わない。迷ったら、安全側(破壊的でない・外部に影響しない側)を選び、その判断を最終報告に書く。
 - 投稿してよいのは、(a) 自分のPRへのレビュー対応報告、(b) 他の人のレビュー待ちPRへのレビュー、(c) 自分がレビューしたPRの対応確認結果、(d) 自分のPRのコンフリクト解消の報告、の4つだけ。それ以外のPR・イシューへは投稿しない。
 - マージしてよいのは、次の3つだけ。それ以外のPRはマージしない。
