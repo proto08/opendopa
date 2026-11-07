@@ -89,8 +89,9 @@ module "openai" {
 }
 
 locals {
+  # pg 8.x は sslmode=require を証明書検証ありとして扱う。uselibpqcompat=true で libpq 互換(暗号化のみ)にする
   database_url = format(
-    "postgres://%s:%s@%s:5432/%s?sslmode=require",
+    "postgres://%s:%s@%s:5432/%s?sslmode=require&uselibpqcompat=true",
     module.postgres.administrator_login,
     urlencode(var.postgres_admin_password),
     module.postgres.fqdn,

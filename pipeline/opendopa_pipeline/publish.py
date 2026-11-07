@@ -312,7 +312,10 @@ def run_publish(
             result.reloaded = True
         except (OSError, ValueError) as e:  # URLError は OSError
             result.reloaded = False
-            msg = f"recsys の reload に失敗しました(公開は完了): {e}"
+            msg = (
+                f"recsys の reload に失敗しました(公開は完了): {e}"
+                "(届かないときは `make recsys-reload` で recsys を再起動する)"
+            )
             log.warning(msg)
             result.warnings.append(msg)
     return result
