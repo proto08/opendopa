@@ -52,12 +52,12 @@ DECIDER_DOCKERFILE ?= services/decider/Dockerfile
 deploy-decider:
 	@set -eu; \
 	test -f "$(DECIDER_DOCKERFILE)" || { echo "$(DECIDER_DOCKERFILE) がありません"; exit 1; }; \
-	login_server=$$(terraform -chdir=$(TF_DIR) output -raw registry_login_server); \
-	registry=$$(terraform -chdir=$(TF_DIR) output -raw registry_name); \
-	rg=$$(terraform -chdir=$(TF_DIR) output -raw resource_group_name); \
-	app=$$(terraform -chdir=$(TF_DIR) output -raw decider_app_name); \
+	login_server=$$($(TF) -chdir=$(TF_DIR) output -raw registry_login_server); \
+	registry=$$($(TF) -chdir=$(TF_DIR) output -raw registry_name); \
+	rg=$$($(TF) -chdir=$(TF_DIR) output -raw resource_group_name); \
+	app=$$($(TF) -chdir=$(TF_DIR) output -raw decider_app_name); \
 	az acr login --name "$$registry"; \
 	docker build --platform $(PLATFORM) -f "$(DECIDER_DOCKERFILE)" -t "$$login_server/opendopa-decider:$(TAG)" .; \
 	docker push "$$login_server/opendopa-decider:$(TAG)"; \
 	az containerapp update -g "$$rg" -n "$$app" --image "$$login_server/opendopa-decider:$(TAG)"; \
-	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$(terraform -chdir=$(TF_DIR) output -raw decider_url)"
+	echo "判断モデルを更新しました。STRANDS_DECIDER_URL=$$($(TF) -chdir=$(TF_DIR) output -raw decider_url)"
