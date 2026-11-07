@@ -13,7 +13,7 @@ pre-commit:
       root: pipeline/
       glob: "*.py"
       exclude:
-        - "opendopa_pipeline/generated/**"
+        - "pipeline/opendopa_pipeline/generated/**"
       run: mise exec -- uv run ruff format {staged_files} && mise exec -- uv run ruff check --fix {staged_files}
       stage_fixed: true
 
