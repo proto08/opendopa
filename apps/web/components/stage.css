@@ -114,16 +114,18 @@
 }
 
 /* 下部のテロップ(白い帯に見出し、左に赤のカテゴリ名の縦書き) */
-.telop {
+.telopWrap {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 30cqw;
+  z-index: 2;
+}
+.telop {
   display: flex;
   align-items: stretch;
   background: var(--paper);
   color: var(--ink);
-  z-index: 2;
 }
 .telopCategory {
   writing-mode: vertical-rl;

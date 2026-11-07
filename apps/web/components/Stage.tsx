@@ -27,12 +27,18 @@ export function Stage({
   scene,
   active = true,
   hold = false,
+  selectedTags,
+  onTag,
   children,
 }: {
   scene: Scene;
   active?: boolean;
   /** true の間は再生を止める(シートが開いているとき) */
   hold?: boolean;
+  /** 絞り込み中のタグ ID(動画のタグを黄色にする) */
+  selectedTags?: readonly string[];
+  /** 動画のタグのタップ(絞り込みの切り替え) */
+  onTag?: (id: string) => void;
   /** 重ねて置くもの(右レールなど) */
   children?: ReactNode;
 }) {
@@ -85,7 +91,13 @@ export function Stage({
       </div>
       <BigNumber data={scene.bigNumber} countProgress={player.countProgress} />
       <SceneMap map={scene.map} />
-      <Telop categoryName={scene.categoryName} headline={scene.headline} />
+      <Telop
+        categoryName={scene.categoryName}
+        headline={scene.headline}
+        tags={scene.tags}
+        selectedTags={selectedTags}
+        onTag={onTag}
+      />
       <Captions lines={scene.lines} lineIndex={player.lineIndex} />
       <SourceLine source={scene.source} />
       <AiLabel />

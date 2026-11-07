@@ -3,6 +3,7 @@ import {
   clampIndex,
   isEditableTarget,
   isLikeKey,
+  keyAction,
   keyToDelta,
   observeActiveSlide,
 } from "./feedNav";
@@ -85,5 +86,18 @@ describe("isLikeKey / isEditableTarget", () => {
 
   it("DOM がない環境や要素でない対象は入力欄とみなさない", () => {
     expect(isEditableTarget(null)).toBe(false);
+  });
+});
+
+describe("keyAction", () => {
+  it("シートが閉じていれば、キーを操作に直す", () => {
+    expect(keyAction("j", false)).toEqual({ type: "move", delta: 1 });
+    expect(keyAction("ArrowUp", false)).toEqual({ type: "move", delta: -1 });
+    expect(keyAction("l", false)).toEqual({ type: "like" });
+    expect(keyAction("x", false)).toEqual({ type: "none" });
+  });
+  it("シート(検索を含む)が開いている間は、↑ ↓ j k l のどれも効かない", () => {
+    for (const key of ["ArrowUp", "ArrowDown", "j", "k", "l"])
+      expect(keyAction(key, true)).toEqual({ type: "none" });
   });
 });

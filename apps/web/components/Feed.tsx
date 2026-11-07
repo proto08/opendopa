@@ -4,30 +4,46 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   clampIndex,
   isEditableTarget,
-  isLikeKey,
-  keyToDelta,
+  keyAction,
   observeActiveSlide,
 } from "@/lib/feedNav";
 import type { FeedItem, FeedResponse } from "@/lib/feedTypes";
 import { createLikeSync } from "@/lib/likeSync";
+import {
+  feedUrl,
+  filteredCount,
+  readTagsFromSearch,
+  sameTags,
+  type TagInfo,
+  toggleTag,
+  withTagsInSearch,
+} from "@/lib/tagFilter";
 import { CsvSheet } from "./CsvSheet";
+import { PoolEmpty } from "./PoolEmpty";
+import { SearchButton } from "./SearchButton";
 import { Slide } from "./Slide";
+import { TagSearchSheet } from "./TagSearchSheet";
 import { useTasteApp, useTasteSheet } from "./taste-context";
 import "./feed.css";
+import "./tags.css";
 
-/** 最初の取得だけ地図(`includeMap=1`)も受け取る */
+/** 最初の取得だけ地図(`includeMap=1`)も受け取る。`tags` があれば、すべてを持つ動画だけ(AND) */
 async function fetchFeed(
   count: number,
   includeMap: boolean,
+  tags: readonly string[],
 ): Promise<FeedResponse> {
-  const res = await fetch(
-    `/api/feed?count=${count}${includeMap ? "&includeMap=1" : ""}`,
-    {
-      cache: "no-store",
-    },
-  );
+  const res = await fetch(feedUrl(count, includeMap, tags), {
+    cache: "no-store",
+  });
   if (!res.ok) throw new Error(`/api/feed が ${res.status} を返しました`);
   return (await res.json()) as FeedResponse;
+}
+
+async function fetchTags(): Promise<TagInfo[]> {
+  const res = await fetch("/api/tags", { cache: "no-store" });
+  if (!res.ok) throw new Error(`/api/tags が ${res.status} を返しました`);
+  return ((await res.json()) as { tags: TagInfo[] }).tags;
 }
 
 async function postLike(videoId: string, liked: boolean): Promise<void> {
@@ -53,8 +69,15 @@ export function Feed() {
   // いいねの表示状態(動画 ID → 押されているか)。初期値は taste.log の liked
   const [liked, setLiked] = useState<Record<string, boolean>>({});
   const [csvOpen, setCsvOpen] = useState(false);
-  // 元データのシートと、スマホの好みシート(#49)のどちらかが開いている間は、再生を止める
-  const sheetOpen = csvOpen || tasteSheet.open;
+  // タグの絞り込み(状態は URL の ?tag= にも持つ)と検索シート
+  const [tags, setTags] = useState<string[]>([]);
+  const [catalog, setCatalog] = useState<TagInfo[] | null>(null);
+  const [catalogFailed, setCatalogFailed] = useState(false);
+  const [searchAt, setSearchAt] = useState<number | null>(null);
+  const [poolEmpty, setPoolEmpty] = useState(false);
+  const searchOpen = searchAt !== null;
+  // 元データのシート、スマホの好みシート(#49)、検索シートのどれかが開いている間は、再生を止める
+  const sheetOpen = csvOpen || tasteSheet.open || searchOpen;
   const likeSync = useMemo(
     () =>
       createLikeSync(postLike, (videoId, confirmed) =>
@@ -65,14 +88,19 @@ export function Feed() {
   const rootRef = useRef<HTMLDivElement>(null);
   const loadingMore = useRef(false);
   const lastActive = useRef(0);
+  const tagsRef = useRef<string[]>([]);
+  // 絞り込みを変えるたびに増やす。古い取得の結果は捨てる
+  const generation = useRef(0);
 
   // 取得して items に足す。setState はコールバックの中だけで呼ぶ
   const load = useCallback(
-    (count: number, initial: boolean) => {
+    (count: number, initial: boolean, includeMap = initial) => {
       if (loadingMore.current) return;
       loadingMore.current = true;
-      fetchFeed(count, initial)
+      const mine = generation.current;
+      fetchFeed(count, includeMap, tagsRef.current)
         .then((body) => {
+          if (mine !== generation.current) return;
           // 好みと地図は、受け取って描くだけ(計算はサーバー)
           if (body.map) app?.store.setMap(body.map);
           app?.store.applyTaste(body.taste);
@@ -85,24 +113,92 @@ export function Feed() {
               if (!(e.videoId in merged)) merged[e.videoId] = true;
             return merged;
           });
+          if (body.reason === "pool_empty") setPoolEmpty(true);
           setItems((prev) => [...prev, ...body.items]);
           setStatus("ready");
         })
         .catch(() => {
+          if (mine !== generation.current) return;
           // 先読みの失敗は黙って次の機会に回す。最初の取得の失敗だけ画面に出す
           if (initial) setStatus("error");
         })
         .finally(() => {
-          loadingMore.current = false;
+          if (mine === generation.current) loadingMore.current = false;
         });
     },
     [app, likeSync],
   );
 
-  // 最初は、現在の動画と先読みの 2 本
+  // 最初は、URL のタグを読んで、現在の動画と先読みの 2 本
   useEffect(() => {
+    const initialTags = readTagsFromSearch(window.location.search);
+    tagsRef.current = initialTags;
+    setTags(initialTags);
     load(2, true);
   }, [load]);
+
+  // タグの件数の表(虫眼鏡の本数と検索シートの候補)
+  useEffect(() => {
+    fetchTags()
+      .then(setCatalog)
+      .catch(() => setCatalogFailed(true));
+  }, []);
+
+  // 絞り込みを変える: キューと先読みを捨て、URL を直し、条件つきで取り直して先頭へ戻る
+  const applyTags = useCallback(
+    (next: string[]) => {
+      generation.current += 1;
+      loadingMore.current = false;
+      tagsRef.current = next;
+      lastActive.current = 0;
+      setTags(next);
+      setItems([]);
+      setPoolEmpty(false);
+      setActive(null);
+      setAnchor(0);
+      setStatus("loading");
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${withTagsInSearch(window.location.search, next)}${window.location.hash}`,
+      );
+      load(2, true, false);
+    },
+    [load],
+  );
+
+  const openSearch = useCallback(() => {
+    tasteSheet.closeSheet(); // スマホの好みシートと同時には開かない
+    setSearchAt(lastActive.current);
+  }, [tasteSheet]);
+
+  const closeSearch = useCallback(
+    (next: string[]) => {
+      const at = searchAt;
+      setSearchAt(null);
+      if (!sameTags(next, tagsRef.current)) {
+        applyTags(next);
+        return;
+      }
+      // 閉じたら虫眼鏡へフォーカスを戻す
+      requestAnimationFrame(() =>
+        rootRef.current
+          ?.querySelector<HTMLElement>(`[data-index="${at}"] .searchButton`)
+          ?.focus(),
+      );
+    },
+    [searchAt, applyTags],
+  );
+
+  // 検索シートが開いている間に好みシートが開いたら、検索シートを閉じる
+  useEffect(() => {
+    if (tasteSheet.open) setSearchAt(null);
+  }, [tasteSheet.open]);
+
+  const onTag = useCallback(
+    (id: string) => applyTags(toggleTag(tagsRef.current, id)),
+    [applyTags],
+  );
 
   // 常に「いまの次の 1 本」まで持っておく
   useEffect(() => {
@@ -149,20 +245,18 @@ export function Feed() {
 
   // ↑ ↓ j k で前後へ(端で止まる)、l でいいね。シートが開いている間と入力欄では効かせない
   useEffect(() => {
-    if (sheetOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || isEditableTarget(e.target))
         return;
-      if (isLikeKey(e.key)) {
+      const action = keyAction(e.key, sheetOpen);
+      if (action.type === "like") {
         if (e.repeat) return;
         e.preventDefault();
         toggleLike();
-        return;
+      } else if (action.type === "move") {
+        e.preventDefault(); // 矢印キーの素のスクロールと二重にならないように
+        scrollBy(action.delta);
       }
-      const delta = keyToDelta(e.key);
-      if (delta === 0) return;
-      e.preventDefault(); // 矢印キーの素のスクロールと二重にならないように
-      scrollBy(delta);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -188,14 +282,46 @@ export function Feed() {
         >
           もう一度読み込む
         </button>
+        {tags.length > 0 ? (
+          <button type="button" onClick={() => applyTags([])}>
+            タグを外して読み込む
+          </button>
+        ) : null}
       </div>
     );
   }
 
   const shown = items[active ?? anchor];
 
+  // 虫眼鏡と、開いていれば検索シート(見えている動画のステージの上)
+  const overlay = (index: number) => (
+    <>
+      <SearchButton
+        filtering={tags.length > 0}
+        count={filteredCount(tags, catalog)}
+        onOpen={openSearch}
+      />
+      {searchAt === index ? (
+        <TagSearchSheet
+          catalog={catalog}
+          failed={catalogFailed}
+          selected={tags}
+          onClose={closeSearch}
+        />
+      ) : null}
+    </>
+  );
+
   return (
-    <div className="feed" ref={rootRef} tabIndex={-1}>
+    <div className="feed" ref={rootRef} tabIndex={-1} data-locked={searchOpen}>
+      {items.length === 0 && poolEmpty ? (
+        <section className="slide" data-index={0} aria-label="動画なし">
+          <div className="stage" style={{ cursor: "default" }}>
+            <PoolEmpty onClear={() => applyTags([])} />
+            {overlay(0)}
+          </div>
+        </section>
+      ) : null}
       {items.map((item, i) => (
         <Slide
           key={i}
@@ -209,6 +335,9 @@ export function Feed() {
           onCsv={() => setCsvOpen(true)}
           onTaste={tasteSheet.openSheet}
           onNext={() => scrollBy(1)}
+          selectedTags={tags}
+          onTag={onTag}
+          overlay={overlay(i)}
         />
       ))}
       {csvOpen && shown ? (
