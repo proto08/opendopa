@@ -229,6 +229,21 @@ def write_db(conn: Any, b: Bundle) -> None:
         )
 
 
+def changed_videos(conn: Any, b: Bundle) -> list[str]:
+    """既にある動画のうち、元の行(`csv_row`)が今回の出力と違うものの ID。
+
+    動画 ID は CSV の行順に依存する(`build.py`)。元 CSV の行の増減・並べ替えで、閲覧・いいねの
+    履歴が別の動画を指す恐れがあるので、洗い替えの前に数える(警告のみ。公開は止めない)。
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, csv_row FROM videos WHERE id = ANY(%s) AND status = 'ok'",
+            ([v.id for v in b.videos],),
+        )
+        old = {row[0]: row[1] for row in cur.fetchall()}
+    return sorted(v.id for v in b.videos if v.id in old and old[v.id] != v.csv_row)
+
+
 def write_blobs(connection_string: str, b: Bundle) -> tuple[int, int]:
     """`scenes/<videoId>.json` と `media/<videoId>/<n>.mp3` を上書きで置く。"""
     from azure.storage.blob import BlobServiceClient, ContentSettings
@@ -303,6 +318,15 @@ def run_publish(
         assert conn_str
         result.scene_blobs, result.media_blobs = write_blobs(conn_str, b)
     with psycopg.connect(database_url) as conn:  # 例外なら rollback、抜ければ commit
+        changed = changed_videos(conn, b)
+        if changed:
+            msg = (
+                f"{len(changed)} 本の動画で、元の行の内容が前回と違います"
+                f"(例: {', '.join(changed[:3])})。元 CSV の行の増減・並べ替えがあると、"
+                "閲覧・いいねの履歴が別の動画を指します(動画 ID は行順で決まる)"
+            )
+            log.warning(msg)
+            result.warnings.append(msg)
         write_db(conn, b)
 
     url, token = env.get("RECSYS_URL"), env.get("INTERNAL_TOKEN")

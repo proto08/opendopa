@@ -188,3 +188,42 @@ module "decider" {
 
   tags = local.tags
 }
+
+# pipeline のジョブ。手動で起動して、Blob の元 CSV から動画を洗い替える(pipeline_job_enabled。Issue #144)。
+# 書き込みは publish.py と同じ(DB は管理者ロール。Blob は同じ Storage Account)。TTS はジョブからは届かない VOICEVOX
+# を使うので none(音声つきの動画は、手元から `opendopa all` で公開する)。
+module "pipeline_job" {
+  source = "./modules/pipelinejob"
+  count  = var.pipeline_job_enabled ? 1 : 0
+
+  name                  = local.name
+  resource_group_name   = azurerm_resource_group.main.name
+  location              = azurerm_resource_group.main.location
+  environment_id        = module.containerapp.environment_id
+  registry_id           = module.registry.id
+  registry_login_server = module.registry.login_server
+  image                 = var.pipeline_image
+
+  env = merge(local.openai_env, {
+    RAW_SOURCE          = "blob"
+    EMBED_PROVIDER      = "azure"
+    EMBED_DIM           = "1024"
+    TTS_PROVIDER        = "none"
+    LLM_PROVIDER        = "none"
+    DECIDER_PROVIDER    = var.pipeline_decider_provider
+    MEDIA_BASE_URL      = local.media_base_url
+    RECSYS_URL          = module.containerapp.recsys_internal_url
+    STRANDS_DECIDER_URL = var.decider_enabled ? module.decider[0].url : ""
+  })
+  secrets = merge(
+    local.openai_secrets,
+    {
+      DATABASE_URL              = local.database_url
+      INTERNAL_TOKEN            = var.internal_token
+      STORAGE_CONNECTION_STRING = module.storage[0].primary_connection_string
+    },
+    var.decider_enabled ? { STRANDS_DECIDER_TOKEN = var.decider_token } : {},
+  )
+
+  tags = local.tags
+}
