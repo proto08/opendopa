@@ -360,7 +360,11 @@ export function Feed() {
         ),
       )}
       {poolEmpty ? (
-        <section className="slide" data-index={slots.length} aria-label="動画なし">
+        <section
+          className="slide"
+          data-index={slots.length}
+          aria-label="動画なし"
+        >
           <div className="stage" style={{ cursor: "default" }}>
             <PoolEmpty onClear={() => applyTags([])} />
             {overlay(slots.length)}
