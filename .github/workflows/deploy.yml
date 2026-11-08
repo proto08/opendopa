@@ -56,7 +56,9 @@ jobs:
         run: |
           set -euo pipefail
           tag="$(git rev-parse --short HEAD)"
-          server="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv)"
+          # ログインサーバーは ACR 名から決まる。az acr show は管理面の読み取り権限(Reader など)が要り、
+          # deploy 用のアプリ登録は AcrPush だけなので使わない(使うと「registries が見つからない」で失敗する)
+          server="${ACR_NAME}.azurecr.io"
           echo "TAG=$tag" >> "$GITHUB_ENV"
           echo "LOGIN_SERVER=$server" >> "$GITHUB_ENV"
           docker build --platform linux/amd64 -f services/recsys/Dockerfile -t "$server/opendopa-recsys:$tag" .
