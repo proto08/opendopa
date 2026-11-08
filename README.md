@@ -478,11 +478,11 @@ make infra-init && make infra-plan && make infra-apply
 RG="$(terraform -chdir=infra output -raw resource_group_name)"
 PG="$(terraform -chdir=infra output -raw postgres_fqdn | cut -d. -f1)"   # サーバー名はホスト名の先頭
 MYIP="$(curl -s https://api.ipify.org)"
-az postgres flexible-server firewall-rule create -g "$RG" -n "$PG" --rule-name tmp-migrate \
+az postgres flexible-server firewall-rule create -g "$RG" --server-name "$PG" --name tmp-migrate \
   --start-ip-address "$MYIP" --end-ip-address "$MYIP"
 #    recsys 用の読み取り専用ロールは dbmate より先に作る(GRANT のマイグレーションはロールがないと何もしない)。手順は後述の「初回データを入れる」の 1
 DATABASE_URL="$(terraform -chdir=infra output -raw database_url)" mise exec -- dbmate up
-az postgres flexible-server firewall-rule delete -g "$RG" -n "$PG" --rule-name tmp-migrate --yes   # 必ず消す
+az postgres flexible-server firewall-rule delete -g "$RG" --server-name "$PG" --name tmp-migrate --yes   # 必ず消す
 
 # 5. イメージをビルドして Container Apps を更新する
 make deploy
@@ -530,18 +530,20 @@ make infra-plan && make infra-apply
 export DATABASE_URL="$ADMIN_URL"
 export STORAGE_CONNECTION_STRING="$(terraform -chdir=infra output -raw storage_connection_string)"
 # 音声の URL の前に付ける値。未設定だと相対パスのまま入り音声が再生されない。.env.local / .env.example の http://localhost:3000/media は Azure では404になるので必ず上書きする
-export MEDIA_BASE_URL="$(terraform -chdir=infra output -raw media_base_url)"
+# 音声は Blob の media コンテナにあり、URL は <MEDIA_BASE_URL>/<動画ID>/<n>.mp3 になる。output の値(アカウント直下、CDN があれば Front Door)の末尾に /media を付ける。付け忘れると 400 になり音声が鳴らない
+export MEDIA_BASE_URL="$(terraform -chdir=infra output -raw media_base_url)/media"
 # 埋め込みを Azure OpenAI で作るなら AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY / AZURE_OPENAI_EMBED_DEPLOYMENT も
 # terraform output の値で設定する。音声は TTS_PROVIDER=voicevox(手元で VOICEVOX を起動しておく)
 # mise 経由(mise exec -- uv run)にしない: mise は .env.local を読み込み、上で export した値を手元用の値で上書きしうるため。素の uv run なら export した値がそのまま使われる
 cd pipeline && uv run opendopa all
+#    tts と embed を手元で済ませてあるときは all ではなく publish だけ(all は生成からやり直す): uv run opendopa publish
 #    件数だけ確かめるなら: uv run opendopa publish --dry-run
 
 # 5. recsys に索引を読み直させる(publish のあと。reload の警告が出るのは正常。az login 済みで)
 cd .. && make recsys-reload
 
 # 6. 一時ファイアウォール規則を消す(手順 4 と同じ。必ず消す)
-az postgres flexible-server firewall-rule delete -g "$RG" -n "$PG" --rule-name tmp-migrate --yes
+az postgres flexible-server firewall-rule delete -g "$RG" --server-name "$PG" --name tmp-migrate --yes
 ```
 
 順序の理由: ロール → マイグレーション(GRANT がロールを前提にする)→ `TF_VAR_recsys_database_url`(recsys が読む URL)→ publish(索引の元データ)→ `make recsys-reload`(recsys は起動時にだけ索引を読む)。`publish` は `videos` を `id` で upsert し、`embeddings` と `clusters` を入れ直します(視聴・いいねの履歴は消しません。`docs/decisions/2026-11-07-etl-job-and-video-refresh.md`)。再実行しても同じ結果になります。
