@@ -44,6 +44,35 @@
   pointer-events: none;
 }
 
+/* 背景画像(データセットごと)。透かしより下、UI より下に敷く */
+.bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bgImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+/* 上は大きな数字、下はテロップと字幕を読めるように、上下を濃く・中央を透かす */
+.bgShade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgb(7 21 43 / 72%) 0%,
+    rgb(7 21 43 / 38%) 38%,
+    rgb(7 21 43 / 45%) 62%,
+    rgb(7 21 43 / 88%) 100%
+  );
+}
+/* 画像があるときは、透かしを薄くして騒がしくしない */
+.hasBg .watermark {
+  color: color-mix(in srgb, var(--cat) 6%, transparent);
+}
+
 /* 進行バー(上端) */
 .progress {
   position: absolute;
