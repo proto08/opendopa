@@ -8,8 +8,6 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 8cqw;
   background: linear-gradient(
     180deg,
     color-mix(in srgb, var(--cat) 55%, #000),
@@ -25,10 +23,27 @@
   }
 }
 
+/* 上: 画像(文字は重ねない)。下: テキスト */
+.adImage {
+  display: block;
+  flex: none;
+  width: 100%;
+  aspect-ratio: 1000 / 563;
+  object-fit: cover;
+}
+
+.adBody {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 6cqw 8cqw;
+}
+
 .adBadge {
-  position: absolute;
-  top: 4.5cqw;
-  left: 4cqw;
+  align-self: flex-start;
+  margin-bottom: 4cqw;
   padding: 0.9cqw 2.6cqw;
   background: #fff;
   color: #111;
@@ -38,29 +53,51 @@
 }
 
 .adTitle {
-  margin: 0 0 5cqw;
+  margin: 0 0 4cqw;
   font-family: var(--font-display);
-  font-size: 11cqw;
+  font-size: 8cqw;
   line-height: 1.2;
 }
 
 .adText {
-  margin: 0 0 4cqw;
-  font-size: 5cqw;
+  margin: 0 0 3cqw;
+  font-size: 4.4cqw;
   font-weight: 700;
   line-height: 1.6;
 }
 
 .adNote {
   margin: 0;
-  font-size: 3.8cqw;
+  font-size: 3.6cqw;
   opacity: 0.8;
 }
 
+.adActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3cqw;
+  margin-top: 5cqw;
+}
+
+.adLink {
+  padding: 2.4cqw 5cqw;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 4.2cqw;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.adLink:focus-visible {
+  outline: 3px solid var(--yellow);
+  outline-offset: 2px;
+}
+
 .adSkip {
-  position: absolute;
-  right: 4cqw;
-  bottom: 5cqw;
+  margin-left: auto;
   padding: 2cqw 4.5cqw;
   border: 1px solid rgb(255 255 255 / 60%);
   border-radius: 999px;
