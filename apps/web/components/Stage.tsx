@@ -8,6 +8,7 @@ import {
   useEffect,
 } from "react";
 import { takeUnlockGesture } from "@/lib/audioChannel";
+import { backgroundSrc } from "@/lib/background";
 import { useScenePlayer } from "@/lib/useScenePlayer";
 import { AiLabel } from "./AiLabel";
 import { BigNumber } from "./BigNumber";
@@ -18,6 +19,7 @@ import { PauseIcon } from "./PauseIcon";
 import { ProgressBar } from "./ProgressBar";
 import { SceneMap } from "./SceneMap";
 import { SourceLine } from "./SourceLine";
+import { StageBackground } from "./StageBackground";
 import { Telop } from "./Telop";
 import { useViewTracking } from "./taste-context";
 import "./stage.css";
@@ -73,7 +75,7 @@ export function Stage({
 
   return (
     <div
-      className="stage"
+      className={backgroundSrc(scene.datasetId) ? "stage hasBg" : "stage"}
       style={{ "--cat": scene.color } as CSSProperties}
       role="button"
       tabIndex={0}
@@ -81,6 +83,7 @@ export function Stage({
       aria-label={`${scene.headline}(タップで一時停止/再開)`}
       onClick={toggle}
     >
+      <StageBackground datasetId={scene.datasetId} />
       <div className="watermark" aria-hidden="true">
         {scene.wmChar}
       </div>
