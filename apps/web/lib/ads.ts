@@ -91,6 +91,18 @@ export const ADS: readonly Ad[] = [
     note: "月額 1,248 円、年額なら月あたり 623 円 / 割引は申し込みから最大 4 年間続きます",
     color: "#3fb8a0",
   },
+  {
+    id: "topaz",
+    link: {
+      href: "https://topaz.dev/",
+      label: "Topa'z を見る",
+    },
+    image: "/ads/topaz.webp",
+    title: "Topa'z",
+    body: "プログラマーが開発したものを、最も簡単に、わかりやすく公開できるサービスです。",
+    note: "インプットも投稿できて、プロフィールページをそのままポートフォリオとして使えます",
+    color: "#3aa6c9",
+  },
 ];
 
 /** 動画が何本ごとに広告を 1 つ差し込むか */

@@ -11,3 +11,4 @@
 - 4 件目の広告: Progate の「Claude Code 入門」コースを足した。画像は `apps/web/public/ads/claude-course.webp`(ユーザーが用意)、リンクは https://progate.com/courses/feature/claude-code、ボタンの文言は日程がないコースなので「コースを見る」にした。広告は ティラノカップ → 58 ハッカソン → LINKS → Claude Code 入門 の順に回る。
 - 5 件目の広告: Progate の「Rust」コースを足した。画像は `apps/web/public/ads/progate-rust.webp`(ユーザーが用意)、リンクは https://progate.com/courses/feature/rust、ボタンは「コースを見る」。広告の順は ティラノカップ → 58 ハッカソン → LINKS → Claude Code 入門 → Rust。
 - 6 件目の広告: Progate の学割(プロプラン 75% OFF)の告知を足した。画像は `apps/web/public/ads/progate-hello.webp`(ユーザーが用意)、リンクは https://progate.com/blogs/student-discount-release-20261016、ボタンは「詳しく見る」。広告の順は ティラノカップ → 58 ハッカソン → LINKS → Claude Code 入門 → Rust → 学割。
+- 7 件目の広告: Topa'z(エンジニアのインプット/アウトプットを可視化するサービス)の紹介を足した。画像は `apps/web/public/ads/topaz.webp`(ユーザーが用意)、リンクは https://topaz.dev/、ボタンは「Topa'z を見る」。広告の順は 学割 のあとに Topa'z。
