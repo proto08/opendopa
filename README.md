@@ -1,7 +1,6 @@
 # OpenDopa
-
-Progateハッカソン powered by ProjectLINKS
-
+#### Progateハッカソン powered by ProjectLINKS
+#### 最優秀賞 / Project LINKS賞 受賞
 https://topaz.dev/projects/rf23wuwzyssmxsjj
 
 国土交通省 Project LINKS のオープンデータ(CSV)から、縦スクロールのショート動画を作り、視聴といいねから好みを学習して次の動画を選ぶ Web アプリです。
