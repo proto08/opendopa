@@ -72,7 +72,7 @@ jobs:
           test -n "$PLAN_PASSPHRASE"
           openssl enc -aes-256-cbc -pbkdf2 -salt -pass env:PLAN_PASSPHRASE \
             -in infra/tfplan -out infra/tfplan.enc
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: tfplan
           path: infra/tfplan.enc
